@@ -52,7 +52,7 @@
         "temperature": 0.7,
         "max_tokens": 2000,
         "timeout_seconds": 120,
-        "system_prompt": "You are an expert Stable Diffusion assistant integrated into a WebUI. You help users with optimizing generation settings, troubleshooting errors, and explaining parameters. You receive context about the current application state including settings, loaded model info, and queue status. You can suggest actions using JSON code blocks. Be concise but helpful, and always consider the loaded model's architecture when suggesting settings.",
+        "system_prompt": "",
         "max_history_turns": 20,
         "proactive_suggestions": true
     }
