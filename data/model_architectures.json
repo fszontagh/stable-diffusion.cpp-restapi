@@ -1,0 +1,218 @@
+{
+  "architectures": {
+    "SD1": {
+      "name": "SD 1.x / SD 1.5",
+      "description": "Standard Stable Diffusion 1.x models. VAE usually bundled, external VAE optional for better quality.",
+      "aliases": ["SD 1.5", "SD1.5", "SD 1.4", "SD1.4", "SD 1.x"],
+      "requiredComponents": {},
+      "optionalComponents": {
+        "vae": "Improves color accuracy"
+      },
+      "loadOptions": {
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 7.0,
+        "steps": 20,
+        "sampler": "euler_a",
+        "scheduler": "discrete",
+        "width": 512,
+        "height": 512
+      }
+    },
+    "SDXL": {
+      "name": "SDXL",
+      "description": "SDXL models. External VAE optional but recommended for better colors.",
+      "aliases": ["SDXL 1.0", "SDXL Turbo", "SDXL Lightning"],
+      "requiredComponents": {},
+      "optionalComponents": {
+        "vae": "Recommended for better color accuracy"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "vae_decode_only": true,
+        "force_sdxl_vae_conv_scale": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 7.0,
+        "steps": 20,
+        "sampler": "euler_a",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "SD3": {
+      "name": "SD3 / SD3.5",
+      "description": "Stable Diffusion 3. Requires CLIP-L, CLIP-G, and T5-XXL text encoders.",
+      "aliases": ["SD 3", "SD3.5", "SD 3.5"],
+      "requiredComponents": {
+        "clip_l": "CLIP-L text encoder",
+        "clip_g": "CLIP-G text encoder",
+        "t5xxl": "T5-XXL text encoder"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "keep_clip_on_cpu": true,
+        "flash_attn": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 4.5,
+        "steps": 28,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Flux": {
+      "name": "Flux",
+      "description": "Black Forest Labs Flux models. Requires VAE (ae.safetensors or ae.gguf), CLIP-L, and T5-XXL.",
+      "aliases": ["Flux.1", "Flux Dev", "Flux Pro"],
+      "requiredComponents": {
+        "vae": "ae.safetensors or ae.gguf",
+        "clip_l": "CLIP-L text encoder",
+        "t5xxl": "T5-XXL text encoder"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "keep_clip_on_cpu": true,
+        "flash_attn": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "distilled_guidance": 3.5,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Flux Schnell": {
+      "name": "Flux Schnell",
+      "description": "Fast Flux variant optimized for speed. Same requirements as Flux, fewer steps needed.",
+      "aliases": ["Flux.1 Schnell", "Schnell"],
+      "requiredComponents": {
+        "vae": "ae.safetensors or ae.gguf",
+        "clip_l": "CLIP-L text encoder",
+        "t5xxl": "T5-XXL text encoder"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "keep_clip_on_cpu": true,
+        "flash_attn": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "distilled_guidance": 0.0,
+        "steps": 4,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Z-Image": {
+      "name": "Z-Image Turbo",
+      "description": "Requires VAE (ae.gguf) and LLM (Qwen3 4B recommended). Very fast generation with high quality.",
+      "aliases": ["ZImage", "Z Image"],
+      "requiredComponents": {
+        "vae": "ae.gguf (Flux VAE)",
+        "llm": "Qwen3 4B or compatible LLM"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "vae_decode_only": true,
+        "vae_conv_direct": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "distilled_guidance": 3.5,
+        "steps": 8,
+        "sampler": "euler",
+        "scheduler": "smoothstep",
+        "width": 1024,
+        "height": 688,
+        "easycache": true
+      }
+    },
+    "Qwen": {
+      "name": "Qwen-Image",
+      "description": "Qwen-based image generation. Requires VAE and LLM (Qwen2.5-VL 7B).",
+      "aliases": ["Qwen2-VL", "Qwen Image", "Qwen-VL"],
+      "requiredComponents": {
+        "vae": "VAE model",
+        "llm": "Qwen2.5-VL 7B"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": true,
+        "flow_shift": 3.0
+      },
+      "generationDefaults": {
+        "cfg_scale": 2.5,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Chroma": {
+      "name": "Chroma",
+      "description": "Requires VAE (ae.safetensors) and T5-XXL.",
+      "aliases": [],
+      "requiredComponents": {
+        "vae": "ae.safetensors",
+        "t5xxl": "T5-XXL text encoder"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "keep_clip_on_cpu": true,
+        "flash_attn": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 4.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Wan": {
+      "name": "Wan T2V (Video)",
+      "description": "Text-to-Video model. Requires VAE and T5-XXL (umt5 variant recommended).",
+      "aliases": ["Wan2.1", "Wan T2V", "WanVideo"],
+      "requiredComponents": {
+        "vae": "Video VAE",
+        "t5xxl": "T5-XXL/umt5 text encoder"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": true,
+        "flow_shift": 3.0
+      },
+      "generationDefaults": {
+        "cfg_scale": 6.0,
+        "steps": 30,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 832,
+        "height": 480
+      }
+    }
+  },
+  "version": 1,
+  "description": "Model architecture presets defining required components, load options, and generation defaults. Edit this file to customize - changes are auto-reloaded."
+}
