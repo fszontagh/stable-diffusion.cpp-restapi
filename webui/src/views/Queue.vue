@@ -195,8 +195,8 @@ watch(statusFilter, () => {
 const sortedJobs = computed(() => {
   if (!store.queue?.items) return []
   return [...store.queue.items].sort((a, b) => {
-    // Processing first, then pending, then by date
-    const statusOrder = { processing: 0, pending: 1, completed: 2, failed: 3, cancelled: 4 }
+    // Processing first, then pending, then FAILED (important!), then completed, then cancelled
+    const statusOrder = { processing: 0, pending: 1, failed: 2, completed: 3, cancelled: 4 }
     const aOrder = statusOrder[a.status] ?? 5
     const bOrder = statusOrder[b.status] ?? 5
     if (aOrder !== bOrder) return aOrder - bOrder
