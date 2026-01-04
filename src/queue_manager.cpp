@@ -168,6 +168,18 @@ bool QueueFilter::matches(const QueueItem& item) const {
         }
     }
 
+    // Architecture filter (search in model_settings.model_architecture)
+    if (architecture.has_value() && !architecture.value().empty()) {
+        std::string item_arch;
+        if (item.model_settings.contains("model_architecture") &&
+            item.model_settings["model_architecture"].is_string()) {
+            item_arch = item.model_settings["model_architecture"].get<std::string>();
+        }
+        if (!contains_insensitive(item_arch, architecture.value())) {
+            return false;
+        }
+    }
+
     // Date-based filters
     auto item_timestamp = std::chrono::duration_cast<std::chrono::seconds>(
         item.created_at.time_since_epoch()
@@ -185,7 +197,7 @@ bool QueueFilter::matches(const QueueItem& item) const {
 }
 
 bool QueueFilter::is_empty() const {
-    return !status.has_value() && !search.has_value() && !type.has_value();
+    return !status.has_value() && !search.has_value() && !type.has_value() && !architecture.has_value();
 }
 
 QueueManager::QueueManager(

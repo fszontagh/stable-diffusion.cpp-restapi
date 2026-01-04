@@ -589,6 +589,14 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
         }
     }
 
+    // Architecture filter
+    if (req.has_param("architecture")) {
+        std::string arch_str = req.get_param_value("architecture");
+        if (!arch_str.empty()) {
+            filter.architecture = arch_str;
+        }
+    }
+
     // Check for group_by parameter
     std::string group_by;
     if (req.has_param("group_by")) {
@@ -649,6 +657,9 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
     }
     if (filter.search.has_value()) {
         applied_filters["search"] = filter.search.value();
+    }
+    if (filter.architecture.has_value()) {
+        applied_filters["architecture"] = filter.architecture.value();
     }
 
     auto status = queue_manager_.get_status();

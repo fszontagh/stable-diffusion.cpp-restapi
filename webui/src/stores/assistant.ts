@@ -11,7 +11,8 @@ import {
   type Img2ImgParams,
   type Txt2VidParams,
   type UpscaleParams,
-  type ConvertParams
+  type ConvertParams,
+  type Job
 } from '../api/client'
 import { useAppStore } from './app'
 import { wsService, type JobStatusChangedData } from '../services/websocket'
@@ -68,7 +69,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   // Computed
   const messageCount = computed(() => messages.value.length)
 
-  const hasMessages = computed(() => messages.value.length > 0)
+  const hasMessages = computed(() => messages.value.some(msg => !msg.hidden))
 
   // Initialize - fetch status and history
   async function initialize() {
@@ -149,7 +150,28 @@ export const useAssistantStore = defineStore('assistant', () => {
       const result = await api.getAssistantHistory()
       // Backend returns newest-first, reverse to get chronological order (oldest first)
       // This matches our push() behavior for new messages
-      messages.value = result.messages.reverse()
+      const loadedMessages = result.messages.reverse()
+
+      // Mark internal/continuation messages as hidden
+      // These are messages sent to the LLM for context but shouldn't be shown to users
+      const internalPatterns = [
+        'Actions completed successfully',
+        'Some actions failed. Please check',
+        'Here are the details for job',
+        'Please continue with the task',
+        '🔄 '  // Continuation prefix
+      ]
+
+      messages.value = loadedMessages.map(msg => {
+        // Check if this is an internal message that should be hidden
+        const isInternal = msg.role !== 'assistant' &&
+          internalPatterns.some(pattern => msg.content.includes(pattern))
+
+        return {
+          ...msg,
+          hidden: isInternal
+        }
+      })
     } catch (e) {
       console.error('[AssistantStore] Failed to load history:', e)
     }
@@ -542,7 +564,7 @@ export const useAssistantStore = defineStore('assistant', () => {
 
   // Send a message to the assistant
   // isContinuation: true when this is an automated follow-up from job completion
-  async function sendMessage(userMessage: string, isContinuation = false, retryCount = 0) {
+  async function sendMessage(userMessage: string, isContinuation = false, retryCount = 0, hideFromChat = false) {
     if (!enabled.value || isLoading.value || !userMessage.trim()) return
 
     // Ensure models are loaded for context (refresh if stale)
@@ -551,11 +573,13 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
 
     // Only add user message on first attempt (not retries)
+    // Internal messages (hideFromChat=true) are marked hidden but still stored for LLM context
     if (retryCount === 0) {
       messages.value.push({
         role: isContinuation ? 'system' : 'user',
         content: isContinuation ? `🔄 ${userMessage}` : userMessage,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        hidden: hideFromChat
       })
     }
 
@@ -1227,8 +1251,9 @@ export const useAssistantStore = defineStore('assistant', () => {
               const jobDetailsMsg = `Here are the details for job ${jobId}:\n\`\`\`json\n${JSON.stringify(jobDetails, null, 2)}\n\`\`\`\nPlease continue with the task using this information.`
 
               // Trigger a follow-up to let the LLM continue with the retrieved info
+              // Hide from chat since it's just JSON data for the LLM
               setTimeout(async () => {
-                await sendMessage(jobDetailsMsg, true)
+                await sendMessage(jobDetailsMsg, true, 0, true)
               }, 100)
 
               // Return early - the follow-up message will continue the task
@@ -1356,45 +1381,74 @@ export const useAssistantStore = defineStore('assistant', () => {
             const searchArchitecture = action.parameters.architecture as string
             const limit = (action.parameters.limit as number) || 10
 
-            const queue = appStore.queue?.items || []
+            let results: Job[] = []
 
-            // Filter jobs based on search criteria
-            let results = queue.filter(job => {
-              let match = true
+            // If architecture filter is specified, use backend API to search all jobs
+            // (local queue data is paginated and doesn't contain all jobs)
+            if (searchArchitecture) {
+              try {
+                const queueResponse = await api.getQueue({
+                  architecture: searchArchitecture,
+                  status: searchStatus || undefined,
+                  type: searchType || undefined,
+                  search: searchPrompt || undefined,
+                  limit: limit
+                })
+                results = queueResponse.items || []
 
-              // Filter by prompt text (case-insensitive partial match)
-              if (searchPrompt) {
-                const jobPrompt = ((job.params?.prompt as string) || '').toLowerCase()
-                match = match && jobPrompt.includes(searchPrompt.toLowerCase())
+                // Additional client-side filter for model name (not supported by backend)
+                if (searchModel) {
+                  results = results.filter(job => {
+                    const jobModel = ((job.model_settings?.model_name as string) || '').toLowerCase()
+                    return jobModel.includes(searchModel.toLowerCase())
+                  })
+                }
+              } catch (e) {
+                errors.push(`Failed to search jobs: ${e instanceof Error ? e.message : 'Unknown error'}`)
+                break
+              }
+            } else {
+              // No architecture filter - search in locally loaded queue data
+              let allJobs: Job[] = []
+              if (appStore.queue?.items && appStore.queue.items.length > 0) {
+                allJobs = appStore.queue.items
+              } else if (appStore.queue?.groups && appStore.queue.groups.length > 0) {
+                // Flatten jobs from all date groups
+                allJobs = appStore.queue.groups.flatMap(group => group.items || [])
               }
 
-              // Filter by status
-              if (searchStatus) {
-                match = match && job.status === searchStatus
-              }
+              // Filter jobs based on search criteria
+              results = allJobs.filter(job => {
+                let match = true
 
-              // Filter by type
-              if (searchType) {
-                match = match && job.type === searchType
-              }
+                // Filter by prompt text (case-insensitive partial match)
+                if (searchPrompt) {
+                  const jobPrompt = ((job.params?.prompt as string) || '').toLowerCase()
+                  match = match && jobPrompt.includes(searchPrompt.toLowerCase())
+                }
 
-              // Filter by model name (case-insensitive partial match)
-              if (searchModel) {
-                const jobModel = ((job.model_settings?.model_name as string) || '').toLowerCase()
-                match = match && jobModel.includes(searchModel.toLowerCase())
-              }
+                // Filter by status
+                if (searchStatus) {
+                  match = match && job.status === searchStatus
+                }
 
-              // Filter by model architecture (case-insensitive partial match)
-              if (searchArchitecture) {
-                const jobArch = ((job.model_settings?.model_architecture as string) || '').toLowerCase()
-                match = match && jobArch.includes(searchArchitecture.toLowerCase())
-              }
+                // Filter by type
+                if (searchType) {
+                  match = match && job.type === searchType
+                }
 
-              return match
-            })
+                // Filter by model name (case-insensitive partial match)
+                if (searchModel) {
+                  const jobModel = ((job.model_settings?.model_name as string) || '').toLowerCase()
+                  match = match && jobModel.includes(searchModel.toLowerCase())
+                }
 
-            // Limit results
-            results = results.slice(0, limit)
+                return match
+              })
+
+              // Limit results
+              results = results.slice(0, limit)
+            }
 
             // Format results for the LLM - include full details for each job
             const formattedResults = results.map(job => {
