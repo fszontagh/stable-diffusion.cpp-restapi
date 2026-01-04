@@ -135,16 +135,19 @@ Available tools/actions:
   It automatically loads the correct model with all its components exactly as they were when the job was created.
   Use this instead of load_model when you want to replicate a job's model configuration.
   Example: { "type": "load_job_model", "parameters": { "job_id": "abc123" } }
-- search_jobs: Search for jobs by prompt text, status, or type.
+- search_jobs: Search for jobs by prompt text, model, architecture, status, or type.
   Parameters:
     - prompt: (string, optional) Search for jobs containing this text in their prompt
+    - model: (string, optional) Search by model name (partial match, case-insensitive)
+    - architecture: (string, optional) Search by model architecture: "SD1"|"SD2"|"SDXL"|"Flux"|"SD3"|"Z-Image"|"Qwen"|"Wan" etc.
     - status: (string, optional) Filter by status: "pending"|"processing"|"completed"|"failed"|"cancelled"
     - type: (string, optional) Filter by job type: "txt2img"|"img2img"|"txt2vid"|"upscale"
     - limit: (number, optional, default 10) Maximum results to return
-  IMPORTANT: After this action executes, you will receive the search results and can then continue
-  with follow-up actions based on the jobs found.
+  IMPORTANT: After this action executes, you will receive the search results in last_action_results
+  and should continue with follow-up actions (like load_job_model) based on the jobs found.
   Example: { "type": "search_jobs", "parameters": { "prompt": "cat", "status": "completed" } }
-  Example: { "type": "search_jobs", "parameters": { "type": "txt2img", "limit": 5 } }
+  Example: { "type": "search_jobs", "parameters": { "architecture": "Z-Image", "limit": 5 } }
+  Example: { "type": "search_jobs", "parameters": { "model": "flux", "status": "completed" } }
 - navigate: Navigate to a view (view: "dashboard"|"models"|"generate"|"queue"|"upscale"|"chat")
 - apply_recommended_settings: Apply the recommended settings for the current model architecture
 - highlight_setting: Scroll to and highlight a setting field (field: string)

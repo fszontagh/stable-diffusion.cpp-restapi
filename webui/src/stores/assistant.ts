@@ -602,8 +602,31 @@ export const useAssistantStore = defineStore('assistant', () => {
             // Send retry message - the error feedback is already in lastActionResults
             const retryMessage = `Some actions failed. Please check last_action_results in context and try again with the correct action type.`
             isLoading.value = false // Reset so recursive call works
-            await sendMessage(retryMessage, false, retryCount + 1)
+            await sendMessage(retryMessage, true, retryCount + 1)
             return
+          }
+
+          // Auto-continue if actions succeeded and produced results that need follow-up
+          // This enables multi-step workflows like: search -> load -> apply settings
+          const actionResults = lastActionResults.value
+          if (actionResults && actionResults.successes.length > 0 && errors.length === 0) {
+            // Check if any action produced data that needs follow-up (e.g., search results, job details)
+            const needsFollowUp = actionResults.successes.some(s =>
+              s.includes('search_jobs:') ||
+              s.includes('get_job:') ||
+              s.includes('Results:')
+            )
+
+            if (needsFollowUp && retryCount < MAX_ACTION_RETRIES) {
+              // Small delay before continuation
+              await new Promise(resolve => setTimeout(resolve, 300))
+
+              // Send continuation message - the results are in lastActionResults
+              const continueMessage = `Actions completed successfully. The results are in last_action_results. Please continue with the task.`
+              isLoading.value = false // Reset so recursive call works
+              await sendMessage(continueMessage, true, retryCount + 1)
+              return
+            }
           }
         }
 
@@ -1325,10 +1348,12 @@ export const useAssistantStore = defineStore('assistant', () => {
           }
 
           case 'search_jobs': {
-            // Search jobs by prompt text or other criteria
+            // Search jobs by prompt text, model architecture, or other criteria
             const searchPrompt = action.parameters.prompt as string
             const searchStatus = action.parameters.status as string
             const searchType = action.parameters.type as string
+            const searchModel = action.parameters.model as string
+            const searchArchitecture = action.parameters.architecture as string
             const limit = (action.parameters.limit as number) || 10
 
             const queue = appStore.queue?.items || []
@@ -1351,6 +1376,18 @@ export const useAssistantStore = defineStore('assistant', () => {
               // Filter by type
               if (searchType) {
                 match = match && job.type === searchType
+              }
+
+              // Filter by model name (case-insensitive partial match)
+              if (searchModel) {
+                const jobModel = ((job.model_settings?.model_name as string) || '').toLowerCase()
+                match = match && jobModel.includes(searchModel.toLowerCase())
+              }
+
+              // Filter by model architecture (case-insensitive partial match)
+              if (searchArchitecture) {
+                const jobArch = ((job.model_settings?.model_architecture as string) || '').toLowerCase()
+                match = match && jobArch.includes(searchArchitecture.toLowerCase())
               }
 
               return match
@@ -1382,18 +1419,9 @@ export const useAssistantStore = defineStore('assistant', () => {
               }
             })
 
-            successes.push(`search_jobs: Found ${results.length} matching jobs`)
-
-            // Send the search results back to the LLM so it can continue with its task
-            const searchResultsMsg = `Here are the search results (${results.length} jobs found):\n\`\`\`json\n${JSON.stringify(formattedResults, null, 2)}\n\`\`\`\nPlease continue with the task using this information.`
-
-            // Trigger a follow-up to let the LLM continue with the retrieved info
-            setTimeout(async () => {
-              await sendMessage(searchResultsMsg, true)
-            }, 100)
-
-            // Return early - the follow-up message will continue the task
-            return errors
+            // Add detailed results to successes so LLM can continue with the data
+            successes.push(`search_jobs: Found ${results.length} matching jobs. Results:\n${JSON.stringify(formattedResults, null, 2)}`)
+            break
           }
 
           case 'download_model': {
