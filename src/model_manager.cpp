@@ -192,6 +192,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.keep_controlnet_on_cpu = opts.value("keep_controlnet_on_cpu", false);
         params.flash_attn = opts.value("flash_attn", true);
         params.offload_to_cpu = opts.value("offload_to_cpu", false);
+        params.enable_mmap = opts.value("enable_mmap", true);
         params.vae_decode_only = opts.value("vae_decode_only", true);
         params.vae_conv_direct = opts.value("vae_conv_direct", false);
         params.diffusion_conv_direct = opts.value("diffusion_conv_direct", false);
@@ -694,6 +695,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.keep_control_net_on_cpu = params.keep_controlnet_on_cpu;
     ctx_params.diffusion_flash_attn = params.flash_attn;
     ctx_params.offload_params_to_cpu = params.offload_to_cpu;
+    ctx_params.enable_mmap = params.enable_mmap;
     ctx_params.vae_decode_only = params.vae_decode_only;
     ctx_params.vae_conv_direct = params.vae_conv_direct;
     ctx_params.diffusion_conv_direct = params.diffusion_conv_direct;
@@ -804,6 +806,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["keep_controlnet_on_cpu"] = params.keep_controlnet_on_cpu;
     loaded_options_["flash_attn"] = params.flash_attn;
     loaded_options_["offload_to_cpu"] = params.offload_to_cpu;
+    loaded_options_["enable_mmap"] = params.enable_mmap;
     loaded_options_["vae_decode_only"] = params.vae_decode_only;
     loaded_options_["vae_conv_direct"] = params.vae_conv_direct;
     loaded_options_["diffusion_conv_direct"] = params.diffusion_conv_direct;

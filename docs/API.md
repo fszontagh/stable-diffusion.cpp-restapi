@@ -429,6 +429,7 @@ Load a model into memory. Only one model can be loaded at a time.
 | `options.diffusion_conv_direct` | boolean | No | false | Use ggml_conv2d_direct in diffusion model |
 | `options.flash_attn` | boolean | No | true | Enable Flash Attention |
 | `options.offload_to_cpu` | boolean | No | false | Offload model to CPU |
+| `options.enable_mmap` | boolean | No | true | Use memory-mapped file loading for models |
 | `options.vae_decode_only` | boolean | No | true | VAE decode only mode |
 | `options.tae_preview_only` | boolean | No | false | Only use TAESD for preview, not final |
 | `options.free_params_immediately` | boolean | No | false | Free model params after loading |
