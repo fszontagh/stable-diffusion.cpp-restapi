@@ -1,0 +1,53 @@
+# SDCPP-RESTAPI systemd service file
+#
+# Installation:
+#   1. Copy this file to /etc/systemd/system/sdcpp-restapi.service
+#   2. Edit the file to set correct User, paths, etc.
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable sdcpp-restapi
+#   5. sudo systemctl start sdcpp-restapi
+#
+
+[Unit]
+Description=SDCPP REST API Server
+Documentation=https://github.com/anthropics/sdcpp-restapi
+After=network.target
+
+[Service]
+Type=simple
+
+# Change this to the user that should run the service
+User=sdcpp
+Group=sdcpp
+
+# Working directory
+WorkingDirectory=/opt/sdcpp-restapi
+
+# Path to binary and config file
+ExecStart=/opt/sdcpp-restapi/bin/sdcpp-restapi --config /etc/sdcpp-restapi/config.json
+
+# Restart on failure
+Restart=on-failure
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+# Allow writing to output directory
+ReadWritePaths=/opt/sdcpp-restapi/output
+
+# Read-only access to models and config
+ReadOnlyPaths=/opt/sdcpp-restapi/models /etc/sdcpp-restapi
+
+# Resource limits (uncomment and adjust as needed)
+# LimitNOFILE=65535
+# MemoryMax=32G
+
+# Library path (if using custom libraries)
+Environment=LD_LIBRARY_PATH=/opt/sdcpp-restapi/lib
+
+[Install]
+WantedBy=multi-user.target

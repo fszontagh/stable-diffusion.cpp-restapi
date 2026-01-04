@@ -1,0 +1,44 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+
+# WebUI build artifacts
+webui/node_modules/
+webui/dist/
+webui/*.tsbuildinfo
+webui/vite.config.js
+webui/vite.config.d.ts
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cache
+
+# Compiled files
+*.o
+*.a
+*.so
+*.dylib
+
+# Executables
+sdcpp-restapi
+
+# External dependencies (fetched by CMake)
+_deps/
+
+# Configuration (user-specific)
+config.json
+
+# Output directory
+output/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

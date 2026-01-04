@@ -1,0 +1,59 @@
+{
+    "server": {
+        "host": "0.0.0.0",
+        "port": 8080,
+        "threads": 8
+    },
+    "paths": {
+        "checkpoints": "/path/to/checkpoints",
+        "diffusion_models": "/path/to/diffusion_models",
+        "vae": "/path/to/vae",
+        "lora": "/path/to/loras",
+        "clip": "/path/to/clip",
+        "t5": "/path/to/t5xxl",
+        "embeddings": "/path/to/embeddings",
+        "controlnet": "/path/to/controlnet",
+        "llm": "/path/to/llm",
+        "esrgan": "/path/to/esrgan",
+        "taesd": "/path/to/taesd",
+        "output": "/path/to/output",
+        "webui": ""
+    },
+    "sd_defaults": {
+        "n_threads": 10,
+        "keep_clip_on_cpu": false,
+        "keep_vae_on_cpu": false,
+        "flash_attn": true,
+        "offload_to_cpu": false
+    },
+    "ollama": {
+        "enabled": false,
+        "endpoint": "http://localhost:11434",
+        "api_key": "",
+        "model": "llama3.2",
+        "temperature": 0.7,
+        "max_tokens": 2000,
+        "system_prompt": "You are an expert at enhancing image generation prompts for Stable Diffusion models. When given a prompt, improve it by adding artistic details, lighting descriptions, style references, quality tags, and technical parameters that will help generate better images. Keep the original intent but make it more descriptive and effective. Output ONLY the enhanced prompt without explanations or commentary.",
+        "timeout_seconds": 60,
+        "max_history": 100
+    },
+    "preview": {
+        "enabled": true,
+        "mode": "tae",
+        "interval": 1,
+        "max_size": 256,
+        "quality": 75
+    },
+    "assistant": {
+        "enabled": false,
+        "endpoint": "http://localhost:11434",
+        "api_key": "",
+        "model": "llama3.2",
+        "temperature": 0.7,
+        "max_tokens": 2000,
+        "timeout_seconds": 120,
+        "system_prompt": "You are an expert Stable Diffusion assistant integrated into a WebUI. You help users with optimizing generation settings, troubleshooting errors, and explaining parameters. You receive context about the current application state including settings, loaded model info, and queue status. You can suggest actions using JSON code blocks. Be concise but helpful, and always consider the loaded model's architecture when suggesting settings.",
+        "max_history_turns": 20,
+        "proactive_suggestions": true
+    }
+}
