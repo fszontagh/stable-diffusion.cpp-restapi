@@ -97,7 +97,7 @@ Available tools/actions:
     - model_name: string (required)
     - model_type: "checkpoint"|"diffusion" (required - check available_models to determine correct type)
     - vae, clip_l, clip_g, t5xxl, llm: optional component model names to load together
-    - options: optional load options (keep_clip_on_cpu, flash_attn, etc.)
+    - options: optional load options (keep_clip_on_cpu, flash_attn, enable_mmap, etc.)
     - continue_on_complete: (string, optional) If set, the assistant will be triggered again
       when the model finishes loading. Use this to chain operations like loading a model
       then starting generation.
