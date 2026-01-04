@@ -911,10 +911,8 @@ nlohmann::json AssistantClient::get_status() const {
 nlohmann::json AssistantClient::get_settings() const {
     std::lock_guard<std::mutex> lock(config_mutex_);
 
-    std::string effective_system_prompt = config_.system_prompt.empty()
-        ? DEFAULT_ASSISTANT_SYSTEM_PROMPT
-        : config_.system_prompt;
-
+    // Return actual stored value, not effective value
+    // The default prompt is only used internally when building chat requests
     return {
         {"enabled", config_.enabled},
         {"endpoint", config_.endpoint},
@@ -924,7 +922,7 @@ nlohmann::json AssistantClient::get_settings() const {
         {"timeout_seconds", config_.timeout_seconds},
         {"max_history_turns", config_.max_history_turns},
         {"proactive_suggestions", config_.proactive_suggestions},
-        {"system_prompt", effective_system_prompt},
+        {"system_prompt", config_.system_prompt},
         {"has_api_key", !config_.api_key.empty()}
     };
 }
