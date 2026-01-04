@@ -298,7 +298,10 @@ function getTypeIcon(type: string): string {
     txt2img: '&#127912;',
     img2img: '&#128247;',
     txt2vid: '&#127916;',
-    upscale: '&#128269;'
+    upscale: '&#128269;',
+    convert: '&#128259;',
+    model_download: '&#11015;',
+    model_hash: '&#128274;'
   }
   return icons[type] || '&#10067;'
 }
@@ -308,7 +311,10 @@ function getTypeName(type: string): string {
     txt2img: 'Text to Image',
     img2img: 'Image to Image',
     txt2vid: 'Text to Video',
-    upscale: 'Upscale'
+    upscale: 'Upscale',
+    convert: 'Model Conversion',
+    model_download: 'Model Download',
+    model_hash: 'Model Hash'
   }
   return names[type] || type
 }
@@ -376,6 +382,26 @@ function getJobModelComponents(job: Job): Array<{label: string, value: string}> 
   if (loaded.controlnet) components.push({ label: 'CN', value: formatComponentName(loaded.controlnet) })
 
   return components
+}
+
+// Check if job is a convert job
+function isConvertJob(job: Job): boolean {
+  return job.type === 'convert'
+}
+
+// Get convert job input path (source model)
+function getConvertInput(job: Job): string {
+  return (job.params?.input_path as string) || ''
+}
+
+// Get convert job output path (destination file)
+function getConvertOutput(job: Job): string {
+  return (job.params?.output_path as string) || ''
+}
+
+// Get convert job output type (quantization type like q5_0, q8_0, f16)
+function getConvertType(job: Job): string {
+  return (job.params?.output_type as string) || ''
 }
 
 // Scroll to top of page
@@ -859,8 +885,24 @@ async function sendImageToUpscale(outputPath: string) {
         <div class="job-content">
           <!-- Left: Prompt and details -->
           <div class="job-details">
-            <!-- Prompt preview -->
-            <div v-if="getJobPrompt(job)" class="job-prompt">
+            <!-- Convert job details -->
+            <div v-if="isConvertJob(job)" class="job-convert-details">
+              <div class="convert-row">
+                <span class="convert-label">Input:</span>
+                <span class="convert-value" :title="getConvertInput(job)">{{ formatComponentName(getConvertInput(job)) }}</span>
+              </div>
+              <div class="convert-arrow">&#8595;</div>
+              <div class="convert-row">
+                <span class="convert-label">Output:</span>
+                <span class="convert-value" :title="getConvertOutput(job)">{{ formatComponentName(getConvertOutput(job)) }}</span>
+              </div>
+              <div v-if="getConvertType(job)" class="convert-type">
+                <span class="convert-type-badge">{{ getConvertType(job).toUpperCase() }}</span>
+              </div>
+            </div>
+
+            <!-- Prompt preview (for non-convert jobs) -->
+            <div v-else-if="getJobPrompt(job)" class="job-prompt">
               <span class="prompt-text" :title="getJobPrompt(job)">{{ truncateText(getJobPrompt(job), 150) }}</span>
             </div>
 
@@ -1054,7 +1096,22 @@ async function sendImageToUpscale(outputPath: string) {
             <div class="job-content">
               <!-- Left: Prompt and details -->
               <div class="job-details">
-                <div v-if="getJobPrompt(job)" class="job-prompt">
+                <!-- Convert job details -->
+                <div v-if="isConvertJob(job)" class="job-convert-details">
+                  <div class="convert-row">
+                    <span class="convert-label">Input:</span>
+                    <span class="convert-value" :title="getConvertInput(job)">{{ formatComponentName(getConvertInput(job)) }}</span>
+                  </div>
+                  <div class="convert-arrow">&#8595;</div>
+                  <div class="convert-row">
+                    <span class="convert-label">Output:</span>
+                    <span class="convert-value" :title="getConvertOutput(job)">{{ formatComponentName(getConvertOutput(job)) }}</span>
+                  </div>
+                  <div v-if="getConvertType(job)" class="convert-type">
+                    <span class="convert-type-badge">{{ getConvertType(job).toUpperCase() }}</span>
+                  </div>
+                </div>
+                <div v-else-if="getJobPrompt(job)" class="job-prompt">
                   <span class="prompt-text" :title="getJobPrompt(job)">{{ truncateText(getJobPrompt(job), 150) }}</span>
                 </div>
                 <div v-if="getJobNegativePrompt(job)" class="job-negative-prompt">
@@ -2344,5 +2401,64 @@ async function sendImageToUpscale(outputPath: string) {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 4px;
+}
+
+/* Convert Job Details */
+.job-convert-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
+  margin-bottom: 8px;
+}
+
+.convert-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.convert-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  min-width: 50px;
+}
+
+.convert-value {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+.convert-arrow {
+  color: var(--accent-primary);
+  font-size: 14px;
+  text-align: center;
+  padding: 2px 0;
+}
+
+.convert-type {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.convert-type-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--border-radius-sm);
+  letter-spacing: 0.5px;
 }
 </style>
