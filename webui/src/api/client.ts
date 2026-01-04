@@ -393,6 +393,10 @@ class ApiClient {
     return this.request('POST', '/models/unload', {})
   }
 
+  async refreshModels(): Promise<{ success: boolean; message: string; models: ModelsResponse }> {
+    return this.request('POST', '/models/refresh', {})
+  }
+
   async getModelHash(modelType: string, modelName: string): Promise<ModelHashResponse> {
     return this.request('GET', `/models/hash/${modelType}/${encodeURIComponent(modelName)}`)
   }
@@ -632,7 +636,7 @@ export interface PreviewSettingsUpdateResponse {
 
 // Assistant Types
 export interface AssistantAction {
-  type: 'set_setting' | 'load_model' | 'set_component' | 'unload_model' | 'generate' | 'cancel_job' | 'navigate' | 'set_image' | 'apply_recommended_settings' | 'highlight_setting' | 'load_upscaler' | 'unload_upscaler' | 'upscale' | 'ask_user' | 'download_model' | 'get_job' | 'search_jobs' | 'load_job_model' | 'convert_model'
+  type: 'set_setting' | 'load_model' | 'set_component' | 'unload_model' | 'refresh_models' | 'generate' | 'cancel_job' | 'navigate' | 'set_image' | 'apply_recommended_settings' | 'highlight_setting' | 'load_upscaler' | 'unload_upscaler' | 'upscale' | 'ask_user' | 'download_model' | 'get_job' | 'search_jobs' | 'load_job_model' | 'convert_model'
   parameters: Record<string, unknown>
 }
 

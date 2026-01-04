@@ -47,6 +47,7 @@ public:
 private:
     // Model endpoints
     void handle_get_models(const httplib::Request& req, httplib::Response& res);
+    void handle_refresh_models(const httplib::Request& req, httplib::Response& res);
     void handle_load_model(const httplib::Request& req, httplib::Response& res);
     void handle_unload_model(const httplib::Request& req, httplib::Response& res);
     void handle_get_model_hash(const httplib::Request& req, httplib::Response& res);
