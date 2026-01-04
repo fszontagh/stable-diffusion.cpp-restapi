@@ -128,11 +128,15 @@ bool AssistantClient::parse_url(const std::string& url, std::string& host, int& 
 }
 
 std::string AssistantClient::build_system_prompt() const {
-    // Use custom system prompt if provided, otherwise use default
+    // Always use the default system prompt as base (contains action definitions)
+    // Append custom system prompt if provided (for additional personality/instructions)
+    std::string prompt = DEFAULT_ASSISTANT_SYSTEM_PROMPT;
+
     if (!config_.system_prompt.empty()) {
-        return config_.system_prompt;
+        prompt += "\n\n## Additional Instructions\n" + config_.system_prompt;
     }
-    return DEFAULT_ASSISTANT_SYSTEM_PROMPT;
+
+    return prompt;
 }
 
 nlohmann::json AssistantClient::build_messages(const std::string& user_message,
