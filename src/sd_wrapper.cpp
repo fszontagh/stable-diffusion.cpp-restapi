@@ -1861,12 +1861,14 @@ bool SDWrapper::convert_model(
     }
 
     // Call sd.cpp convert function
+    // Note: tensor_type_rules must be empty string, not nullptr - sd.cpp passes it to a
+    // function expecting std::string& which cannot be constructed from nullptr
     bool success = convert(
         input_path.c_str(),
         vae_path.empty() ? nullptr : vae_path.c_str(),
         output_path.c_str(),
         sd_type,
-        tensor_type_rules.empty() ? nullptr : tensor_type_rules.c_str(),
+        tensor_type_rules.c_str(),  // Always pass c_str(), never nullptr
         false  // convert_name: keep original tensor names
     );
 
