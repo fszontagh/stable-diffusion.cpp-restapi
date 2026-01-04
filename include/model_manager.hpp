@@ -94,6 +94,7 @@ struct ModelLoadParams {
     bool keep_controlnet_on_cpu = false;        // Keep ControlNet on CPU for low VRAM
     bool flash_attn = true;
     bool offload_to_cpu = false;
+    bool enable_mmap = true;                    // Use memory-mapped file loading for models
     bool vae_decode_only = true;
     bool vae_conv_direct = false;               // Use ggml_conv2d_direct in VAE
     bool diffusion_conv_direct = false;         // Use ggml_conv2d_direct in diffusion

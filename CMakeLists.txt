@@ -132,7 +132,7 @@ endif()
 FetchContent_Declare(
     stable-diffusion
     GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-    GIT_TAG        a2d83dd
+    GIT_TAG        b90b1ee
 )
 
 # First populate to get source directory
