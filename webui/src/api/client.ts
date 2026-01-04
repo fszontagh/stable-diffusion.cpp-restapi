@@ -89,6 +89,7 @@ export interface LoadModelParams {
     diffusion_conv_direct?: boolean
     flash_attn?: boolean
     offload_to_cpu?: boolean
+    enable_mmap?: boolean
     vae_decode_only?: boolean
     tae_preview_only?: boolean
     free_params_immediately?: boolean

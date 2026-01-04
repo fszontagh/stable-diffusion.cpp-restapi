@@ -45,6 +45,7 @@ interface ModelPreset {
     keep_controlnet_on_cpu?: boolean
     flash_attn?: boolean
     offload_to_cpu?: boolean
+    enable_mmap?: boolean
     vae_decode_only?: boolean
     vae_conv_direct?: boolean
     diffusion_conv_direct?: boolean
@@ -257,6 +258,7 @@ const loadParams = ref<LoadModelParams>({
     keep_controlnet_on_cpu: false,
     flash_attn: true,
     offload_to_cpu: false,
+    enable_mmap: true,
     vae_decode_only: true,
     tae_preview_only: false
   }
@@ -689,6 +691,10 @@ onMounted(() => {
           <label class="form-checkbox">
             <input v-model="loadParams.options!.offload_to_cpu" type="checkbox" />
             Offload to CPU
+          </label>
+          <label class="form-checkbox">
+            <input v-model="loadParams.options!.enable_mmap" type="checkbox" />
+            Memory-mapped Loading
           </label>
           <label class="form-checkbox">
             <input v-model="loadParams.options!.vae_decode_only" type="checkbox" />
