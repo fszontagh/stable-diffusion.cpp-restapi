@@ -1,5 +1,7 @@
 # SDCPP-RESTAPI
 
+⚠️ WARNING: This is a vibe coded project!
+
 C++20 REST API server for [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp), providing HTTP endpoints for AI-powered image and video generation.
 
 ## Features
@@ -93,6 +95,24 @@ Real-time updates on port 8081:
 ## Web UI
 
 Access the integrated web interface at `http://localhost:8080/ui`
+
+### Screenshots
+
+#### File manager
+<img width="1893" height="940" alt="Képernyőkép_20260104_111732" src="https://github.com/user-attachments/assets/825db2af-126e-4bf8-8bc7-1b8560d8a23b" />
+
+#### Webui
+ - Dashboard 
+<img width="1904" height="941" alt="Képernyőkép_20260104_111600" src="https://github.com/user-attachments/assets/e2508dea-e3e3-47f6-b4a8-f41ee1024fad" />
+
+ - Model management
+<img width="1904" height="941" alt="Képernyőkép_20260104_111554" src="https://github.com/user-attachments/assets/5073e913-6e1d-4523-bc08-e72ca966329b" />
+
+ - Queue
+<img width="1902" height="950" alt="Képernyőkép_20260104_112318" src="https://github.com/user-attachments/assets/7072fb9d-985b-4155-960b-538fc11e071b" />
+
+ - Assistant (ollama)
+<img width="1904" height="941" alt="Képernyőkép_20260104_111611" src="https://github.com/user-attachments/assets/0aabacdf-1483-491e-970a-1b00d8cb7052" />
 
 ## Documentation
 
