@@ -56,6 +56,60 @@ cp config.example.json config.json
 
 Server starts at `http://localhost:8080` by default.
 
+## Installation (Linux with systemd)
+
+For production deployment on Linux, use the install script which sets up a systemd service:
+
+```bash
+# Build first (see Quick Start above)
+cd build && ninja
+
+# Install as system service
+sudo ./scripts/install.sh
+```
+
+### Install Script Features
+
+- **Systemd Integration**: Automatic startup, restart on failure
+- **Interactive Setup**: Prompts for server port, model paths, LLM configuration
+- **Ollama/LLM Config**: Configure prompt enhancement and AI assistant endpoints
+- **Directory Structure**: Creates organized model subdirectories
+- **Config Preservation**: Updates preserve existing custom settings
+- **Security Hardening**: Service runs with restricted permissions
+
+### Install Options
+
+```bash
+sudo ./scripts/install.sh [options]
+
+Options:
+  --user USER       Run service as USER (default: current user)
+  --host HOST       Server listen address (default: 0.0.0.0)
+  --port PORT       Server port (default: 8080)
+  --models-dir DIR  Directory for model files
+  --output-dir DIR  Directory for generated images
+  --no-service      Don't install systemd service
+  --update-webui    Quick update of Web UI files only
+  --uninstall       Remove the installation
+```
+
+### Service Management
+
+```bash
+sudo systemctl start sdcpp-restapi    # Start
+sudo systemctl stop sdcpp-restapi     # Stop
+sudo systemctl status sdcpp-restapi   # Status
+sudo journalctl -u sdcpp-restapi -f   # View logs
+```
+
+### Installation Paths
+
+| Path | Description |
+|------|-------------|
+| `/opt/sdcpp-restapi/` | Binary and Web UI |
+| `/etc/sdcpp-restapi/config.json` | Configuration file |
+| `<models-dir>/` | Model subdirectories (checkpoints, vae, lora, etc.) |
+
 ## Configuration
 
 Edit `config.json` to set:
