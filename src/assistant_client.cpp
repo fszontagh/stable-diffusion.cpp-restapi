@@ -281,6 +281,16 @@ nlohmann::json AssistantClient::build_tools() const {
         }}
     });
 
+    // refresh_models tool
+    tools.push_back({
+        {"type", "function"},
+        {"function", {
+            {"name", "refresh_models"},
+            {"description", "Refresh the list of available models by rescanning model directories. Use this after downloading or converting models to make them available for loading."},
+            {"parameters", {{"type", "object"}, {"properties", {}}}}
+        }}
+    });
+
     // get_job tool
     tools.push_back({
         {"type", "function"},

@@ -47,6 +47,9 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     server.Get("/models", [this](const httplib::Request& req, httplib::Response& res) {
         handle_get_models(req, res);
     });
+    server.Post("/models/refresh", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_refresh_models(req, res);
+    });
     server.Post("/models/load", [this](const httplib::Request& req, httplib::Response& res) {
         handle_load_model(req, res);
     });
@@ -276,19 +279,19 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
 
 void RequestHandlers::handle_get_models(const httplib::Request& req, httplib::Response& res) {
     ModelFilter filter;
-    
+
     // Parse query parameters
     if (req.has_param("type")) {
         std::string type_str = req.get_param_value("type");
         // Validate type
-        if (type_str == "checkpoint" || type_str == "diffusion" || 
-            type_str == "vae" || type_str == "lora" || 
+        if (type_str == "checkpoint" || type_str == "diffusion" ||
+            type_str == "vae" || type_str == "lora" ||
             type_str == "clip" || type_str == "t5" || type_str == "embedding" ||
             type_str == "controlnet" || type_str == "llm" || type_str == "esrgan") {
             filter.type = string_to_model_type(type_str);
         }
     }
-    
+
     if (req.has_param("extension")) {
         std::string ext = req.get_param_value("extension");
         // Remove leading dot if present
@@ -297,17 +300,34 @@ void RequestHandlers::handle_get_models(const httplib::Request& req, httplib::Re
         }
         filter.extension = ext;
     }
-    
+
     if (req.has_param("search")) {
         filter.search = req.get_param_value("search");
     }
-    
+
     // Also support 'name' as alias for 'search'
     if (req.has_param("name") && !filter.search.has_value()) {
         filter.search = req.get_param_value("name");
     }
-    
+
     send_json(res, model_manager_.get_models_json(filter));
+}
+
+void RequestHandlers::handle_refresh_models(const httplib::Request& /*req*/, httplib::Response& res) {
+    std::cout << "[RequestHandlers] Refreshing model list..." << std::endl;
+
+    // Rescan all model directories
+    model_manager_.scan_models();
+
+    // Return success with updated model list
+    nlohmann::json response = {
+        {"success", true},
+        {"message", "Model list refreshed"},
+        {"models", model_manager_.get_models_json(ModelFilter{})}
+    };
+
+    std::cout << "[RequestHandlers] Model list refreshed successfully" << std::endl;
+    send_json(res, response);
 }
 
 void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Response& res) {

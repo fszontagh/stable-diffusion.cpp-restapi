@@ -841,6 +841,20 @@ export const useAssistantStore = defineStore('assistant', () => {
             successes.push('unload_model: model unloaded successfully')
             break
 
+          case 'refresh_models': {
+            // Rescan model directories to find newly added/converted models
+            const refreshResult = await api.refreshModels()
+            if (refreshResult.success) {
+              // Update the models in the app store
+              appStore.models = refreshResult.models
+              appStore.showToast('Model list refreshed', 'success')
+              successes.push('refresh_models: model list refreshed successfully')
+            } else {
+              errors.push('refresh_models: failed to refresh model list')
+            }
+            break
+          }
+
           case 'set_component': {
             // Check if a model is already loading (set_component triggers a reload)
             if (appStore.modelLoading) {
