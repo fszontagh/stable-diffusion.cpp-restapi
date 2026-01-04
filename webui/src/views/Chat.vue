@@ -177,6 +177,11 @@ const modelInfo = computed(() => ({
   name: appStore.modelName,
   architecture: appStore.modelArchitecture
 }))
+
+// Filter out hidden messages (internal system messages that shouldn't be visible to user)
+const visibleMessages = computed(() =>
+  store.messages.filter(msg => !msg.hidden)
+)
 </script>
 
 <template>
@@ -254,7 +259,7 @@ const modelInfo = computed(() => ({
 
         <!-- Messages -->
         <div
-          v-for="(msg, index) in store.messages"
+          v-for="(msg, index) in visibleMessages"
           :key="index"
           :class="['message', `message-${msg.role}`]"
         >

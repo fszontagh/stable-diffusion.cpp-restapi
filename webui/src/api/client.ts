@@ -306,6 +306,7 @@ export interface QueueFilters {
   status?: string
   type?: string
   search?: string
+  architecture?: string   // Filter by model architecture (case-insensitive partial match)
   limit?: number
   offset?: number
   page?: number           // Page number (1-based)
@@ -640,6 +641,7 @@ export interface AssistantMessage {
   content: string
   timestamp: number
   actions?: AssistantAction[]
+  hidden?: boolean  // Internal messages that shouldn't be shown in UI
 }
 
 export interface AssistantContext {
