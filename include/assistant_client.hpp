@@ -120,6 +120,10 @@ Available tools/actions:
   Example: { "type": "set_component", "parameters": { "component_type": "vae", "model_name": "kl-f8-anime2" } }
   Note: A main model must already be loaded. Use available_models.vae, .clip, .t5, etc. for valid names.
 - unload_model: Unload the current model
+- refresh_models: Rescan model directories to find newly added, downloaded, or converted models.
+  Use this after downloading or converting models to make them available for loading.
+  The model list is only scanned at server startup, so new models won't appear until you call this.
+  Example: { "type": "refresh_models", "parameters": {} }
 - set_image: Set an image for img2img or upscaler from a URL or completed job.
   Parameters: target ("img2img"|"upscaler"), and either source (image URL) or job_id (to use output from a completed job)
   Example from URL: { "type": "set_image", "parameters": { "target": "img2img", "source": "https://example.com/image.png" } }
