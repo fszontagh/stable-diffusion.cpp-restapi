@@ -976,6 +976,12 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     p.easycache_start = parse_float(j, "easycache_start", 0.15f);
     p.easycache_end = parse_float(j, "easycache_end", 0.95f);
 
+    // VAE tiling for large videos
+    p.vae_tiling = parse_bool(j, "vae_tiling", false);
+    p.vae_tile_size_x = parse_int(j, "vae_tile_size_x", 0);
+    p.vae_tile_size_y = parse_int(j, "vae_tile_size_y", 0);
+    p.vae_tile_overlap = parse_float(j, "vae_tile_overlap", 0.5f);
+
     return p;
 }
 
@@ -1039,6 +1045,14 @@ nlohmann::json Txt2VidParams::to_json() const {
         j["easycache_threshold"] = easycache_threshold;
         j["easycache_start"] = easycache_start;
         j["easycache_end"] = easycache_end;
+    }
+
+    // VAE tiling
+    if (vae_tiling) {
+        j["vae_tiling"] = true;
+        j["vae_tile_size_x"] = vae_tile_size_x;
+        j["vae_tile_size_y"] = vae_tile_size_y;
+        j["vae_tile_overlap"] = vae_tile_overlap;
     }
 
     return j;
@@ -1699,6 +1713,14 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
         vid_params.cache.reuse_threshold = params.easycache_threshold;
         vid_params.cache.start_percent = params.easycache_start;
         vid_params.cache.end_percent = params.easycache_end;
+    }
+
+    // VAE tiling for large videos
+    if (params.vae_tiling) {
+        vid_params.vae_tiling_params.enabled = true;
+        vid_params.vae_tiling_params.tile_size_x = params.vae_tile_size_x;
+        vid_params.vae_tiling_params.tile_size_y = params.vae_tile_size_y;
+        vid_params.vae_tiling_params.target_overlap = params.vae_tile_overlap;
     }
 
     // Generate video frames

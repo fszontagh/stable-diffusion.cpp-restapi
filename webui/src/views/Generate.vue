@@ -57,6 +57,9 @@ const slgScale = ref(0.0)
 const easycache = ref(false)
 const easycacheThreshold = ref(0.2)
 const vaeTiling = ref(false)
+const vaeTileSizeX = ref(0)
+const vaeTileSizeY = ref(0)
+const vaeTileOverlap = ref(0.5)
 
 // Copy settings dropdown
 const showCopyMenu = ref(false)
@@ -110,7 +113,10 @@ function getCurrentSettings() {
     slgScale: slgScale.value,
     easycache: easycache.value,
     easycacheThreshold: easycacheThreshold.value,
-    vaeTiling: vaeTiling.value
+    vaeTiling: vaeTiling.value,
+    vaeTileSizeX: vaeTileSizeX.value,
+    vaeTileSizeY: vaeTileSizeY.value,
+    vaeTileOverlap: vaeTileOverlap.value
   }
 }
 
@@ -137,6 +143,9 @@ function applySettings(settings: Record<string, unknown>) {
   if (settings.easycache !== undefined) easycache.value = settings.easycache as boolean
   if (settings.easycacheThreshold !== undefined) easycacheThreshold.value = settings.easycacheThreshold as number
   if (settings.vaeTiling !== undefined) vaeTiling.value = settings.vaeTiling as boolean
+  if (settings.vaeTileSizeX !== undefined) vaeTileSizeX.value = settings.vaeTileSizeX as number
+  if (settings.vaeTileSizeY !== undefined) vaeTileSizeY.value = settings.vaeTileSizeY as number
+  if (settings.vaeTileOverlap !== undefined) vaeTileOverlap.value = settings.vaeTileOverlap as number
 }
 
 // Save settings for current mode
@@ -210,7 +219,8 @@ watch(mode, (newMode, oldMode) => {
 watch(
   [prompt, negativePrompt, width, height, steps, cfgScale, distilledGuidance,
    seed, sampler, scheduler, batchCount, clipSkip, strength, controlStrength,
-   videoFrames, fps, flowShift, slgScale, easycache, easycacheThreshold, vaeTiling],
+   videoFrames, fps, flowShift, slgScale, easycache, easycacheThreshold, vaeTiling,
+   vaeTileSizeX, vaeTileSizeY, vaeTileOverlap],
   () => {
     saveSettings()
   },
@@ -436,6 +446,12 @@ function handleAssistantSettingChange(event: Event) {
     slgScale: { get: () => slgScale.value, set: (v) => slgScale.value = v as number },
     vae_tiling: { get: () => vaeTiling.value, set: (v) => vaeTiling.value = v as boolean },
     vaeTiling: { get: () => vaeTiling.value, set: (v) => vaeTiling.value = v as boolean },
+    vae_tile_size_x: { get: () => vaeTileSizeX.value, set: (v) => vaeTileSizeX.value = v as number },
+    vaeTileSizeX: { get: () => vaeTileSizeX.value, set: (v) => vaeTileSizeX.value = v as number },
+    vae_tile_size_y: { get: () => vaeTileSizeY.value, set: (v) => vaeTileSizeY.value = v as number },
+    vaeTileSizeY: { get: () => vaeTileSizeY.value, set: (v) => vaeTileSizeY.value = v as number },
+    vae_tile_overlap: { get: () => vaeTileOverlap.value, set: (v) => vaeTileOverlap.value = v as number },
+    vaeTileOverlap: { get: () => vaeTileOverlap.value, set: (v) => vaeTileOverlap.value = v as number },
     easycache: { get: () => easycache.value, set: (v) => easycache.value = v as boolean },
     video_frames: { get: () => videoFrames.value, set: (v) => videoFrames.value = v as number },
     videoFrames: { get: () => videoFrames.value, set: (v) => videoFrames.value = v as number },
@@ -482,6 +498,12 @@ function handleHighlightSetting(event: Event) {
     slgScale: 'slg-scale',
     vae_tiling: 'vae-tiling',
     vaeTiling: 'vae-tiling',
+    vae_tile_size_x: 'vae-tile-size-x',
+    vaeTileSizeX: 'vae-tile-size-x',
+    vae_tile_size_y: 'vae-tile-size-y',
+    vaeTileSizeY: 'vae-tile-size-y',
+    vae_tile_overlap: 'vae-tile-overlap',
+    vaeTileOverlap: 'vae-tile-overlap',
     easycache: 'easycache',
     video_frames: 'video-frames',
     videoFrames: 'video-frames',
@@ -605,6 +627,9 @@ function loadJobParams(type: string, params: Record<string, unknown>) {
   if (params.easycache !== undefined) easycache.value = params.easycache as boolean
   if (params.easycache_threshold !== undefined) easycacheThreshold.value = params.easycache_threshold as number
   if (params.vae_tiling !== undefined) vaeTiling.value = params.vae_tiling as boolean
+  if (params.vae_tile_size_x !== undefined) vaeTileSizeX.value = params.vae_tile_size_x as number
+  if (params.vae_tile_size_y !== undefined) vaeTileSizeY.value = params.vae_tile_size_y as number
+  if (params.vae_tile_overlap !== undefined) vaeTileOverlap.value = params.vae_tile_overlap as number
 }
 
 function setPreset(preset: { w: number; h: number }) {
@@ -703,6 +728,9 @@ async function handleSubmit() {
     }
     if (vaeTiling.value) {
       baseParams.vae_tiling = true
+      if (vaeTileSizeX.value > 0) baseParams.vae_tile_size_x = vaeTileSizeX.value
+      if (vaeTileSizeY.value > 0) baseParams.vae_tile_size_y = vaeTileSizeY.value
+      baseParams.vae_tile_overlap = vaeTileOverlap.value
     }
 
     // Control image
@@ -1056,8 +1084,26 @@ async function handleSubmit() {
 
           <label class="form-checkbox" data-setting="vae-tiling" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tiling' }">
             <input v-model="vaeTiling" type="checkbox" />
-            VAE Tiling (for large images)
+            VAE Tiling (for large images{{ mode === 'txt2vid' ? '/videos' : '' }})
           </label>
+
+          <div v-if="vaeTiling" class="tiling-options">
+            <div class="form-row">
+              <div class="form-group" data-setting="vae-tile-size-x" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-size-x' }">
+                <label class="form-label">Tile Size X (0 = auto)</label>
+                <input v-model.number="vaeTileSizeX" type="number" class="form-input" min="0" max="2048" step="64" />
+              </div>
+              <div class="form-group" data-setting="vae-tile-size-y" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-size-y' }">
+                <label class="form-label">Tile Size Y (0 = auto)</label>
+                <input v-model.number="vaeTileSizeY" type="number" class="form-input" min="0" max="2048" step="64" />
+              </div>
+            </div>
+            <div class="form-group" data-setting="vae-tile-overlap" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-overlap' }">
+              <label class="form-label">Tile Overlap: {{ vaeTileOverlap.toFixed(2) }}</label>
+              <input v-model.number="vaeTileOverlap" type="range" class="form-range" min="0" max="1" step="0.05" />
+            </div>
+            <div class="form-hint">VAE tiling reduces VRAM usage for high-resolution images/videos by processing in tiles.</div>
+          </div>
 
           <!-- Preview Mode Selector -->
           <div class="form-group mt-4">
@@ -1367,6 +1413,14 @@ async function handleSubmit() {
 
 .mt-4 {
   margin-top: 16px;
+}
+
+.tiling-options {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
 }
 
 /* Live Preview Section */
