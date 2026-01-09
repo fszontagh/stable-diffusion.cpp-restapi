@@ -270,6 +270,12 @@ struct Txt2VidParams {
     float moe_boundary = 0.875f;        // Timestep boundary for MoE
     float vace_strength = 1.0f;         // WAN VACE strength
 
+    // VAE tiling for large videos
+    bool vae_tiling = false;
+    int vae_tile_size_x = 0;            // 0 = auto
+    int vae_tile_size_y = 0;
+    float vae_tile_overlap = 0.5f;
+
     // EasyCache for DiT models (optional)
     bool easycache_enabled = false;
     float easycache_threshold = 0.2f;
