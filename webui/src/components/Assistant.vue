@@ -5,11 +5,18 @@ import { useAssistantStore } from '../stores/assistant'
 import type { AssistantAction } from '../api/client'
 import AssistantSettings from './AssistantSettings.vue'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 // Configure marked for safe rendering
 marked.setOptions({
   breaks: true,  // Convert \n to <br>
   gfm: true,     // GitHub Flavored Markdown
+})
+
+// Configure DOMPurify to allow safe HTML tags
+DOMPurify.setConfig({
+  ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'br', 'hr', 'span', 'div'],
+  ALLOWED_ATTR: ['href', 'title', 'class']
 })
 
 const store = useAssistantStore()
@@ -160,8 +167,9 @@ function formatMessage(content: string): string {
     return '<em>(Action executed)</em>'
   }
 
-  // Parse markdown using marked
-  return marked.parse(cleaned) as string
+  // Parse markdown using marked and sanitize HTML
+  const html = marked.parse(cleaned) as string
+  return DOMPurify.sanitize(html)
 }
 
 // Format timestamp
