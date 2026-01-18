@@ -949,6 +949,7 @@ nlohmann::json AssistantClient::get_settings() const {
 
     // Return actual stored value, not effective value
     // The default prompt is only used internally when building chat requests
+    // Also include the default system prompt for reference in the UI
     return {
         {"enabled", config_.enabled},
         {"endpoint", config_.endpoint},
@@ -959,6 +960,7 @@ nlohmann::json AssistantClient::get_settings() const {
         {"max_history_turns", config_.max_history_turns},
         {"proactive_suggestions", config_.proactive_suggestions},
         {"system_prompt", config_.system_prompt},
+        {"default_system_prompt", DEFAULT_ASSISTANT_SYSTEM_PROMPT},
         {"has_api_key", !config_.api_key.empty()}
     };
 }

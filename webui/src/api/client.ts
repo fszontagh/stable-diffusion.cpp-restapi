@@ -1,4 +1,6 @@
 // API Types
+import { addBreadcrumb as sentryAddBreadcrumb } from '../services/sentry'
+
 export interface QuantizationType {
   id: string
   name: string
@@ -338,9 +340,26 @@ export class ApiError extends Error {
   }
 }
 
+interface CacheEntry<T> {
+  data: T
+  timestamp: number
+  ttl: number
+}
+
+interface RetryOptions {
+  maxRetries?: number
+  retryDelay?: number
+  retryableStatuses?: number[]
+}
+
 class ApiClient {
   private baseUrl: string
   private pendingRequests = new Map<string, Promise<unknown>>()
+  private responseCache = new Map<string, CacheEntry<unknown>>()
+  private readonly DEFAULT_TTL = 30000 // 30 seconds default cache TTL
+  private readonly DEFAULT_MAX_RETRIES = 3
+  private readonly DEFAULT_RETRY_DELAY = 1000 // 1 second
+  private readonly RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504] // Request timeout, rate limit, server errors
 
   constructor(baseUrl = '') {
     this.baseUrl = baseUrl
@@ -350,9 +369,90 @@ class ApiClient {
     return `${method}:${endpoint}:${JSON.stringify(data || '')}`
   }
 
-  private async request<T>(method: string, endpoint: string, data?: unknown): Promise<T> {
-    // Check for duplicate requests (only for GET requests to avoid blocking mutations)
+  private getCacheEntry<T>(key: string): T | null {
+    const entry = this.responseCache.get(key) as CacheEntry<T> | undefined
+    if (!entry) return null
+
+    const now = Date.now()
+    if (now - entry.timestamp > entry.ttl) {
+      this.responseCache.delete(key)
+      return null
+    }
+
+    return entry.data
+  }
+
+  private setCacheEntry<T>(key: string, data: T, ttl: number = this.DEFAULT_TTL): void {
+    this.responseCache.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl
+    })
+  }
+
+  clearCache(): void {
+    this.responseCache.clear()
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  private async retryRequest<T>(
+    fn: () => Promise<T>,
+    options: RetryOptions = {}
+  ): Promise<T> {
+    const {
+      maxRetries = this.DEFAULT_MAX_RETRIES,
+      retryDelay = this.DEFAULT_RETRY_DELAY,
+      retryableStatuses = this.RETRYABLE_STATUS_CODES
+    } = options
+
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn()
+      } catch (error) {
+        lastError = error as Error
+
+        // Don't retry if it's the last attempt
+        if (attempt === maxRetries) {
+          break
+        }
+
+        // Only retry on specific status codes or network errors
+        if (error instanceof ApiError) {
+          if (!retryableStatuses.includes(error.status)) {
+            throw error
+          }
+        } else if (!(error instanceof Error && error.message.includes('Network'))) {
+          throw error
+        }
+
+        // Exponential backoff: delay * (2 ^ attempt)
+        const delay = retryDelay * Math.pow(2, attempt)
+        console.log(`[API] Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`)
+        await this.sleep(delay)
+      }
+    }
+
+    throw lastError
+  }
+
+  private async request<T>(method: string, endpoint: string, data?: unknown, cacheTtl?: number, retryOptions?: RetryOptions): Promise<T> {
     const requestKey = this.getRequestKey(method, endpoint, data)
+    
+    // Check cache for GET requests (only if cacheTtl is specified)
+    if (method === 'GET' && cacheTtl !== undefined) {
+      const cached = this.getCacheEntry<T>(requestKey)
+      if (cached !== null) {
+        console.log(`[API] Cache hit: ${requestKey}`)
+        return cached
+      }
+    }
+    
+    // Check for duplicate requests (only for GET requests to avoid blocking mutations)
     if (method === 'GET' && this.pendingRequests.has(requestKey)) {
       console.log(`[API] Deduplicating request: ${requestKey}`)
       return this.pendingRequests.get(requestKey) as Promise<T>
@@ -361,8 +461,7 @@ class ApiClient {
     // Add breadcrumb for Sentry
     if (typeof window !== 'undefined') {
       try {
-        const { addBreadcrumb } = await import('../services/sentry')
-        addBreadcrumb('api', `${method} ${endpoint}`, { data })
+        sentryAddBreadcrumb('api', `${method} ${endpoint}`, { data })
       } catch (e) {
         // Sentry not available, ignore
       }
@@ -379,8 +478,8 @@ class ApiClient {
       options.body = JSON.stringify(data)
     }
 
-    // Create the request promise
-    const requestPromise = (async () => {
+    // Create the request function (with retry support for GET requests)
+    const makeRequest = async (): Promise<T> => {
       try {
         const response = await fetch(this.baseUrl + endpoint, options)
         const json = await response.json()
@@ -391,8 +490,7 @@ class ApiClient {
           // Add error breadcrumb
           if (typeof window !== 'undefined') {
             try {
-              const { addBreadcrumb } = await import('../services/sentry')
-              addBreadcrumb('api-error', `${method} ${endpoint} failed`, { 
+              sentryAddBreadcrumb('api-error', `${method} ${endpoint} failed`, { 
                 status: response.status,
                 error: json.error 
               })
@@ -404,7 +502,14 @@ class ApiClient {
           throw error
         }
 
-        return json as T
+        const result = json as T
+        
+        // Cache successful GET responses if cacheTtl is specified
+        if (method === 'GET' && cacheTtl !== undefined) {
+          this.setCacheEntry(requestKey, result, cacheTtl)
+        }
+
+        return result
       } catch (error) {
         // Re-throw ApiErrors as-is
         if (error instanceof ApiError) {
@@ -416,6 +521,17 @@ class ApiClient {
           error instanceof Error ? error.message : 'Network request failed',
           0
         )
+      }
+    }
+
+    // Create the request promise with retry support
+    const requestPromise = (async () => {
+      try {
+        // Only retry GET requests to avoid duplicate mutations
+        if (method === 'GET' && retryOptions !== undefined) {
+          return await this.retryRequest(makeRequest, retryOptions)
+        }
+        return await makeRequest()
       } finally {
         // Remove from pending requests after 5 seconds to prevent instant re-requests
         setTimeout(() => {
@@ -434,11 +550,13 @@ class ApiClient {
 
   // Health
   async getHealth(): Promise<HealthResponse> {
-    return this.request<HealthResponse>('GET', '/health')
+    // Retry health checks with reduced retries (faster failure detection)
+    return this.request<HealthResponse>('GET', '/health', undefined, undefined, { maxRetries: 2 })
   }
 
   async getOptions(): Promise<OptionsResponse> {
-    return this.request<OptionsResponse>('GET', '/options')
+    // Cache options for 5 minutes (rarely change), with retry
+    return this.request<OptionsResponse>('GET', '/options', undefined, 300000, { maxRetries: 3 })
   }
 
   // Models
@@ -448,7 +566,8 @@ class ApiClient {
     if (filters?.extension) params.append('extension', filters.extension)
     if (filters?.search) params.append('search', filters.search)
     const query = params.toString()
-    return this.request<ModelsResponse>('GET', '/models' + (query ? '?' + query : ''))
+    // Cache models list for 1 minute (can change when models are loaded/downloaded), with retry
+    return this.request<ModelsResponse>('GET', '/models' + (query ? '?' + query : ''), undefined, 60000, { maxRetries: 3 })
   }
 
   async loadModel(params: LoadModelParams): Promise<{ success: boolean; message: string; model_name: string; model_type: string; loaded_components: Record<string, string | null> }> {
@@ -627,6 +746,34 @@ class ApiClient {
 
   async updateAssistantSettings(settings: Partial<AssistantSettings>): Promise<AssistantSettingsUpdateResponse> {
     return this.request('PUT', '/assistant/settings', settings)
+  }
+
+  // Settings (user preferences)
+  async getGenerationDefaults(mode?: 'txt2img' | 'img2img' | 'txt2vid'): Promise<GenerationDefaults | Partial<GenerationDefaults>> {
+    if (mode) {
+      return this.request('GET', `/settings/generation/${mode}`)
+    }
+    return this.request('GET', '/settings/generation')
+  }
+
+  async updateGenerationDefaults(defaults: Partial<GenerationDefaults>): Promise<SettingsUpdateResponse<Partial<GenerationDefaults>>> {
+    return this.request('PUT', '/settings/generation', defaults)
+  }
+
+  async updateGenerationDefaultsForMode(mode: 'txt2img' | 'img2img' | 'txt2vid', defaults: Partial<GenerationParams>): Promise<SettingsUpdateSingleModeResponse> {
+    return this.request('PUT', `/settings/generation/${mode}`, defaults)
+  }
+
+  async getUIPreferences(): Promise<UIPreferences> {
+    return this.request('GET', '/settings/preferences')
+  }
+
+  async updateUIPreferences(prefs: Partial<UIPreferences>): Promise<SettingsUpdateResponse<UIPreferences>> {
+    return this.request('PUT', '/settings/preferences', prefs)
+  }
+
+  async resetSettings(): Promise<{ success: boolean; message: string }> {
+    return this.request('POST', '/settings/reset')
   }
 }
 
@@ -807,12 +954,37 @@ export interface AssistantSettings {
   max_history_turns: number
   proactive_suggestions: boolean
   system_prompt: string
+  default_system_prompt?: string
   has_api_key: boolean
 }
 
 export interface AssistantSettingsUpdateResponse {
   success: boolean
   settings: AssistantSettings
+}
+
+// Settings Types
+export interface GenerationDefaults {
+  txt2img: Partial<GenerationParams>
+  img2img: Partial<GenerationParams>
+  txt2vid: Partial<Txt2VidParams>
+}
+
+export interface UIPreferences {
+  desktop_notifications: boolean
+  theme: string
+  theme_custom: Record<string, string> | null
+}
+
+export interface SettingsUpdateResponse<T> {
+  success: boolean
+  settings: T
+}
+
+export interface SettingsUpdateSingleModeResponse {
+  success: boolean
+  mode: string
+  preferences: Partial<GenerationParams>
 }
 
 // Download Types
