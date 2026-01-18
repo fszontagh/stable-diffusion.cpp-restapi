@@ -87,6 +87,12 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
+  // Error event handler for proactive suggestions
+  function handleAppError(event: Event) {
+    const customEvent = event as CustomEvent<{ message: string; source: string }>
+    onErrorOccurred(customEvent.detail.source, customEvent.detail.message)
+  }
+
   // Initialize - fetch status and history
   async function initialize() {
     try {
@@ -109,6 +115,8 @@ export const useAssistantStore = defineStore('assistant', () => {
         setupJobCompletionListener()
         // Start periodic cleanup of stale continuations (every 5 minutes)
         cleanupInterval = setInterval(cleanupStaleContinuations, 5 * 60 * 1000)
+        // Set up error event listener for proactive suggestions
+        window.addEventListener('app-error-occurred', handleAppError)
       }
     } catch (e) {
       console.error('[AssistantStore] Failed to initialize:', e)
@@ -117,7 +125,11 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
-  // Set up WebSocket listener to handle job completions for continuations
+  // Track last proactive suggestion time to avoid spamming
+  let lastProactiveSuggestionTime = 0
+  const PROACTIVE_COOLDOWN_MS = 60000 // 1 minute cooldown between proactive suggestions
+
+  // Set up WebSocket listener to handle job completions for continuations and proactive suggestions
   function setupJobCompletionListener() {
     // Clean up existing listener if any
     if (wsUnsubscriber) {
@@ -127,31 +139,122 @@ export const useAssistantStore = defineStore('assistant', () => {
     wsUnsubscriber = wsService.on<JobStatusChangedData>('job_status_changed', async (data) => {
       // Check if this job has a pending continuation
       const continuation = pendingContinuations.value.get(data.job_id)
-      if (!continuation) return
 
-      // Only trigger on completion or failure
-      if (data.status !== 'completed' && data.status !== 'failed') return
+      if (continuation) {
+        // Only trigger on completion or failure
+        if (data.status !== 'completed' && data.status !== 'failed') return
 
-      // Remove from pending
-      pendingContinuations.value.delete(data.job_id)
+        // Remove from pending
+        pendingContinuations.value.delete(data.job_id)
 
-      // Build the follow-up message
-      let followUpMessage: string
-      if (data.status === 'completed') {
-        followUpMessage = `Job ${data.job_id} completed successfully. ${continuation.context ? `Continue with: ${continuation.context}` : 'Please continue with the next step.'}`
-      } else {
-        followUpMessage = `Job ${data.job_id} failed${data.error ? `: ${data.error}` : ''}. ${continuation.context ? `Original task: ${continuation.context}` : 'How would you like to proceed?'}`
+        // Build the follow-up message
+        let followUpMessage: string
+        if (data.status === 'completed') {
+          followUpMessage = `Job ${data.job_id} completed successfully. ${continuation.context ? `Continue with: ${continuation.context}` : 'Please continue with the next step.'}`
+        } else {
+          followUpMessage = `Job ${data.job_id} failed${data.error ? `: ${data.error}` : ''}. ${continuation.context ? `Original task: ${continuation.context}` : 'How would you like to proceed?'}`
+        }
+
+        console.log(`[AssistantStore] Job ${data.job_id} ${data.status}, triggering continuation`)
+
+        // Small delay to let the queue update
+        await new Promise(resolve => setTimeout(resolve, 500))
+
+        // Send follow-up message to assistant (this will be a system-like message from the user perspective)
+        // We mark it as a system continuation so the UI can style it differently if needed
+        await sendMessage(followUpMessage, true)
+      } else if (data.status === 'failed' && proactiveSuggestions.value && enabled.value && connected.value) {
+        // Job failed without continuation - trigger proactive suggestion if enabled
+        triggerProactiveSuggestion('job_failed', {
+          job_id: data.job_id,
+          error: data.error || 'Unknown error'
+        })
+      }
+    })
+  }
+
+  // Trigger a proactive suggestion based on an event
+  async function triggerProactiveSuggestion(eventType: string, eventData: Record<string, unknown>) {
+    // Check if proactive suggestions are enabled
+    if (!proactiveSuggestions.value || !enabled.value || !connected.value) {
+      return
+    }
+
+    // Check cooldown to avoid spamming
+    const now = Date.now()
+    if (now - lastProactiveSuggestionTime < PROACTIVE_COOLDOWN_MS) {
+      console.log('[AssistantStore] Proactive suggestion skipped - cooldown active')
+      return
+    }
+
+    // Don't trigger if assistant is already loading or chat is open
+    if (isLoading.value || !isMinimized.value) {
+      return
+    }
+
+    console.log(`[AssistantStore] Triggering proactive suggestion for: ${eventType}`, eventData)
+    lastProactiveSuggestionTime = now
+
+    try {
+      // Build a proactive prompt based on the event type
+      let proactivePrompt = ''
+
+      switch (eventType) {
+        case 'job_failed':
+          proactivePrompt = `A generation job just failed with error: "${eventData.error}". Please analyze this error and provide a brief, helpful suggestion to fix it. Be concise - this will be shown as a notification.`
+          break
+        case 'model_load_failed':
+          proactivePrompt = `Failed to load model: "${eventData.error}". Please provide a brief suggestion to resolve this issue.`
+          break
+        case 'error_occurred':
+          proactivePrompt = `An error occurred: "${eventData.error}". Please provide a brief, helpful suggestion if this is something the user should address.`
+          break
+        default:
+          return
       }
 
-      console.log(`[AssistantStore] Job ${data.job_id} ${data.status}, triggering continuation`)
+      // Call the API for a suggestion
+      const response = await api.assistantChat({
+        message: proactivePrompt,
+        context: gatherContext()
+      })
 
-      // Small delay to let the queue update
-      await new Promise(resolve => setTimeout(resolve, 500))
+      if (response.success && response.message && response.message.trim()) {
+        // Set the suggestion
+        suggestionText.value = response.message.trim()
+        hasSuggestion.value = true
 
-      // Send follow-up message to assistant (this will be a system-like message from the user perspective)
-      // We mark it as a system continuation so the UI can style it differently if needed
-      await sendMessage(followUpMessage, true)
-    })
+        // Add to messages (hidden, so it shows when user opens chat)
+        messages.value.push({
+          role: 'system',
+          content: `💡 Proactive suggestion: ${eventType}`,
+          timestamp: Date.now(),
+          hidden: true
+        })
+        messages.value.push({
+          role: 'assistant',
+          content: response.message,
+          timestamp: Date.now()
+        })
+
+        console.log('[AssistantStore] Proactive suggestion set:', suggestionText.value.substring(0, 100))
+      }
+    } catch (e) {
+      console.error('[AssistantStore] Failed to get proactive suggestion:', e)
+    }
+  }
+
+  // Expose method for external triggers (e.g., from app store error handlers)
+  function onErrorOccurred(source: string, error: string) {
+    if (proactiveSuggestions.value && enabled.value && connected.value) {
+      triggerProactiveSuggestion('error_occurred', { source, error })
+    }
+  }
+
+  function onModelLoadFailed(error: string) {
+    if (proactiveSuggestions.value && enabled.value && connected.value) {
+      triggerProactiveSuggestion('model_load_failed', { error })
+    }
   }
 
   // Clean up WebSocket listener
@@ -164,6 +267,8 @@ export const useAssistantStore = defineStore('assistant', () => {
       clearInterval(cleanupInterval)
       cleanupInterval = null
     }
+    // Remove error event listener
+    window.removeEventListener('app-error-occurred', handleAppError)
   }
 
   // Load conversation history
@@ -1902,6 +2007,10 @@ export const useAssistantStore = defineStore('assistant', () => {
   function open() {
     isMinimized.value = false
     isOpen.value = true
+    // Clear the suggestion notification when chat is opened
+    if (hasSuggestion.value) {
+      hasSuggestion.value = false
+    }
   }
 
   // Close/minimize
@@ -2043,6 +2152,10 @@ export const useAssistantStore = defineStore('assistant', () => {
     updateSettings,
     refreshStatus,
     cleanup,
+
+    // Proactive suggestion triggers
+    onErrorOccurred,
+    onModelLoadFailed,
 
     // Question actions
     answerQuestion,
