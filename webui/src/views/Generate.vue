@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
 import { useAppStore } from '../stores/app'
-import { api, type GenerationParams, type Img2ImgParams, type Txt2VidParams, type PreviewSettings } from '../api/client'
+import { api, type GenerationParams, type Img2ImgParams, type Txt2VidParams } from '../api/client'
 import ImageUploader from '../components/ImageUploader.vue'
 import PromptEnhancer from '../components/PromptEnhancer.vue'
 import ProgressBar from '../components/ProgressBar.vue'
@@ -65,16 +65,6 @@ const vaeTileOverlap = ref(0.5)
 // Copy settings dropdown
 const showCopyMenu = ref(false)
 
-// Preview settings
-const previewSettings = ref<PreviewSettings>({
-  enabled: true,
-  mode: 'tae',
-  interval: 1,
-  max_size: 256,
-  quality: 75
-})
-const savingPreviewSettings = ref(false)
-
 // Lightbox for previews
 const showLightbox = ref(false)
 const lightboxImages = ref<string[]>([])
@@ -82,14 +72,6 @@ const lightboxIndex = ref(0)
 
 // Track current generating job
 const lastSubmittedJobId = ref<string | null>(null)
-
-// Storage keys for persisting settings per mode
-const STORAGE_KEYS = {
-  txt2img: 'generateSettings_txt2img',
-  img2img: 'generateSettings_img2img',
-  txt2vid: 'generateSettings_txt2vid',
-  lastMode: 'generateSettings_lastMode'
-}
 
 // Get current settings as object
 function getCurrentSettings() {
@@ -149,39 +131,79 @@ function applySettings(settings: Record<string, unknown>) {
   if (settings.vaeTileOverlap !== undefined) vaeTileOverlap.value = settings.vaeTileOverlap as number
 }
 
-// Save settings for current mode
-function saveSettings() {
-  const settings = getCurrentSettings()
-  sessionStorage.setItem(STORAGE_KEYS[mode.value], JSON.stringify(settings))
-  sessionStorage.setItem(STORAGE_KEYS.lastMode, mode.value)
+// Merge architecture defaults with user preferences (user prefs take precedence)
+function mergeWithDefaults(architectureDefaults: Record<string, unknown>, userPrefs: Record<string, unknown>) {
+  return { ...architectureDefaults, ...userPrefs }
 }
 
-// Load settings for a specific mode
-function loadSettingsForMode(targetMode: 'txt2img' | 'img2img' | 'txt2vid') {
-  const saved = sessionStorage.getItem(STORAGE_KEYS[targetMode])
-  if (!saved) return
+// Get architecture defaults for current model
+function getArchitectureDefaultsForMode(): Record<string, unknown> {
+  if (!store.modelArchitecture) return {}
+
+  const architectures = store.modelArchitecture
+  for (const [archId, archData] of Object.entries(architectures)) {
+    if (archData && typeof archData === 'object' && 'generationDefaults' in archData) {
+      // Map simplified keys to our internal keys
+      const defaults = (archData as any).generationDefaults || {}
+      const mapped: Record<string, unknown> = {}
+      for (const [key, value] of Object.entries(defaults)) {
+        if (key === 'cfg_scale') mapped.cfgScale = value
+        else if (key === 'steps') mapped.steps = value
+        else mapped[key] = value
+      }
+      console.log('Loading architecture defaults for:', archId)
+      return mapped
+    }
+  }
+  return {}
+}
+
+// Save settings for current mode to backend
+async function saveSettings() {
+  const settings = getCurrentSettings()
+  // Don't save prompt to persistent settings - just generation parameters
+  const { prompt: _, negativePrompt: __, ...toSave } = settings
 
   try {
-    const settings = JSON.parse(saved)
+    await api.updateGenerationDefaultsForMode(mode.value, toSave as any)
+    // Silently save, don't show toast for each change
+  } catch (e) {
+    console.error('Failed to save settings:', e)
+  }
+}
+
+// Load settings for a specific mode from backend
+async function loadSettingsForMode(targetMode: 'txt2img' | 'img2img' | 'txt2vid') {
+  try {
+    // Get architecture defaults from current model
+    const architectureDefaults = getArchitectureDefaultsForMode()
+
+    // Get user preferences from backend
+    const userPrefs = (store.generationDefaults?.[targetMode] as Record<string, unknown>) || {}
+
+    // Merge: user prefs override architecture defaults
+    const settings = mergeWithDefaults(architectureDefaults, userPrefs)
     applySettings(settings)
   } catch (e) {
     console.error('Failed to load settings:', e)
+    // Fall back to architecture defaults if loading fails
+    const architectureDefaults = getArchitectureDefaultsForMode()
+    applySettings(architectureDefaults)
   }
 }
 
 // Copy settings from another mode
-function copySettingsFrom(sourceMode: 'txt2img' | 'img2img' | 'txt2vid') {
-  const saved = sessionStorage.getItem(STORAGE_KEYS[sourceMode])
-  if (!saved) {
-    store.showToast(`No saved settings for ${getModeLabel(sourceMode)}`, 'warning')
-    showCopyMenu.value = false
-    return
-  }
-
+async function copySettingsFrom(sourceMode: 'txt2img' | 'img2img' | 'txt2vid') {
   try {
-    const settings = JSON.parse(saved)
-    applySettings(settings)
-    saveSettings()
+    const userPrefs = (store.generationDefaults?.[sourceMode] as Record<string, unknown>) || {}
+    if (Object.keys(userPrefs).length === 0) {
+      store.showToast(`No saved preferences for ${getModeLabel(sourceMode)}`, 'warning')
+      showCopyMenu.value = false
+      return
+    }
+
+    applySettings(userPrefs)
+    await saveSettings()
     store.showToast(`Settings copied from ${getModeLabel(sourceMode)}`, 'success')
   } catch (e) {
     store.showToast('Failed to copy settings', 'error')
@@ -205,37 +227,27 @@ const otherModes = computed(() => {
 })
 
 // Watch for mode changes - save current, load new
-watch(mode, (newMode, oldMode) => {
+watch(mode, async (newMode, oldMode) => {
   if (oldMode) {
     // Save settings for old mode before switching
-    const settings = getCurrentSettings()
-    sessionStorage.setItem(STORAGE_KEYS[oldMode], JSON.stringify(settings))
+    await saveSettings()
   }
   // Load settings for new mode
-  loadSettingsForMode(newMode)
-  sessionStorage.setItem(STORAGE_KEYS.lastMode, newMode)
+  await loadSettingsForMode(newMode)
 })
 
-// Debounced save for non-critical settings (500ms delay)
+// Debounced save for settings (500ms delay)
 const debouncedSaveSettings = useDebounceFn(() => {
   saveSettings()
 }, 500)
 
-// Watch for changes - split into groups for better performance
-// Critical settings (prompts) save immediately
-watch([prompt, negativePrompt], saveSettings)
-
-// Dimension settings save with debounce
-watch([width, height], debouncedSaveSettings)
-
-// Generation parameters save with debounce
-watch([steps, cfgScale, distilledGuidance, seed, sampler, scheduler, batchCount, clipSkip], debouncedSaveSettings)
-
-// Mode-specific parameters save with debounce
-watch([strength, controlStrength, videoFrames, fps, flowShift], debouncedSaveSettings)
-
-// Advanced parameters save with debounce
-watch([slgScale, easycache, easycacheThreshold, vaeTiling, vaeTileSizeX, vaeTileSizeY, vaeTileOverlap], debouncedSaveSettings)
+// Watch for generation parameter changes with debounce
+watch([
+  width, height, steps, cfgScale, distilledGuidance, seed, sampler,
+  scheduler, batchCount, clipSkip, strength, controlStrength, videoFrames,
+  fps, flowShift, slgScale, easycache, easycacheThreshold, vaeTiling,
+  vaeTileSizeX, vaeTileSizeY, vaeTileOverlap
+], debouncedSaveSettings)
 
 // Close copy menu when clicking outside
 function handleClickOutside(event: MouseEvent) {
@@ -555,13 +567,12 @@ function handleAssistantSetImage(e: Event) {
 }
 
 // Load settings on mount
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
   window.addEventListener('assistant-setting-change', handleAssistantSettingChange)
   window.addEventListener('assistant-apply-recommended', handleApplyRecommended)
   window.addEventListener('assistant-highlight-setting', handleHighlightSetting)
   window.addEventListener('assistant-set-image', handleAssistantSetImage)
-  loadPreviewSettings()
 
   // First check if we have reloaded job params from Queue view
   const savedParams = sessionStorage.getItem('reloadJobParams')
@@ -580,13 +591,13 @@ onMounted(() => {
       console.error('Failed to load job params:', e)
     }
   } else {
-    // Restore last used mode
-    const lastMode = sessionStorage.getItem(STORAGE_KEYS.lastMode) as 'txt2img' | 'img2img' | 'txt2vid' | null
+    // Restore last used mode from local storage
+    const lastMode = localStorage.getItem('generateSettings_lastMode') as 'txt2img' | 'img2img' | 'txt2vid' | null
     if (lastMode && ['txt2img', 'img2img', 'txt2vid'].includes(lastMode)) {
       mode.value = lastMode
     }
     // Load settings for current mode
-    loadSettingsForMode(mode.value)
+    await loadSettingsForMode(mode.value)
   }
 })
 
@@ -652,28 +663,6 @@ function randomizeSeed() {
 }
 
 // Preview settings functions
-async function loadPreviewSettings() {
-  try {
-    previewSettings.value = await api.getPreviewSettings()
-  } catch (e) {
-    console.error('Failed to load preview settings:', e)
-  }
-}
-
-async function updatePreviewMode(mode: PreviewSettings['mode']) {
-  savingPreviewSettings.value = true
-  try {
-    const enabled = mode !== 'none'
-    const result = await api.updatePreviewSettings({ enabled, mode })
-    previewSettings.value = result.settings
-    store.showToast(`Preview mode: ${mode === 'none' ? 'disabled' : mode.toUpperCase()}`, 'success')
-  } catch (e) {
-    store.showToast('Failed to update preview settings', 'error')
-  } finally {
-    savingPreviewSettings.value = false
-  }
-}
-
 function openPreviewLightbox() {
   if (store.currentPreview?.image) {
     lightboxImages.value = [store.currentPreview.image]
@@ -1114,45 +1103,6 @@ async function handleSubmit() {
             </div>
             <div class="form-hint">VAE tiling reduces VRAM usage for high-resolution images/videos by processing in tiles.</div>
           </div>
-
-          <!-- Preview Mode Selector -->
-          <div class="form-group mt-4">
-            <label class="form-label">Preview Mode (during generation)</label>
-            <div class="preview-mode-options">
-              <button
-                :class="['btn', 'btn-sm', previewSettings.mode === 'none' || !previewSettings.enabled ? 'btn-primary' : 'btn-secondary']"
-                :disabled="savingPreviewSettings"
-                @click="updatePreviewMode('none')"
-              >
-                None
-              </button>
-              <button
-                :class="['btn', 'btn-sm', previewSettings.mode === 'proj' && previewSettings.enabled ? 'btn-primary' : 'btn-secondary']"
-                :disabled="savingPreviewSettings"
-                @click="updatePreviewMode('proj')"
-                title="Fast, lower quality preview"
-              >
-                PROJ (Fast)
-              </button>
-              <button
-                :class="['btn', 'btn-sm', previewSettings.mode === 'tae' && previewSettings.enabled ? 'btn-primary' : 'btn-secondary']"
-                :disabled="savingPreviewSettings"
-                @click="updatePreviewMode('tae')"
-                title="Balanced speed and quality"
-              >
-                TAE (Balanced)
-              </button>
-              <button
-                :class="['btn', 'btn-sm', previewSettings.mode === 'vae' && previewSettings.enabled ? 'btn-primary' : 'btn-secondary']"
-                :disabled="savingPreviewSettings"
-                @click="updatePreviewMode('vae')"
-                title="High quality, slower preview"
-              >
-                VAE (Quality)
-              </button>
-            </div>
-            <div class="form-hint">PROJ is fastest, VAE provides highest quality previews</div>
-          </div>
         </div>
       </details>
 
@@ -1198,14 +1148,11 @@ async function handleSubmit() {
               v-if="currentJobProgress"
               :progress="currentJobProgress.total_steps > 0 ? (currentJobProgress.step / currentJobProgress.total_steps) * 100 : 0"
               :show-label="true"
-            />
-            <p class="preview-hint">
-              <span v-if="previewSettings.enabled">
-                Preview mode: {{ previewSettings.mode.toUpperCase() }}
-              </span>
-              <span v-else>Previews disabled</span>
-            </p>
-          </div>
+             />
+             <p class="preview-hint">
+               Configure preview settings in Settings page
+             </p>
+           </div>
         </div>
       </div>
     </div>
