@@ -50,6 +50,9 @@ export const useAssistantStore = defineStore('assistant', () => {
   }
   const pendingContinuations = ref<Map<string, PendingContinuation>>(new Map())
 
+  // Cleanup interval for stale continuations
+  let cleanupInterval: ReturnType<typeof setInterval> | null = null
+
   // WebSocket unsubscriber
   let wsUnsubscriber: (() => void) | null = null
 
@@ -71,6 +74,19 @@ export const useAssistantStore = defineStore('assistant', () => {
 
   const hasMessages = computed(() => messages.value.some(msg => !msg.hidden))
 
+  // Cleanup stale continuations (older than 1 hour)
+  function cleanupStaleContinuations() {
+    const now = Date.now()
+    const staleThreshold = 60 * 60 * 1000 // 1 hour
+
+    for (const [id, continuation] of pendingContinuations.value) {
+      if (now - continuation.startedAt > staleThreshold) {
+        console.log(`[Assistant] Cleaning up stale continuation: ${id}`)
+        pendingContinuations.value.delete(id)
+      }
+    }
+  }
+
   // Initialize - fetch status and history
   async function initialize() {
     try {
@@ -91,6 +107,8 @@ export const useAssistantStore = defineStore('assistant', () => {
         }
         // Set up WebSocket listener for job completions
         setupJobCompletionListener()
+        // Start periodic cleanup of stale continuations (every 5 minutes)
+        cleanupInterval = setInterval(cleanupStaleContinuations, 5 * 60 * 1000)
       }
     } catch (e) {
       console.error('[AssistantStore] Failed to initialize:', e)
@@ -141,6 +159,10 @@ export const useAssistantStore = defineStore('assistant', () => {
     if (wsUnsubscriber) {
       wsUnsubscriber()
       wsUnsubscriber = null
+    }
+    if (cleanupInterval) {
+      clearInterval(cleanupInterval)
+      cleanupInterval = null
     }
   }
 

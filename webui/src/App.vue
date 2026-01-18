@@ -8,6 +8,7 @@ import Assistant from './components/Assistant.vue'
 import AssistantQuestion from './components/AssistantQuestion.vue'
 import FloatingPreview from './components/FloatingPreview.vue'
 import ApiOfflineOverlay from './components/ApiOfflineOverlay.vue'
+import ErrorBoundary from './components/ErrorBoundary.vue'
 
 const store = useAppStore()
 
@@ -24,17 +25,19 @@ onUnmounted(() => {
   <!-- API Offline Overlay - renders above everything when disconnected -->
   <ApiOfflineOverlay />
   
-  <StatusBar />
-  <div class="app-layout">
-    <Sidebar />
-    <main class="main-content">
-      <router-view />
-    </main>
-  </div>
-  <Toast />
-  <FloatingPreview />
-  <Assistant />
-  <AssistantQuestion />
+  <ErrorBoundary>
+    <StatusBar />
+    <div class="app-layout">
+      <Sidebar />
+      <main class="main-content">
+        <router-view />
+      </main>
+    </div>
+    <Toast />
+    <FloatingPreview />
+    <Assistant />
+    <AssistantQuestion />
+  </ErrorBoundary>
 </template>
 
 <style scoped>

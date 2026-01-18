@@ -61,6 +61,7 @@ export const useAppStore = defineStore('app', () => {
   const toasts = ref<Array<{ id: number; message: string; type: 'success' | 'error' | 'warning' | 'info' }>>([])
   let toastId = 0
   const MAX_TOASTS = 10  // Limit concurrent toasts
+  const toastTimeouts = ref<Map<number, ReturnType<typeof setTimeout>>>(new Map())
 
   // Preview cleanup timer
   let previewCleanupTimer: ReturnType<typeof setTimeout> | null = null
@@ -371,12 +372,21 @@ export const useAppStore = defineStore('app', () => {
       toasts.value = toasts.value.slice(-MAX_TOASTS)
     }
 
-    setTimeout(() => {
+    // Save timeout ID to allow cleanup
+    const timeoutId = setTimeout(() => {
       toasts.value = toasts.value.filter(t => t.id !== id)
+      toastTimeouts.value.delete(id)
     }, 4000)
+    toastTimeouts.value.set(id, timeoutId)
   }
 
   function removeToast(id: number) {
+    // Clear timeout if exists
+    const timeout = toastTimeouts.value.get(id)
+    if (timeout) {
+      clearTimeout(timeout)
+      toastTimeouts.value.delete(id)
+    }
     toasts.value = toasts.value.filter(t => t.id !== id)
   }
 
@@ -658,6 +668,10 @@ export const useAppStore = defineStore('app', () => {
       clearTimeout(previewCleanupTimer)
       previewCleanupTimer = null
     }
+
+    // Clear all toast timeouts
+    toastTimeouts.value.forEach(timeout => clearTimeout(timeout))
+    toastTimeouts.value.clear()
 
     // Clear preview data
     currentPreview.value = null
