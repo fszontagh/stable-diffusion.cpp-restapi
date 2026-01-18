@@ -103,6 +103,7 @@ class WebSocketService {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private pingTimer: ReturnType<typeof setInterval> | null = null
   private state: ConnectionState = 'disconnected'
+  private lastDisconnectTime: number | null = null
 
   // Event handlers registry
   private handlers: Map<WSEventType, Set<EventHandler<unknown>>> = new Map()
@@ -206,6 +207,20 @@ class WebSocketService {
   }
 
   /**
+   * Check if server is available (connected or attempting to connect)
+   */
+  isServerAvailable(): boolean {
+    return this.state === 'connected' || this.state === 'connecting' || this.state === 'reconnecting'
+  }
+
+  /**
+   * Get timestamp of last disconnect (null if never disconnected)
+   */
+  getLastDisconnectTime(): number | null {
+    return this.lastDisconnectTime
+  }
+
+  /**
    * Register an event handler
    */
   on<T>(event: WSEventType, handler: EventHandler<T>): () => void {
@@ -239,11 +254,39 @@ class WebSocketService {
     }
   }
 
+  /**
+   * Manually trigger reconnection (resets retry count)
+   */
+  manualReconnect(): void {
+    console.log('[WebSocket] Manual reconnect triggered')
+    
+    // Reset reconnect attempts to allow new attempts
+    this.reconnectAttempts = 0
+    this.reconnectDelay = 1000
+    
+    // Clear any existing reconnect timer
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+    
+    // If currently disconnected or reconnecting, attempt to reconnect
+    if (this.state === 'disconnected' || this.state === 'reconnecting') {
+      this.scheduleReconnect()
+    }
+  }
+
   // Private methods
 
   private updateState(newState: ConnectionState): void {
     if (this.state !== newState) {
       this.state = newState
+      
+      // Track disconnect time
+      if (newState === 'disconnected') {
+        this.lastDisconnectTime = Date.now()
+      }
+      
       this.stateChangeHandlers.forEach(handler => handler(newState))
     }
   }
