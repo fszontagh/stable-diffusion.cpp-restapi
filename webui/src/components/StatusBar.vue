@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAppStore } from '../stores/app'
+import { wsService } from '../services/websocket'
 
 const store = useAppStore()
 
@@ -13,6 +14,28 @@ async function toggleNotifications() {
     store.showToast('Desktop notifications disabled', 'info')
   }
 }
+
+// Manual reconnect handler
+function handleReconnect() {
+  wsService.manualReconnect()
+  store.showToast('Attempting to reconnect...', 'info')
+}
+
+// Connection status text
+const connectionStatusText = computed(() => {
+  switch (store.wsState) {
+    case 'connected':
+      return 'Connected'
+    case 'connecting':
+      return 'Connecting...'
+    case 'reconnecting':
+      return 'Reconnecting...'
+    case 'disconnected':
+      return 'Disconnected'
+    default:
+      return 'Unknown'
+  }
+})
 
 // Calculate progress percentage for header background
 const progressPercent = computed(() => {
@@ -92,9 +115,17 @@ const hasProgress = computed(() => {
           <line x1="1" y1="1" x2="23" y2="23"/>
         </svg>
       </button>
-      <div class="connection-status" :class="{ connected: store.connected }">
-        <span class="status-dot" :class="store.connected ? 'connected' : 'disconnected'"></span>
-        <span class="status-text">{{ store.connected ? 'Connected' : 'Disconnected' }}</span>
+      <div class="connection-status" :class="{ connected: store.wsConnected }">
+        <span class="status-dot" :class="store.wsConnected ? 'connected' : 'disconnected'"></span>
+        <span class="status-text">{{ connectionStatusText }}</span>
+        <button
+          v-if="store.wsState === 'disconnected'"
+          class="reconnect-btn"
+          @click="handleReconnect"
+          title="Attempt to reconnect"
+        >
+          &#128257;
+        </button>
       </div>
       <div class="queue-indicator" v-if="store.queueStats.processing > 0 || store.queueStats.pending > 0">
         <span class="spinner"></span>
@@ -289,6 +320,28 @@ const hasProgress = computed(() => {
 
 .connection-status.connected .status-text {
   color: var(--accent-success);
+}
+
+.reconnect-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.reconnect-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 .queue-indicator {

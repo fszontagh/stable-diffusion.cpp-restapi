@@ -39,6 +39,12 @@ export const useAppStore = defineStore('app', () => {
   // WebSocket state
   const wsConnected = ref(false)
   const wsState = ref<ConnectionState>('disconnected')
+  const lastDisconnectTime = ref<number | null>(null)
+
+  // API availability - derived from WebSocket state
+  const apiAvailable = computed(() => {
+    return wsState.value === 'connected' || wsState.value === 'connecting' || wsState.value === 'reconnecting'
+  })
 
   // Current preview during generation
   const currentPreview = ref<{ jobId: string; image: string; step: number } | null>(null)
@@ -389,6 +395,11 @@ export const useAppStore = defineStore('app', () => {
         wsState.value = state
         wsConnected.value = state === 'connected'
 
+        // Track disconnect time for UI display
+        if (state === 'disconnected') {
+          lastDisconnectTime.value = wsService.getLastDisconnectTime()
+        }
+
         // Stop polling when WebSocket is connected, start when disconnected
         if (state === 'connected') {
           // WebSocket connected - stop polling entirely
@@ -682,6 +693,8 @@ export const useAppStore = defineStore('app', () => {
     // WebSocket state
     wsConnected,
     wsState,
+    lastDisconnectTime,
+    apiAvailable,
 
     // Preview
     currentPreview,

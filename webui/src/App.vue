@@ -7,6 +7,7 @@ import Toast from './components/Toast.vue'
 import Assistant from './components/Assistant.vue'
 import AssistantQuestion from './components/AssistantQuestion.vue'
 import FloatingPreview from './components/FloatingPreview.vue'
+import ApiOfflineOverlay from './components/ApiOfflineOverlay.vue'
 
 const store = useAppStore()
 
@@ -20,6 +21,9 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- API Offline Overlay - renders above everything when disconnected -->
+  <ApiOfflineOverlay />
+  
   <StatusBar />
   <div class="app-layout">
     <Sidebar />
