@@ -199,6 +199,7 @@ add_executable(sdcpp-restapi
     src/assistant_client.cpp
     src/architecture_manager.cpp
     src/download_manager.cpp
+    src/settings_manager.cpp
 )
 
 target_include_directories(sdcpp-restapi PRIVATE

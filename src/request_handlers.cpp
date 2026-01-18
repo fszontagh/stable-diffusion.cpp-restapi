@@ -4,6 +4,7 @@
 #include "ollama_client.hpp"
 #include "assistant_client.hpp"
 #include "download_manager.hpp"
+#include "settings_manager.hpp"
 
 #include <iostream>
 #include <filesystem>
@@ -30,7 +31,14 @@ RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queu
     : model_manager_(model_manager), queue_manager_(queue_manager), output_dir_(output_dir), webui_dir_(webui_dir), ws_port_(ws_port)
     , ollama_client_(std::make_unique<OllamaClient>(ollama_config, output_dir, config_file_path))
     , assistant_client_(std::make_unique<AssistantClient>(assistant_config, output_dir, config_file_path))
-    , architecture_manager_(std::make_unique<ArchitectureManager>(output_dir)) {}
+    , architecture_manager_(std::make_unique<ArchitectureManager>(output_dir))
+    , settings_manager_(std::make_unique<SettingsManager>(config_file_path, output_dir)) {
+
+    // Initialize settings manager
+    if (!settings_manager_->initialize()) {
+        std::cerr << "[RequestHandlers] Warning: Failed to initialize settings manager" << std::endl;
+    }
+}
 
 void RequestHandlers::register_routes(httplib::Server& server) {
     // Health check
@@ -183,6 +191,29 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     });
     server.Put("/assistant/settings", [this](const httplib::Request& req, httplib::Response& res) {
         handle_assistant_update_settings(req, res);
+    });
+
+    // Settings endpoints
+    server.Get("/settings/generation", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_get_generation_defaults(req, res);
+    });
+    server.Put("/settings/generation", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_update_generation_defaults(req, res);
+    });
+    server.Get(R"(/settings/generation/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_get_generation_defaults_for_mode(req, res);
+    });
+    server.Put(R"(/settings/generation/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_update_generation_defaults_for_mode(req, res);
+    });
+    server.Get("/settings/preferences", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_get_ui_preferences(req, res);
+    });
+    server.Put("/settings/preferences", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_update_ui_preferences(req, res);
+    });
+    server.Post("/settings/reset", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_reset_settings(req, res);
     });
 
     // Architecture presets
@@ -2264,6 +2295,174 @@ void RequestHandlers::handle_get_huggingface_info(const httplib::Request& req, h
 void RequestHandlers::handle_get_model_paths(const httplib::Request& /*req*/, httplib::Response& res) {
     auto paths_config = model_manager_.get_paths_config();
     send_json(res, paths_config);
+}
+
+// ==================== Settings Handlers ====================
+
+void RequestHandlers::handle_get_generation_defaults(const httplib::Request& /*req*/, httplib::Response& res) {
+    if (!settings_manager_) {
+        send_error(res, "Settings manager not initialized", 500);
+        return;
+    }
+
+    auto settings = settings_manager_->get_settings();
+    send_json(res, {
+        {"txt2img", settings.generation.txt2img},
+        {"img2img", settings.generation.img2img},
+        {"txt2vid", settings.generation.txt2vid}
+    });
+}
+
+void RequestHandlers::handle_update_generation_defaults(const httplib::Request& req, httplib::Response& res) {
+    if (!settings_manager_) {
+        send_error(res, "Settings manager not initialized", 500);
+        return;
+    }
+
+    auto json = parse_json_body(req);
+    if (json.is_null()) {
+        send_error(res, "Invalid JSON body", 400);
+        return;
+    }
+
+    try {
+        sdcpp::Settings settings = settings_manager_->get_settings();
+
+        // Update each mode if provided
+        if (json.contains("txt2img")) {
+            settings.generation.txt2img = json["txt2img"];
+        }
+        if (json.contains("img2img")) {
+            settings.generation.img2img = json["img2img"];
+        }
+        if (json.contains("txt2vid")) {
+            settings.generation.txt2vid = json["txt2vid"];
+        }
+
+        settings_manager_->set_settings(settings);
+
+        send_json(res, {
+            {"success", true},
+            {"settings", {
+                {"txt2img", settings.generation.txt2img},
+                {"img2img", settings.generation.img2img},
+                {"txt2vid", settings.generation.txt2vid}
+            }}
+        });
+    } catch (const std::exception& e) {
+        send_error(res, std::string("Failed to update settings: ") + e.what(), 500);
+    }
+}
+
+void RequestHandlers::handle_get_generation_defaults_for_mode(const httplib::Request& req, httplib::Response& res) {
+    if (!settings_manager_) {
+        send_error(res, "Settings manager not initialized", 500);
+        return;
+    }
+
+    std::string mode = req.matches[1];
+    auto preferences = settings_manager_->get_generation_preferences(mode);
+
+    send_json(res, preferences);
+}
+
+void RequestHandlers::handle_update_generation_defaults_for_mode(const httplib::Request& req, httplib::Response& res) {
+    if (!settings_manager_) {
+        send_error(res, "Settings manager not initialized", 500);
+        return;
+    }
+
+    std::string mode = req.matches[1];
+    auto json = parse_json_body(req);
+    if (json.is_null()) {
+        send_error(res, "Invalid JSON body", 400);
+        return;
+    }
+
+    try {
+        settings_manager_->set_generation_preferences(mode, json);
+
+        send_json(res, {
+            {"success", true},
+            {"mode", mode},
+            {"preferences", json}
+        });
+    } catch (const std::exception& e) {
+        send_error(res, std::string("Failed to update settings: ") + e.what(), 500);
+    }
+}
+
+void RequestHandlers::handle_get_ui_preferences(const httplib::Request& /*req*/, httplib::Response& res) {
+    if (!settings_manager_) {
+        send_error(res, "Settings manager not initialized", 500);
+        return;
+    }
+
+    auto preferences = settings_manager_->get_ui_preferences();
+    send_json(res, {
+        {"desktop_notifications", preferences.desktop_notifications},
+        {"theme", preferences.theme},
+        {"theme_custom", preferences.theme_custom.empty() ? nullptr : preferences.theme_custom}
+    });
+}
+
+void RequestHandlers::handle_update_ui_preferences(const httplib::Request& req, httplib::Response& res) {
+    if (!settings_manager_) {
+        send_error(res, "Settings manager not initialized", 500);
+        return;
+    }
+
+    auto json = parse_json_body(req);
+    if (json.is_null()) {
+        send_error(res, "Invalid JSON body", 400);
+        return;
+    }
+
+    try {
+        auto preferences = settings_manager_->get_ui_preferences();
+
+        // Update only provided fields
+        if (json.contains("desktop_notifications")) {
+            preferences.desktop_notifications = json["desktop_notifications"];
+        }
+        if (json.contains("theme")) {
+            preferences.theme = json["theme"];
+        }
+        if (json.contains("theme_custom")) {
+            preferences.theme_custom = json["theme_custom"];
+        }
+
+        settings_manager_->set_ui_preferences(preferences);
+
+        send_json(res, {
+            {"success", true},
+            {"preferences", {
+                {"desktop_notifications", preferences.desktop_notifications},
+                {"theme", preferences.theme},
+                {"theme_custom", preferences.theme_custom.empty() ? nullptr : preferences.theme_custom}
+            }}
+        });
+    } catch (const std::exception& e) {
+        send_error(res, std::string("Failed to update preferences: ") + e.what(), 500);
+    }
+}
+
+void RequestHandlers::handle_reset_settings(const httplib::Request& /*req*/, httplib::Response& res) {
+    if (!settings_manager_) {
+        send_error(res, "Settings manager not initialized", 500);
+        return;
+    }
+
+    try {
+        settings_manager_->reset_settings();
+
+        send_json(res, {
+            {"success", true},
+            {"message", "Settings reset to defaults"}
+        });
+    } catch (const std::exception& e) {
+        send_error(res, std::string("Failed to reset settings: ") + e.what(), 500);
+    }
 }
 
 } // namespace sdcpp
