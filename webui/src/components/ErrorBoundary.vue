@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onErrorCaptured } from 'vue'
+import { captureException } from '../services/sentry'
 
 const error = ref<Error | null>(null)
 const errorInfo = ref<string | null>(null)
@@ -8,9 +9,18 @@ onErrorCaptured((err: unknown, _instance, info) => {
   if (err instanceof Error) {
     error.value = err
     errorInfo.value = info
+    
+    // Log to console
     console.error('[ErrorBoundary] Caught error:', err)
     console.error('[ErrorBoundary] Component info:', info)
     console.error('[ErrorBoundary] Stack:', err.stack)
+    
+    // Send to Sentry with context
+    captureException(err, {
+      component: 'ErrorBoundary',
+      errorInfo: info,
+      route: window.location.hash,
+    })
     
     // Prevent error from propagating
     return false
