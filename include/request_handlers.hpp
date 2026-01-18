@@ -9,6 +9,7 @@
 #include "ollama_client.hpp"
 #include "assistant_client.hpp"
 #include "architecture_manager.hpp"
+#include "settings_manager.hpp"
 
 namespace sdcpp {
 
@@ -113,6 +114,17 @@ private:
     void handle_get_huggingface_info(const httplib::Request& req, httplib::Response& res);
     void handle_get_model_paths(const httplib::Request& req, httplib::Response& res);
 
+    // Settings endpoints
+    void handle_get_all_settings(const httplib::Request& req, httplib::Response& res);
+    void handle_update_all_settings(const httplib::Request& req, httplib::Response& res);
+    void handle_get_generation_defaults(const httplib::Request& req, httplib::Response& res);
+    void handle_update_generation_defaults(const httplib::Request& req, httplib::Response& res);
+    void handle_get_generation_defaults_for_mode(const httplib::Request& req, httplib::Response& res);
+    void handle_update_generation_defaults_for_mode(const httplib::Request& req, httplib::Response& res);
+    void handle_get_ui_preferences(const httplib::Request& req, httplib::Response& res);
+    void handle_update_ui_preferences(const httplib::Request& req, httplib::Response& res);
+    void handle_reset_settings(const httplib::Request& req, httplib::Response& res);
+
     // Thumbnail generation
     bool generate_thumbnail(const std::string& source_path, const std::string& thumb_path, int size = 120);
     std::string get_thumbnail_path(const std::string& source_path);
@@ -138,6 +150,7 @@ private:
     std::unique_ptr<OllamaClient> ollama_client_;
     std::unique_ptr<AssistantClient> assistant_client_;
     std::unique_ptr<ArchitectureManager> architecture_manager_;
+    std::unique_ptr<SettingsManager> settings_manager_;
 };
 
 } // namespace sdcpp
