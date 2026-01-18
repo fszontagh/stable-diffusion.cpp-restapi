@@ -524,7 +524,7 @@ const visibleMessages = computed(() =>
 }
 
 .message-user .message-avatar {
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-purple));
+  background: var(--accent-primary);
 }
 
 .message-bubble {
@@ -535,7 +535,7 @@ const visibleMessages = computed(() =>
 }
 
 .message-user .message-bubble {
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-purple));
+  background: var(--accent-primary);
   color: white;
   border-bottom-right-radius: 4px;
 }
@@ -776,7 +776,7 @@ const visibleMessages = computed(() =>
   height: 50px;
   border-radius: 12px;
   border: none;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-purple));
+  background: var(--accent-primary);
   color: white;
   cursor: pointer;
   display: flex;
