@@ -57,21 +57,21 @@ onBeforeUnmount(() => {
 
 <template>
   <Transition name="fade">
-    <div v-if="!store.apiAvailable" class="api-offline-overlay">
-      <div class="overlay-backdrop" />
+    <div v-if="!store.apiAvailable" class="api-offline-overlay" role="alertdialog" aria-labelledby="offline-title" aria-describedby="offline-message">
+      <div class="overlay-backdrop" aria-hidden="true" />
       <div class="overlay-content">
         <div class="status-icon">
           <span v-if="store.wsState === 'reconnecting'" class="spinner spinner-lg"></span>
           <span v-else class="disconnect-icon">&#128721;</span>
         </div>
         
-        <h2 class="overlay-title">{{ statusMessage }}</h2>
+        <h2 id="offline-title" class="overlay-title">{{ statusMessage }}</h2>
         
         <p v-if="store.lastDisconnectTime" class="disconnect-time">
           Disconnected {{ timeSinceDisconnect }}
         </p>
         
-        <p class="overlay-message">
+        <p id="offline-message" class="overlay-message">
           The WebUI requires a connection to the API server.
           <br />
           Please ensure the server is running and accessible.

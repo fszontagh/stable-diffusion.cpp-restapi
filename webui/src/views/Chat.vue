@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAssistantStore } from '../stores/assistant'
 import { useAppStore } from '../stores/app'
 import type { AssistantAction } from '../api/client'
-import AssistantSettings from '../components/AssistantSettings.vue'
 import { marked } from 'marked'
 
 // Configure marked for safe rendering
@@ -20,7 +19,6 @@ const router = useRouter()
 
 const inputMessage = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
-const showSettings = ref(false)
 
 // Map routes to view names
 const viewMap: Record<string, string> = {
@@ -203,7 +201,7 @@ const visibleMessages = computed(() =>
         </div>
       </div>
       <div class="header-actions">
-        <button class="btn btn-secondary btn-sm" @click="showSettings = true">
+        <button class="btn btn-secondary btn-sm" @click="router.push('/settings')">
           <span class="btn-icon">&#9881;</span>
           Settings
         </button>
@@ -220,7 +218,7 @@ const visibleMessages = computed(() =>
         <span class="disabled-icon">&#129302;</span>
         <h2>Assistant Not Enabled</h2>
         <p>The AI assistant is not configured. Enable it in settings to start chatting.</p>
-        <button class="btn btn-primary" @click="showSettings = true">
+        <button class="btn btn-primary" @click="router.push('/settings')">
           Configure Assistant
         </button>
       </div>
@@ -312,12 +310,6 @@ const visibleMessages = computed(() =>
         <p class="input-hint">Press Enter to send, Shift+Enter for new line</p>
       </div>
     </template>
-
-    <!-- Settings Modal -->
-    <AssistantSettings
-      v-if="showSettings"
-      @close="showSettings = false"
-    />
   </div>
 </template>
 
