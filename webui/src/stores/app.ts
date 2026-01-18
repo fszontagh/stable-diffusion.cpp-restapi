@@ -15,6 +15,7 @@ import {
   type UpscalerLoadedData,
   type UpscalerUnloadedData
 } from '../services/websocket'
+import { notificationService } from '../services/notifications'
 
 const DEFAULT_TITLE = 'SD.cpp WebUI'
 
@@ -72,6 +73,17 @@ export const useAppStore = defineStore('app', () => {
 
   function clearUpscaleInputImage() {
     upscaleInputImage.value = null
+  }
+
+  // Desktop notifications state
+  const desktopNotificationsEnabled = ref(notificationService.isEnabled())
+  const desktopNotificationsPermission = computed(() => notificationService.getPermission())
+
+  // Toggle desktop notifications
+  async function toggleDesktopNotifications(): Promise<boolean> {
+    const enabled = await notificationService.toggle()
+    desktopNotificationsEnabled.value = enabled
+    return enabled
   }
 
   // Add error to history
@@ -139,8 +151,13 @@ export const useAppStore = defineStore('app', () => {
     const modelName = newHealth.model_name
     const loadError = newHealth.last_error
 
+    // Only show toasts from polling when WebSocket is NOT connected
+    // When WS is connected, the WS event handlers show toasts in real-time
+    // This prevents duplicate toasts
+    const shouldShowToasts = !wsConnected.value
+
     // Model started loading
-    if (isLoading && !wasModelLoading.value) {
+    if (isLoading && !wasModelLoading.value && shouldShowToasts) {
       const loadingName = newHealth.loading_model_name ?? 'model'
       const shortName = loadingName.split('/').pop() ?? loadingName
       showToast(`Loading model: ${shortName}`, 'info')
@@ -149,21 +166,19 @@ export const useAppStore = defineStore('app', () => {
     // Model finished loading (was loading, now not loading)
     if (!isLoading && wasModelLoading.value) {
       if (loadError) {
-        showToast(`Model load failed: ${loadError}`, 'error')
+        if (shouldShowToasts) {
+          showToast(`Model load failed: ${loadError}`, 'error')
+        }
+        // Always log errors regardless of WS state
         addRecentError(loadError, 'model_load')
-      } else if (modelName) {
+      } else if (modelName && shouldShowToasts) {
         const shortName = modelName.split('/').pop() ?? modelName
         showToast(`Model loaded: ${shortName}`, 'success')
       }
     }
 
-    // Model changed (different model loaded)
-    if (modelName && modelName !== previousModelName.value && !isLoading && previousModelName.value !== null) {
-      // This case is handled by the loading finished toast above
-    }
-
     // Model unloaded
-    if (!modelName && previousModelName.value && !isLoading) {
+    if (!modelName && previousModelName.value && !isLoading && shouldShowToasts) {
       showToast('Model unloaded', 'info')
     }
 
@@ -215,30 +230,40 @@ export const useAppStore = defineStore('app', () => {
   function detectQueueChanges(jobs: Job[]) {
     const currentJobIds = new Set(jobs.map(j => j.job_id))
 
+    // Only show toasts from polling when WebSocket is NOT connected
+    // When WS is connected, the WS event handlers show toasts in real-time
+    // This prevents duplicate toasts
+    const shouldShowToasts = !wsConnected.value
+
     for (const job of jobs) {
       const prevStatus = previousJobStates.value.get(job.job_id)
 
       if (prevStatus === undefined) {
         // New job added (only show if pending, to avoid toasts on page load)
-        if (previousJobStates.value.size > 0 && job.status === 'pending') {
+        if (shouldShowToasts && previousJobStates.value.size > 0 && job.status === 'pending') {
           showToast(`Job queued: ${getJobTypeLabel(job.type)}`, 'info')
         }
       } else if (prevStatus !== job.status) {
-        // Status changed
-        switch (job.status) {
-          case 'processing':
-            showToast(`Job started: ${getJobTypeLabel(job.type)}`, 'info')
-            break
-          case 'completed':
-            showToast(`Job completed: ${getJobTypeLabel(job.type)}`, 'success')
-            break
-          case 'failed':
-            showToast(`Job failed: ${getJobTypeLabel(job.type)}${job.error ? ' - ' + job.error : ''}`, 'error')
-            addRecentError(`${getJobTypeLabel(job.type)} failed: ${job.error || 'Unknown error'}`, 'job_failed')
-            break
-          case 'cancelled':
-            showToast(`Job cancelled: ${getJobTypeLabel(job.type)}`, 'warning')
-            break
+        // Status changed - only show toast if not using WebSocket
+        if (shouldShowToasts) {
+          switch (job.status) {
+            case 'processing':
+              showToast(`Job started: ${getJobTypeLabel(job.type)}`, 'info')
+              break
+            case 'completed':
+              showToast(`Job completed: ${getJobTypeLabel(job.type)}`, 'success')
+              break
+            case 'failed':
+              showToast(`Job failed: ${getJobTypeLabel(job.type)}${job.error ? ' - ' + job.error : ''}`, 'error')
+              addRecentError(`${getJobTypeLabel(job.type)} failed: ${job.error || 'Unknown error'}`, 'job_failed')
+              break
+            case 'cancelled':
+              showToast(`Job cancelled: ${getJobTypeLabel(job.type)}`, 'warning')
+              break
+          }
+        } else if (job.status === 'failed') {
+          // Always add to error history even with WS (error logging is separate from toasts)
+          addRecentError(`${getJobTypeLabel(job.type)} failed: ${job.error || 'Unknown error'}`, 'job_failed')
         }
       }
       // Update the state
@@ -448,16 +473,18 @@ export const useAppStore = defineStore('app', () => {
           }
         }
 
-        // Show toast notification
+        // Show toast notification and desktop notification
         switch (data.status) {
           case 'processing':
             showToast(`Job started`, 'info')
             break
           case 'completed':
             showToast(`Job completed`, 'success')
+            notificationService.notifyJobComplete('Generation')
             break
           case 'failed':
             showToast(`Job failed${data.error ? ': ' + data.error : ''}`, 'error')
+            notificationService.notifyJobFailed('Generation', data.error)
             addRecentError(`Job failed: ${data.error || 'Unknown error'}`, 'job_failed')
             break
           case 'cancelled':
@@ -507,6 +534,9 @@ export const useAppStore = defineStore('app', () => {
 
     wsUnsubscribers.push(
       wsService.on<JobCancelledData>('job_cancelled', (data) => {
+        // Pre-register the status to prevent duplicate toast from detectQueueChanges
+        previousJobStates.value.set(data.job_id, 'cancelled')
+
         if (queue.value?.items) {
           const job = queue.value.items.find(j => j.job_id === data.job_id)
           if (job) {
@@ -543,6 +573,7 @@ export const useAppStore = defineStore('app', () => {
         }
         const shortName = data.model_name.split('/').pop() ?? data.model_name
         showToast(`Model loaded: ${shortName}`, 'success')
+        notificationService.notifyModelLoaded(data.model_name)
         updateDocumentTitle()
       })
     )
@@ -689,6 +720,11 @@ export const useAppStore = defineStore('app', () => {
     // Upscale image
     upscaleInputImage,
     setUpscaleInputImage,
-    clearUpscaleInputImage
+    clearUpscaleInputImage,
+
+    // Desktop notifications
+    desktopNotificationsEnabled,
+    desktopNotificationsPermission,
+    toggleDesktopNotifications
   }
 })

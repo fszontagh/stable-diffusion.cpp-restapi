@@ -4,6 +4,16 @@ import { useAppStore } from '../stores/app'
 
 const store = useAppStore()
 
+// Notification toggle handler
+async function toggleNotifications() {
+  const enabled = await store.toggleDesktopNotifications()
+  if (enabled) {
+    store.showToast('Desktop notifications enabled', 'success')
+  } else {
+    store.showToast('Desktop notifications disabled', 'info')
+  }
+}
+
 // Calculate progress percentage for header background
 const progressPercent = computed(() => {
   // Model loading progress
@@ -65,6 +75,23 @@ const hasProgress = computed(() => {
       </div>
     </div>
     <div class="status-right">
+      <!-- Desktop notifications toggle -->
+      <button
+        class="notification-toggle"
+        :class="{ enabled: store.desktopNotificationsEnabled }"
+        @click="toggleNotifications"
+        :title="store.desktopNotificationsEnabled ? 'Desktop notifications enabled (click to disable)' : 'Enable desktop notifications'"
+      >
+        <svg v-if="store.desktopNotificationsEnabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          <line x1="1" y1="1" x2="23" y2="23"/>
+        </svg>
+      </button>
       <div class="connection-status" :class="{ connected: store.connected }">
         <span class="status-dot" :class="store.connected ? 'connected' : 'disconnected'"></span>
         <span class="status-text">{{ store.connected ? 'Connected' : 'Disconnected' }}</span>
@@ -215,6 +242,41 @@ const hasProgress = computed(() => {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.notification-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.notification-toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.notification-toggle.enabled {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.notification-toggle.enabled:hover {
+  background: rgba(0, 217, 255, 0.1);
+}
+
+.notification-toggle svg {
+  width: 18px;
+  height: 18px;
 }
 
 .connection-status {
