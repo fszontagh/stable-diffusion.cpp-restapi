@@ -432,8 +432,8 @@ Phases 5-11 continue with detailed implementations for:
 
 ## Progress Tracking
 
-- [ ] Phase 1: WebSocket-based API Availability
-- [ ] Phase 2: Critical Security Fixes
+- [x] Phase 1: WebSocket-based API Availability ✅ COMPLETED
+- [x] Phase 2: Critical Security Fixes ✅ COMPLETED
 - [ ] Phase 3: Error Tracking (Sentry)
 - [ ] Phase 4: High Priority Fixes
 - [ ] Phase 5: UX & Loading States
@@ -443,6 +443,25 @@ Phases 5-11 continue with detailed implementations for:
 - [ ] Phase 9: Custom Theme System
 - [ ] Phase 10: Feature Enhancements
 - [ ] Phase 11: Security Hardening
+
+## Completed Work Summary
+
+### Phase 1: WebSocket-based API Availability ✅
+- Added `isServerAvailable()` and `getLastDisconnectTime()` methods to WebSocket service
+- Tracked disconnect timestamp for UI display
+- Added `apiAvailable` computed property to app store
+- Created ApiOfflineOverlay component with full-screen blocking UI
+- Added manual reconnect functionality
+- Updated StatusBar with connection status and reconnect button
+- Commits: f1a3493
+
+### Phase 2: Critical Security Fixes ✅
+- Fixed XSS vulnerability in markdown rendering using DOMPurify
+- Fixed toast memory leak by tracking and clearing timeouts
+- Fixed pending continuations leak with periodic cleanup (5 min interval)
+- Created ErrorBoundary component for graceful error handling
+- Wrapped App.vue with ErrorBoundary
+- Commits: b3ea8b8, e76191b
 
 ---
 
