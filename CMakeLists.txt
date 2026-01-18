@@ -63,7 +63,7 @@ include(FetchContent)
 FetchContent_Declare(
     httplib
     GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-    GIT_TAG        v0.18.0
+    GIT_TAG        v0.30.1
 )
 set(HTTPLIB_COMPILE OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(httplib)
@@ -72,16 +72,16 @@ FetchContent_MakeAvailable(httplib)
 FetchContent_Declare(
     json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG        v3.11.3
+    GIT_TAG        v3.12.0
 )
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(json)
 
-# uSockets (C library for uWebSockets) - use latest HEAD for OpenSSL 3.x compatibility
+# uSockets (C library for uWebSockets)
 FetchContent_Declare(
     usockets
     GIT_REPOSITORY https://github.com/uNetworking/uSockets.git
-    GIT_TAG        ba0db0b1cfe8f4b170f4030470405b1249837f67
+    GIT_TAG        v0.8.8
 )
 FetchContent_MakeAvailable(usockets)
 
@@ -89,7 +89,7 @@ FetchContent_MakeAvailable(usockets)
 FetchContent_Declare(
     uwebsockets
     GIT_REPOSITORY https://github.com/uNetworking/uWebSockets.git
-    GIT_TAG        v20.68.0
+    GIT_TAG        v20.74.0
 )
 FetchContent_MakeAvailable(uwebsockets)
 
@@ -132,7 +132,7 @@ endif()
 FetchContent_Declare(
     stable-diffusion
     GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-    GIT_TAG        885e62e
+    GIT_TAG        9565c7f
 )
 
 # First populate to get source directory
