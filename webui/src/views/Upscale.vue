@@ -244,6 +244,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .upscale {
   max-width: 600px;
+  margin: 0 auto;
 }
 
 .upscaler-actions {

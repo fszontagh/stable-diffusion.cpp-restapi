@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api, type HealthResponse, type ModelsResponse, type QueueResponse, type OptionsResponse, type Job, type OllamaStatusResponse, type QueueFilters } from '../api/client'
+import { api, type HealthResponse, type ModelsResponse, type QueueResponse, type OptionsResponse, type Job, type OllamaStatusResponse, type QueueFilters, type GenerationDefaults, type UIPreferences } from '../api/client'
 import {
   wsService,
   type ConnectionState,
@@ -83,6 +83,71 @@ export const useAppStore = defineStore('app', () => {
     upscaleInputImage.value = null
   }
 
+  // Settings state
+  const generationDefaults = ref<GenerationDefaults | null>(null)
+  const uiPreferences = ref<UIPreferences | null>(null)
+
+  async function fetchGenerationDefaults(): Promise<GenerationDefaults> {
+    try {
+      const defaults = await api.getGenerationDefaults()
+      generationDefaults.value = {
+        txt2img: (defaults as any).txt2img || {},
+        img2img: (defaults as any).img2img || {},
+        txt2vid: (defaults as any).txt2vid || {}
+      }
+      return generationDefaults.value
+    } catch (e) {
+      console.error('Failed to fetch generation defaults:', e)
+      throw e
+    }
+  }
+
+  async function updateGenerationDefaults(defaults: Partial<GenerationDefaults>): Promise<void> {
+    try {
+      const result = await api.updateGenerationDefaults(defaults)
+      generationDefaults.value = {
+        txt2img: (result.settings as any).txt2img || {},
+        img2img: (result.settings as any).img2img || {},
+        txt2vid: (result.settings as any).txt2vid || {}
+      }
+    } catch (e) {
+      console.error('Failed to update generation defaults:', e)
+      throw e
+    }
+  }
+
+  async function fetchUIPreferences(): Promise<UIPreferences> {
+    try {
+      const prefs = await api.getUIPreferences()
+      uiPreferences.value = prefs
+      return prefs
+    } catch (e) {
+      console.error('Failed to fetch UI preferences:', e)
+      throw e
+    }
+  }
+
+  async function updateUIPreferences(prefs: Partial<UIPreferences>): Promise<void> {
+    try {
+      const result = await api.updateUIPreferences(prefs)
+      uiPreferences.value = result.settings
+    } catch (e) {
+      console.error('Failed to update UI preferences:', e)
+      throw e
+    }
+  }
+
+  async function resetAllSettings(): Promise<void> {
+    try {
+      await api.resetSettings()
+      await Promise.all([fetchGenerationDefaults(), fetchUIPreferences()])
+      showToast('Settings reset to defaults', 'success')
+    } catch (e) {
+      console.error('Failed to reset settings:', e)
+      throw e
+    }
+  }
+
   // Desktop notifications state
   const desktopNotificationsEnabled = ref(notificationService.isEnabled())
   const desktopNotificationsPermission = computed(() => notificationService.getPermission())
@@ -105,6 +170,10 @@ export const useAppStore = defineStore('app', () => {
     if (recentErrors.value.length > MAX_RECENT_ERRORS) {
       recentErrors.value = recentErrors.value.slice(0, MAX_RECENT_ERRORS)
     }
+    // Emit event for assistant proactive suggestions
+    window.dispatchEvent(new CustomEvent('app-error-occurred', {
+      detail: { message, source }
+    }))
   }
 
   // Computed
@@ -646,7 +715,9 @@ export const useAppStore = defineStore('app', () => {
       await Promise.all([
         fetchQueue(),
         fetchOptions(),
-        fetchOllamaStatus()
+        fetchOllamaStatus(),
+        fetchGenerationDefaults(),
+        fetchUIPreferences()
       ])
 
       // Setup WebSocket handlers and connect using port from health response
@@ -760,6 +831,15 @@ export const useAppStore = defineStore('app', () => {
     upscaleInputImage,
     setUpscaleInputImage,
     clearUpscaleInputImage,
+
+    // Settings
+    generationDefaults,
+    uiPreferences,
+    fetchGenerationDefaults,
+    updateGenerationDefaults,
+    fetchUIPreferences,
+    updateUIPreferences,
+    resetAllSettings,
 
     // Desktop notifications
     desktopNotificationsEnabled,
