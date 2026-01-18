@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import App from './App.vue'
 import './style.css'
+import { initSentry } from './services/sentry'
 
 import Dashboard from './views/Dashboard.vue'
 import Models from './views/Models.vue'
@@ -29,6 +30,10 @@ const router = createRouter({
 })
 
 const app = createApp(App)
+
+// Initialize Sentry error tracking
+initSentry(app, router)
+
 app.use(createPinia())
 app.use(router)
 app.mount('#app')

@@ -346,6 +346,16 @@ class ApiClient {
   }
 
   private async request<T>(method: string, endpoint: string, data?: unknown): Promise<T> {
+    // Add breadcrumb for Sentry
+    if (typeof window !== 'undefined') {
+      try {
+        const { addBreadcrumb } = await import('../services/sentry')
+        addBreadcrumb('api', `${method} ${endpoint}`, { data })
+      } catch (e) {
+        // Sentry not available, ignore
+      }
+    }
+
     const options: RequestInit = {
       method,
       headers: {
@@ -357,14 +367,42 @@ class ApiClient {
       options.body = JSON.stringify(data)
     }
 
-    const response = await fetch(this.baseUrl + endpoint, options)
-    const json = await response.json()
+    try {
+      const response = await fetch(this.baseUrl + endpoint, options)
+      const json = await response.json()
 
-    if (!response.ok) {
-      throw new ApiError(json.error || 'Request failed', response.status)
+      if (!response.ok) {
+        const error = new ApiError(json.error || 'Request failed', response.status)
+        
+        // Add error breadcrumb
+        if (typeof window !== 'undefined') {
+          try {
+            const { addBreadcrumb } = await import('../services/sentry')
+            addBreadcrumb('api-error', `${method} ${endpoint} failed`, { 
+              status: response.status,
+              error: json.error 
+            })
+          } catch (e) {
+            // Sentry not available, ignore
+          }
+        }
+        
+        throw error
+      }
+
+      return json as T
+    } catch (error) {
+      // Re-throw ApiErrors as-is
+      if (error instanceof ApiError) {
+        throw error
+      }
+      
+      // Wrap other errors
+      throw new ApiError(
+        error instanceof Error ? error.message : 'Network request failed',
+        0
+      )
     }
-
-    return json as T
   }
 
   // Health
