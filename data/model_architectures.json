@@ -298,6 +298,29 @@
         "height": 1024
       }
     },
+    "Ovis": {
+      "name": "Ovis-Image-7B",
+      "description": "Ovis-Image model for text-to-image generation. Requires Flux VAE (ae.safetensors) and Ovis 2.5 LLM text encoder.",
+      "aliases": ["Ovis-Image", "Ovis Image", "Ovis-7B"],
+      "requiredComponents": {
+        "vae": "ae.safetensors (Flux VAE)",
+        "llm": "Ovis 2.5 text encoder"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 5.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "width": 1024,
+        "height": 1024
+      }
+    },
     "Chroma": {
       "name": "Chroma",
       "description": "Requires VAE (ae.safetensors) and T5-XXL.",
