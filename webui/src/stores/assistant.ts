@@ -638,6 +638,10 @@ export const useAssistantStore = defineStore('assistant', () => {
             const needsFollowUp = actionResults.successes.some(s =>
               s.includes('search_jobs:') ||
               s.includes('get_job:') ||
+              s.includes('get_status:') ||
+              s.includes('get_models:') ||
+              s.includes('get_settings:') ||
+              s.includes('get_architectures:') ||
               s.includes('Results:')
             )
 
@@ -1663,6 +1667,99 @@ export const useAssistantStore = defineStore('assistant', () => {
             } catch (e) {
               throw new Error(`Failed to start conversion: ${e instanceof Error ? e.message : 'Unknown error'}`)
             }
+            break
+          }
+
+          case 'get_status': {
+            // Return current application status to the assistant
+            const statusInfo = {
+              model_info: {
+                loaded: appStore.modelLoaded,
+                loading: appStore.modelLoading,
+                name: appStore.modelName,
+                type: appStore.modelType,
+                architecture: appStore.modelArchitecture,
+                components: appStore.loadedComponents || {}
+              },
+              upscaler_info: {
+                loaded: appStore.upscalerLoaded,
+                name: appStore.upscalerName
+              },
+              queue_stats: appStore.queueStats,
+              recent_errors: (() => {
+                const recentErrorsList: string[] = []
+                if (appStore.lastLoadError) {
+                  recentErrorsList.push(`Model load error: ${appStore.lastLoadError}`)
+                }
+                const errorHistory = appStore.recentErrors?.slice(0, 10) || []
+                for (const err of errorHistory) {
+                  const timeAgo = Math.round((Date.now() - err.timestamp) / 1000 / 60)
+                  const timeStr = timeAgo < 1 ? 'just now' : `${timeAgo}m ago`
+                  recentErrorsList.push(`[${timeStr}] ${err.source}: ${err.message}`)
+                }
+                return recentErrorsList
+              })(),
+              recent_jobs: (appStore.queue?.items || []).slice(0, 10).map(job => ({
+                job_id: job.job_id,
+                type: job.type,
+                status: job.status,
+                error: job.error,
+                model_settings: job.model_settings ? {
+                  model_name: job.model_settings.model_name,
+                  model_type: job.model_settings.model_type,
+                  model_architecture: job.model_settings.model_architecture
+                } : undefined
+              }))
+            }
+            successes.push(`get_status: ${JSON.stringify(statusInfo)}`)
+            break
+          }
+
+          case 'get_models': {
+            // Return available models organized by type
+            const models = appStore.models
+            if (!models) {
+              await appStore.fetchModels()
+            }
+            const availableModels = {
+              checkpoints: (appStore.models?.checkpoints || []).map(m => m.name),
+              diffusion_models: (appStore.models?.diffusion_models || []).map(m => m.name),
+              vae: (appStore.models?.vae || []).map(m => m.name),
+              loras: (appStore.models?.loras || []).map(m => m.name),
+              clip: (appStore.models?.clip || []).map(m => m.name),
+              t5: (appStore.models?.t5 || []).map(m => m.name),
+              controlnets: (appStore.models?.controlnets || []).map(m => m.name),
+              esrgan: (appStore.models?.esrgan || []).map(m => m.name),
+              llm: (appStore.models?.llm || []).map(m => m.name),
+              taesd: (appStore.models?.taesd || []).map(m => m.name)
+            }
+            successes.push(`get_models: ${JSON.stringify(availableModels)}`)
+            break
+          }
+
+          case 'get_settings': {
+            // Return current generation settings
+            const currentSettings = gatherCurrentSettings()
+            successes.push(`get_settings: ${JSON.stringify(currentSettings)}`)
+            break
+          }
+
+          case 'get_architectures': {
+            // Return architecture presets
+            // Ensure architectures are loaded
+            if (Object.keys(architectures.value).length === 0) {
+              await fetchArchitectures()
+            }
+            const archPresets = Object.fromEntries(
+              Object.entries(architectures.value).map(([id, preset]) => [id, {
+                name: preset.name,
+                description: preset.description,
+                requiredComponents: preset.requiredComponents,
+                optionalComponents: preset.optionalComponents,
+                generationDefaults: preset.generationDefaults
+              }])
+            )
+            successes.push(`get_architectures: ${JSON.stringify(archPresets)}`)
             break
           }
         }

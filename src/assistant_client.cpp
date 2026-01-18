@@ -171,12 +171,8 @@ nlohmann::json AssistantClient::build_messages(const std::string& user_message,
         }
     }
 
-    // Add context as a system message (before the user message)
-    std::string context_str = "## Current Application Context\n```json\n" + context.dump(2) + "\n```";
-    messages.push_back({
-        {"role", "system"},
-        {"content", context_str}
-    });
+    // NOTE: Context is no longer injected here - assistant must use tools to query state
+    // This ensures the assistant always gets fresh data and avoids stale context issues
 
     // Add current user message
     messages.push_back({
@@ -287,6 +283,46 @@ nlohmann::json AssistantClient::build_tools() const {
         {"function", {
             {"name", "refresh_models"},
             {"description", "Refresh the list of available models by rescanning model directories. Use this after downloading or converting models to make them available for loading."},
+            {"parameters", {{"type", "object"}, {"properties", {}}}}
+        }}
+    });
+
+    // get_status tool - IMPORTANT: Use this to check current state before taking actions
+    tools.push_back({
+        {"type", "function"},
+        {"function", {
+            {"name", "get_status"},
+            {"description", "Get current application status including loaded model info, upscaler state, and queue statistics. ALWAYS call this first before loading models or making assumptions about state."},
+            {"parameters", {{"type", "object"}, {"properties", {}}}}
+        }}
+    });
+
+    // get_models tool - Get available models
+    tools.push_back({
+        {"type", "function"},
+        {"function", {
+            {"name", "get_models"},
+            {"description", "Get list of all available models organized by type (checkpoints, diffusion_models, vae, loras, clip, t5, llm, esrgan, etc.)"},
+            {"parameters", {{"type", "object"}, {"properties", {}}}}
+        }}
+    });
+
+    // get_settings tool - Get current generation settings
+    tools.push_back({
+        {"type", "function"},
+        {"function", {
+            {"name", "get_settings"},
+            {"description", "Get current generation settings (prompt, dimensions, steps, cfg_scale, sampler, scheduler, etc.)"},
+            {"parameters", {{"type", "object"}, {"properties", {}}}}
+        }}
+    });
+
+    // get_architectures tool - Get architecture presets
+    tools.push_back({
+        {"type", "function"},
+        {"function", {
+            {"name", "get_architectures"},
+            {"description", "Get all architecture presets with their required components and recommended settings (SD1.5, SDXL, Flux, SD3, Z-Image, etc.)"},
             {"parameters", {{"type", "object"}, {"properties", {}}}}
         }}
     });
