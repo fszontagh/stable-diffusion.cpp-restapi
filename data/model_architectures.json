@@ -20,6 +20,46 @@
         "height": 512
       }
     },
+    "SD2": {
+      "name": "SD 2.x / SD 2.1",
+      "description": "Stable Diffusion 2.x models with 768x768 native resolution. VAE usually bundled, external VAE optional.",
+      "aliases": ["SD 2.1", "SD2.1", "SD 2.0", "SD2.0", "SD 2.x"],
+      "requiredComponents": {},
+      "optionalComponents": {
+        "vae": "Improves color accuracy"
+      },
+      "loadOptions": {
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 7.0,
+        "steps": 20,
+        "sampler": "euler_a",
+        "scheduler": "discrete",
+        "width": 768,
+        "height": 768
+      }
+    },
+    "LCM": {
+      "name": "LCM (SD1.5)",
+      "description": "Latent Consistency Model distilled from SD1.5. Enables fast 2-8 step generation. Negative prompts have no effect.",
+      "aliases": ["LCM-SD1.5", "LCM SD1", "Latent Consistency Model"],
+      "requiredComponents": {},
+      "optionalComponents": {
+        "vae": "Improves color accuracy"
+      },
+      "loadOptions": {
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 4,
+        "sampler": "lcm",
+        "scheduler": "discrete",
+        "width": 512,
+        "height": 512
+      }
+    },
     "SDXS-512": {
       "name": "SDXS-512",
       "description": "Ultra-fast one-step inference model with tiny U-Net. Real-time generation with single step. Based on SD1.x architecture with AutoEncoderTiny VAE.",
@@ -55,6 +95,50 @@
         "cfg_scale": 7.0,
         "steps": 20,
         "sampler": "euler_a",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "SSD-1B": {
+      "name": "SSD-1B (Segmind)",
+      "description": "Segmind Stable Diffusion 1B - distilled SDXL with reduced U-Net. 50% smaller and 60% faster than SDXL while maintaining quality.",
+      "aliases": ["SSD1B", "Segmind-SSD-1B", "Segmind"],
+      "requiredComponents": {},
+      "optionalComponents": {
+        "vae": "Recommended for better color accuracy"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "vae_decode_only": true,
+        "force_sdxl_vae_conv_scale": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 7.0,
+        "steps": 20,
+        "sampler": "euler_a",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "LCM-SDXL": {
+      "name": "LCM (SDXL)",
+      "description": "Latent Consistency Model distilled from SDXL. Enables fast 2-8 step generation at 1024x1024. Negative prompts have no effect.",
+      "aliases": ["LCM SDXL", "lcm-sdxl"],
+      "requiredComponents": {},
+      "optionalComponents": {
+        "vae": "Recommended for better color accuracy"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "vae_decode_only": true,
+        "force_sdxl_vae_conv_scale": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 4,
+        "sampler": "lcm",
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
@@ -128,6 +212,30 @@
         "cfg_scale": 1.0,
         "distilled_guidance": 0.0,
         "steps": 4,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Flux Kontext": {
+      "name": "FLUX.1-Kontext-dev",
+      "description": "Flux-based image editing model. Edit images with text prompts. Requires same components as Flux plus a reference image.",
+      "aliases": ["Kontext", "Flux.1-Kontext", "FLUX Kontext"],
+      "requiredComponents": {
+        "vae": "ae.safetensors or ae.gguf",
+        "clip_l": "CLIP-L text encoder",
+        "t5xxl": "T5-XXL text encoder"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "keep_clip_on_cpu": true,
+        "flash_attn": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 20,
         "sampler": "euler",
         "scheduler": "simple",
         "width": 1024,
@@ -279,7 +387,31 @@
       "description": "Qwen-based image generation. Requires VAE and LLM (Qwen2.5-VL 7B).",
       "aliases": ["Qwen2-VL", "Qwen Image", "Qwen-VL"],
       "requiredComponents": {
-        "vae": "VAE model",
+        "vae": "qwen_image_vae.safetensors",
+        "llm": "Qwen2.5-VL 7B"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": true,
+        "flow_shift": 3.0
+      },
+      "generationDefaults": {
+        "cfg_scale": 2.5,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Qwen Image Edit": {
+      "name": "Qwen-Image-Edit",
+      "description": "Qwen-based image editing model. Edit images with text prompts. Requires Qwen VAE and Qwen2.5-VL 7B LLM.",
+      "aliases": ["Qwen-Image-Edit", "Qwen Edit", "Qwen-Edit"],
+      "requiredComponents": {
+        "vae": "qwen_image_vae.safetensors",
         "llm": "Qwen2.5-VL 7B"
       },
       "optionalComponents": {},
@@ -327,6 +459,28 @@
       "aliases": [],
       "requiredComponents": {
         "vae": "ae.safetensors",
+        "t5xxl": "T5-XXL text encoder"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "keep_clip_on_cpu": true,
+        "flash_attn": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 4.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Chroma-Radiance": {
+      "name": "Chroma1-Radiance",
+      "description": "Chroma variant that doesn't require VAE. Only needs T5-XXL text encoder.",
+      "aliases": ["Chroma Radiance", "ChromaRadiance"],
+      "requiredComponents": {
         "t5xxl": "T5-XXL text encoder"
       },
       "optionalComponents": {},
