@@ -4,7 +4,7 @@ import { ref, onErrorCaptured } from 'vue'
 const error = ref<Error | null>(null)
 const errorInfo = ref<string | null>(null)
 
-onErrorCaptured((err: unknown, instance, info) => {
+onErrorCaptured((err: unknown, _instance, info) => {
   if (err instanceof Error) {
     error.value = err
     errorInfo.value = info
