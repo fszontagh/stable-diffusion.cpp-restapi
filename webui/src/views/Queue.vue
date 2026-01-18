@@ -6,6 +6,7 @@ import { api, type Job, type LoadModelParams, type QueueFilters, type QueueDateG
 import Modal from '../components/Modal.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import Lightbox from '../components/Lightbox.vue'
+import SkeletonList from '../components/SkeletonList.vue'
 
 const store = useAppStore()
 const router = useRouter()
@@ -863,8 +864,11 @@ async function sendImageToUpscale(outputPath: string) {
       </div>
     </div>
 
+    <!-- Loading skeleton -->
+    <SkeletonList v-if="isFetching && !store.queue" :count="5" />
+
     <!-- Jobs List - Pages View -->
-    <TransitionGroup v-if="viewMode === 'pages'" name="job-list" tag="div" class="jobs-list">
+    <TransitionGroup v-else-if="viewMode === 'pages'" name="job-list" tag="div" class="jobs-list">
       <div
         v-for="job in sortedJobs"
         :key="job.job_id"

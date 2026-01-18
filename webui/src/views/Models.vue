@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useAppStore } from '../stores/app'
 import { api, type LoadModelParams, type ModelInfo, type ConvertParams } from '../api/client'
 import Modal from '../components/Modal.vue'
+import SkeletonCard from '../components/SkeletonCard.vue'
 
 const store = useAppStore()
 
@@ -495,8 +496,13 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- Loading skeleton -->
+    <div v-if="!store.models" class="models-grid">
+      <SkeletonCard v-for="i in 6" :key="i" />
+    </div>
+
     <!-- Models List -->
-    <div class="models-grid">
+    <div v-else class="models-grid">
       <div
         v-for="model in filteredModels"
         :key="`${model.type}-${model.name}`"

@@ -25,6 +25,14 @@ onUnmounted(() => {
   <!-- API Offline Overlay - renders above everything when disconnected -->
   <ApiOfflineOverlay />
   
+  <!-- Initial Loading Overlay -->
+  <div v-if="store.isInitialLoading" class="initial-loading">
+    <div class="loading-content">
+      <div class="spinner spinner-lg"></div>
+      <p class="loading-text">Loading application...</p>
+    </div>
+  </div>
+  
   <ErrorBoundary>
     <StatusBar />
     <div class="app-layout">
@@ -41,4 +49,28 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.initial-loading {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+}
+
+.loading-content {
+  text-align: center;
+}
+
+.spinner-lg {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+}
+
+.loading-text {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
 </style>
