@@ -20,6 +20,24 @@
         "height": 512
       }
     },
+    "SDXS-512": {
+      "name": "SDXS-512",
+      "description": "Ultra-fast one-step inference model with tiny U-Net. Real-time generation with single step. Based on SD1.x architecture with AutoEncoderTiny VAE.",
+      "aliases": ["SDXS", "sdxs-512-dreamshaper"],
+      "requiredComponents": {},
+      "optionalComponents": {},
+      "loadOptions": {
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 1,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 512,
+        "height": 512
+      }
+    },
     "SDXL": {
       "name": "SDXL",
       "description": "SDXL models. External VAE optional but recommended for better colors.",
@@ -110,6 +128,121 @@
         "cfg_scale": 1.0,
         "distilled_guidance": 0.0,
         "steps": 4,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Flux2 Dev": {
+      "name": "Flux.2 Dev",
+      "description": "Flux 2 development model with advanced LLM integration. Requires Flux2 VAE (flux2_ae.safetensors) and Mistral-Small-3.2-24B LLM. Supports image editing with reference images.",
+      "aliases": ["Flux.2-dev", "Flux2-dev", "Flux 2 Dev"],
+      "requiredComponents": {
+        "vae": "flux2_ae.safetensors (Flux2 VAE)",
+        "llm": "Mistral-Small-3.2-24B-Instruct GGUF"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Flux2 Klein 4B": {
+      "name": "Flux.2 Klein 4B",
+      "description": "Fast 4B parameter Flux2 model. Requires Flux2 VAE and Qwen3 4B LLM. Optimized for speed with only 4 steps. Supports image editing.",
+      "aliases": ["Flux.2-klein-4B", "Flux2-klein-4b", "Klein 4B"],
+      "requiredComponents": {
+        "vae": "flux2_ae.safetensors (Flux2 VAE)",
+        "llm": "Qwen3 4B (GGUF or safetensors)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 4,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Flux2 Klein Base 4B": {
+      "name": "Flux.2 Klein Base 4B",
+      "description": "Higher quality 4B parameter Flux2 model. Same requirements as Klein 4B but needs more steps and higher CFG for better results.",
+      "aliases": ["Flux.2-klein-base-4B", "Flux2-klein-base-4b", "Klein Base 4B"],
+      "requiredComponents": {
+        "vae": "flux2_ae.safetensors (Flux2 VAE)",
+        "llm": "Qwen3 4B (GGUF or safetensors)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 4.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Flux2 Klein 9B": {
+      "name": "Flux.2 Klein 9B",
+      "description": "Fast 9B parameter Flux2 model with better quality than 4B. Requires Flux2 VAE and Qwen3 8B LLM. Optimized for speed with only 4 steps.",
+      "aliases": ["Flux.2-klein-9B", "Flux2-klein-9b", "Klein 9B"],
+      "requiredComponents": {
+        "vae": "flux2_ae.safetensors (Flux2 VAE)",
+        "llm": "Qwen3 8B (GGUF or safetensors)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 4,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Flux2 Klein Base 9B": {
+      "name": "Flux.2 Klein Base 9B",
+      "description": "Higher quality 9B parameter Flux2 model. Same requirements as Klein 9B but needs more steps and higher CFG for better results.",
+      "aliases": ["Flux.2-klein-base-9B", "Flux2-klein-base-9b", "Klein Base 9B"],
+      "requiredComponents": {
+        "vae": "flux2_ae.safetensors (Flux2 VAE)",
+        "llm": "Qwen3 8B (GGUF or safetensors)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 4.0,
+        "steps": 20,
         "sampler": "euler",
         "scheduler": "simple",
         "width": 1024,
@@ -213,6 +346,6 @@
       }
     }
   },
-  "version": 1,
+  "version": 2,
   "description": "Model architecture presets defining required components, load options, and generation defaults. Edit this file to customize - changes are auto-reloaded."
 }
