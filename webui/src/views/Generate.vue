@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { useDebounceFn } from '@vueuse/core'
 import { useAppStore } from '../stores/app'
 import { api, type GenerationParams, type Img2ImgParams, type Txt2VidParams, type PreviewSettings } from '../api/client'
 import ImageUploader from '../components/ImageUploader.vue'
@@ -215,17 +216,26 @@ watch(mode, (newMode, oldMode) => {
   sessionStorage.setItem(STORAGE_KEYS.lastMode, newMode)
 })
 
-// Watch for changes and save automatically (excluding mode changes handled above)
-watch(
-  [prompt, negativePrompt, width, height, steps, cfgScale, distilledGuidance,
-   seed, sampler, scheduler, batchCount, clipSkip, strength, controlStrength,
-   videoFrames, fps, flowShift, slgScale, easycache, easycacheThreshold, vaeTiling,
-   vaeTileSizeX, vaeTileSizeY, vaeTileOverlap],
-  () => {
-    saveSettings()
-  },
-  { deep: true }
-)
+// Debounced save for non-critical settings (500ms delay)
+const debouncedSaveSettings = useDebounceFn(() => {
+  saveSettings()
+}, 500)
+
+// Watch for changes - split into groups for better performance
+// Critical settings (prompts) save immediately
+watch([prompt, negativePrompt], saveSettings)
+
+// Dimension settings save with debounce
+watch([width, height], debouncedSaveSettings)
+
+// Generation parameters save with debounce
+watch([steps, cfgScale, distilledGuidance, seed, sampler, scheduler, batchCount, clipSkip], debouncedSaveSettings)
+
+// Mode-specific parameters save with debounce
+watch([strength, controlStrength, videoFrames, fps, flowShift], debouncedSaveSettings)
+
+// Advanced parameters save with debounce
+watch([slgScale, easycache, easycacheThreshold, vaeTiling, vaeTileSizeX, vaeTileSizeY, vaeTileOverlap], debouncedSaveSettings)
 
 // Close copy menu when clicking outside
 function handleClickOutside(event: MouseEvent) {
