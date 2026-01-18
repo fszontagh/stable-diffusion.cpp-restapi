@@ -32,6 +32,7 @@ export const useAppStore = defineStore('app', () => {
   const connected = ref(false)
   const loading = ref(false)
   const error = ref<string | null>(null)
+  const isInitialLoading = ref(true)
 
   // Queue filters - stored here so all fetchQueue calls use them
   const queueFilters = ref<QueueFilters | undefined>(undefined)
@@ -635,24 +636,34 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function startPolling() {
-    // Initial data fetch - fetch health first to get ws_port
-    await fetchHealth()
-    fetchQueue()
-    fetchOptions()  // Fetch once on start (not in polling loop)
-    fetchOllamaStatus()  // Fetch Ollama status once on start
+    isInitialLoading.value = true
+    
+    try {
+      // Initial data fetch - fetch health first to get ws_port
+      await fetchHealth()
+      
+      // Fetch initial data in parallel
+      await Promise.all([
+        fetchQueue(),
+        fetchOptions(),
+        fetchOllamaStatus()
+      ])
 
-    // Setup WebSocket handlers and connect using port from health response
-    setupWebSocketHandlers()
-    const wsPort = health.value?.ws_port ?? undefined
-    wsService.connect(wsPort)
+      // Setup WebSocket handlers and connect using port from health response
+      setupWebSocketHandlers()
+      const wsPort = health.value?.ws_port ?? undefined
+      wsService.connect(wsPort)
 
-    // Start fallback polling until WebSocket connects
-    // (will be stopped by onStateChange handler when WS connects)
-    if (!pollInterval) {
-      pollInterval = setInterval(() => {
-        fetchHealth()
-        fetchQueue()
-      }, POLL_INTERVAL_FALLBACK)
+      // Start fallback polling until WebSocket connects
+      // (will be stopped by onStateChange handler when WS connects)
+      if (!pollInterval) {
+        pollInterval = setInterval(() => {
+          fetchHealth()
+          fetchQueue()
+        }, POLL_INTERVAL_FALLBACK)
+      }
+    } finally {
+      isInitialLoading.value = false
     }
   }
 
@@ -700,6 +711,7 @@ export const useAppStore = defineStore('app', () => {
     connected,
     loading,
     error,
+    isInitialLoading,
     toasts,
     queueFilters,
     recentErrors,
