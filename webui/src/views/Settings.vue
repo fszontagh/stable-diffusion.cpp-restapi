@@ -91,6 +91,7 @@ const assistantSettings = ref({
   proactive_suggestions: true,
   system_prompt: ''
 })
+const assistantDefaultPrompt = ref('')
 const assistantConnectionTesting = ref(false)
 const assistantConnectionStatus = ref<'unknown' | 'connected' | 'disconnected'>('unknown')
 const assistantAvailableModels = ref<string[]>([])
@@ -348,6 +349,14 @@ async function loadAssistantSettings() {
   try {
     const settings = await api.getAssistantSettings()
     assistantSettings.value = settings
+    // Store the default prompt for reference
+    if (settings.default_system_prompt) {
+      assistantDefaultPrompt.value = settings.default_system_prompt
+      // If no custom prompt is set, populate with default
+      if (!settings.system_prompt) {
+        assistantSettings.value.system_prompt = settings.default_system_prompt
+      }
+    }
     // Try to get available models
     if (settings.enabled) {
       testAssistantConnection()
@@ -457,7 +466,7 @@ async function testAssistantConnection() {
 }
 
 function resetAssistantSystemPrompt() {
-  assistantSettings.value.system_prompt = ''
+  assistantSettings.value.system_prompt = assistantDefaultPrompt.value
   debouncedSaveAssistant()
   store.showToast('System prompt reset to default', 'success')
 }
@@ -1135,9 +1144,8 @@ loadSettings()
                 <SettingField
                   v-model="assistantSettings.system_prompt"
                   label=""
-                  description="Customize AI assistant behavior. Leave empty for default."
+                  description="System prompt that defines the assistant's behavior and capabilities."
                   type="textarea"
-                  placeholder="You are a helpful AI assistant that helps users with image generation..."
                   :disabled="!assistantSettings.enabled"
                   @update:model-value="debouncedSaveAssistant"
                 />
