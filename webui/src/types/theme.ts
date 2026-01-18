@@ -28,13 +28,66 @@ export interface Theme {
   description?: string
   colors: ThemeColors
   isBuiltIn: boolean
+  isDark?: boolean  // For auto-detection pairing
 }
 
-export const DEFAULT_THEME: Theme = {
-  id: 'default',
-  name: 'Default Dark',
+// SD Dark - Professional dark theme inspired by Stable Diffusion WebUI (New Default)
+export const SD_DARK_THEME: Theme = {
+  id: 'sd-dark',
+  name: 'SD Dark',
+  description: 'Professional dark theme inspired by Stable Diffusion WebUI',
+  isBuiltIn: true,
+  isDark: true,
+  colors: {
+    bgPrimary: '#0b0f19',
+    bgSecondary: '#111827',
+    bgTertiary: '#1f2937',
+    bgInput: '#1a2332',
+    bgHover: '#374151',
+    textPrimary: '#e5e7eb',
+    textSecondary: '#9ca3af',
+    textMuted: '#6b7280',
+    accentPrimary: '#f97316',
+    accentSuccess: '#22c55e',
+    accentWarning: '#eab308',
+    accentError: '#ef4444',
+    accentPurple: '#a855f7',
+    borderColor: '#374151'
+  }
+}
+
+// SD Light - Clean light theme matching SD Dark
+export const SD_LIGHT_THEME: Theme = {
+  id: 'sd-light',
+  name: 'SD Light',
+  description: 'Clean light theme matching SD Dark',
+  isBuiltIn: true,
+  isDark: false,
+  colors: {
+    bgPrimary: '#f9fafb',
+    bgSecondary: '#ffffff',
+    bgTertiary: '#f3f4f6',
+    bgInput: '#ffffff',
+    bgHover: '#e5e7eb',
+    textPrimary: '#111827',
+    textSecondary: '#4b5563',
+    textMuted: '#9ca3af',
+    accentPrimary: '#ea580c',
+    accentSuccess: '#16a34a',
+    accentWarning: '#ca8a04',
+    accentError: '#dc2626',
+    accentPurple: '#9333ea',
+    borderColor: '#e5e7eb'
+  }
+}
+
+// Classic Dark - The original SD.cpp WebUI theme
+export const CLASSIC_DARK_THEME: Theme = {
+  id: 'classic-dark',
+  name: 'Classic Dark',
   description: 'The classic SD.cpp WebUI theme',
   isBuiltIn: true,
+  isDark: true,
   colors: {
     bgPrimary: '#1a1a2e',
     bgSecondary: '#16213e',
@@ -53,13 +106,19 @@ export const DEFAULT_THEME: Theme = {
   }
 }
 
+// Keep DEFAULT_THEME for backward compatibility
+export const DEFAULT_THEME = SD_DARK_THEME
+
 export const BUILT_IN_THEMES: Theme[] = [
-  DEFAULT_THEME,
+  SD_DARK_THEME,
+  SD_LIGHT_THEME,
+  CLASSIC_DARK_THEME,
   {
     id: 'deep-blue',
     name: 'Deep Blue',
     description: 'Ocean depths theme with vibrant blues',
     isBuiltIn: true,
+    isDark: true,
     colors: {
       bgPrimary: '#0a1628',
       bgSecondary: '#0d1b2a',
@@ -82,6 +141,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     name: 'Dark Purple',
     description: 'Rich purple theme with warm accents',
     isBuiltIn: true,
+    isDark: true,
     colors: {
       bgPrimary: '#1a1423',
       bgSecondary: '#2d1b3d',
@@ -104,6 +164,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     name: 'Forest Green',
     description: 'Natural green theme inspired by forests',
     isBuiltIn: true,
+    isDark: true,
     colors: {
       bgPrimary: '#0d1b0e',
       bgSecondary: '#1a2a1e',
@@ -126,6 +187,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     name: 'Midnight Slate',
     description: 'Cool slate gray theme with subtle blue tints',
     isBuiltIn: true,
+    isDark: true,
     colors: {
       bgPrimary: '#0f1419',
       bgSecondary: '#1a1f26',
@@ -148,6 +210,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     name: 'Sunset Orange',
     description: 'Warm sunset theme with orange and coral tones',
     isBuiltIn: true,
+    isDark: true,
     colors: {
       bgPrimary: '#1a0f0a',
       bgSecondary: '#2a1810',
@@ -170,6 +233,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     name: 'Cyberpunk',
     description: 'Neon-infused cyberpunk aesthetic',
     isBuiltIn: true,
+    isDark: true,
     colors: {
       bgPrimary: '#0a0e27',
       bgSecondary: '#1a1d3a',

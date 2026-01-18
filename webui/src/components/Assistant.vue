@@ -300,20 +300,20 @@ function formatTime(timestamp: number): string {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: var(--accent-primary);
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   transition: transform 0.2s, box-shadow 0.2s;
   position: relative;
 }
 
 .assistant-icon:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
 .assistant-icon.has-suggestion {
@@ -321,8 +321,8 @@ function formatTime(timestamp: number): string {
 }
 
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4); }
-  50% { box-shadow: 0 4px 24px rgba(99, 102, 241, 0.7); }
+  0%, 100% { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
+  50% { box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5); }
 }
 
 .icon-robot {
@@ -463,7 +463,7 @@ function formatTime(timestamp: number): string {
 
 .message-user {
   align-self: flex-end;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: var(--accent-primary);
   color: white;
   border-bottom-right-radius: 4px;
 }
@@ -704,7 +704,7 @@ function formatTime(timestamp: number): string {
   height: 42px;
   border-radius: 12px;
   border: none;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: var(--accent-primary);
   color: white;
   cursor: pointer;
   display: flex;

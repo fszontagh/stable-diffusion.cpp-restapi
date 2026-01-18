@@ -1,21 +1,22 @@
 :root {
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-tertiary: #0f3460;
-  --bg-input: #1e2a4a;
-  --bg-hover: #253a5e;
+  /* SD Dark theme - Professional dark theme inspired by Stable Diffusion WebUI */
+  --bg-primary: #0b0f19;
+  --bg-secondary: #111827;
+  --bg-tertiary: #1f2937;
+  --bg-input: #1a2332;
+  --bg-hover: #374151;
 
-  --text-primary: #eee;
-  --text-secondary: #aaa;
-  --text-muted: #666;
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
 
-  --accent-primary: #00d9ff;
-  --accent-success: #98c379;
-  --accent-warning: #ffd700;
-  --accent-error: #ff6b9d;
-  --accent-purple: #c792ea;
+  --accent-primary: #f97316;
+  --accent-success: #22c55e;
+  --accent-warning: #eab308;
+  --accent-error: #ef4444;
+  --accent-purple: #a855f7;
 
-  --border-color: #2a3f5f;
+  --border-color: #374151;
   --border-radius: 8px;
   --border-radius-sm: 4px;
   --border-radius-lg: 12px;
@@ -159,7 +160,7 @@ a:focus-visible {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #33e0ff;
+  background: #fb923c;
   transform: translateY(-1px);
 }
 

@@ -7,6 +7,19 @@
       </button>
     </div>
 
+    <!-- System Theme Toggle -->
+    <div class="system-theme-option">
+      <label class="system-theme-label">
+        <input
+          type="checkbox"
+          :checked="usingSystemTheme"
+          @change="handleSystemThemeToggle"
+        />
+        <span class="checkbox-text">Follow system theme</span>
+        <span class="checkbox-hint">Automatically switch between SD Dark and SD Light based on your system preference</span>
+      </label>
+    </div>
+
     <div class="theme-grid">
       <!-- Built-in themes -->
       <div
@@ -112,9 +125,11 @@ import Modal from './Modal.vue'
 const {
   currentTheme,
   customThemes,
+  usingSystemTheme,
   setTheme,
   addCustomTheme,
-  deleteCustomTheme
+  deleteCustomTheme,
+  toggleSystemTheme
 } = useTheme()
 
 const builtInThemes = computed(() => BUILT_IN_THEMES)
@@ -127,6 +142,11 @@ const themeToDelete = ref<Theme | null>(null)
 
 function selectTheme(themeId: string) {
   setTheme(themeId)
+}
+
+function handleSystemThemeToggle(event: Event) {
+  const target = event.target as HTMLInputElement
+  toggleSystemTheme(target.checked)
 }
 
 function getThemePreviewStyle(theme: Theme) {
@@ -188,6 +208,42 @@ function deleteTheme() {
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
+}
+
+/* System Theme Toggle */
+.system-theme-option {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.system-theme-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.system-theme-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.checkbox-text {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.checkbox-hint {
+  flex-basis: 100%;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-left: calc(18px + 0.75rem);
 }
 
 .theme-grid {
