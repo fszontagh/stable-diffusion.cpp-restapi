@@ -104,6 +104,8 @@ const hasProgress = computed(() => {
         :class="{ enabled: store.desktopNotificationsEnabled }"
         @click="toggleNotifications"
         :title="store.desktopNotificationsEnabled ? 'Desktop notifications enabled (click to disable)' : 'Enable desktop notifications'"
+        :aria-label="store.desktopNotificationsEnabled ? 'Disable desktop notifications' : 'Enable desktop notifications'"
+        :aria-pressed="store.desktopNotificationsEnabled"
       >
         <svg v-if="store.desktopNotificationsEnabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -115,14 +117,15 @@ const hasProgress = computed(() => {
           <line x1="1" y1="1" x2="23" y2="23"/>
         </svg>
       </button>
-      <div class="connection-status" :class="{ connected: store.wsConnected }">
-        <span class="status-dot" :class="store.wsConnected ? 'connected' : 'disconnected'"></span>
+      <div class="connection-status" :class="{ connected: store.wsConnected }" role="status" :aria-label="`Connection status: ${connectionStatusText}`">
+        <span class="status-dot" :class="store.wsConnected ? 'connected' : 'disconnected'" aria-hidden="true"></span>
         <span class="status-text">{{ connectionStatusText }}</span>
         <button
           v-if="store.wsState === 'disconnected'"
           class="reconnect-btn"
           @click="handleReconnect"
           title="Attempt to reconnect"
+          aria-label="Reconnect to server"
         >
           &#128257;
         </button>

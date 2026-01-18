@@ -3,7 +3,6 @@ import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAssistantStore } from '../stores/assistant'
 import type { AssistantAction } from '../api/client'
-import AssistantSettings from './AssistantSettings.vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
@@ -25,7 +24,6 @@ const router = useRouter()
 
 const inputMessage = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
-const showSettings = ref(false)
 
 // Map routes to view names
 const viewMap: Record<string, string> = {
@@ -205,11 +203,12 @@ function formatTime(timestamp: number): string {
           <span v-else-if="!store.connected" class="status-badge disconnected">Offline</span>
         </div>
         <div class="header-actions">
-          <button class="icon-btn" @click="showSettings = true" title="Settings">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button class="icon-btn" @click="router.push('/settings')" title="Settings">
+            <svg class="settings-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"/>
-              <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
+            <span class="icon-label">Settings</span>
           </button>
           <button class="icon-btn" @click="store.clearHistory" title="Clear history">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -279,18 +278,12 @@ function formatTime(timestamp: number): string {
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="22" y1="2" x2="11" y2="13"/>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <!-- Settings Modal -->
-    <AssistantSettings
-      v-if="showSettings"
-      @close="showSettings = false"
-    />
-  </div>
+             <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+           </svg>
+         </button>
+       </div>
+     </div>
+   </div>
 </template>
 
 <style scoped>
