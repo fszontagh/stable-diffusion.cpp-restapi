@@ -271,6 +271,13 @@ int main(int argc, char* argv[]) {
         // Set server options
         server.set_payload_max_length(1024 * 1024 * 100);  // 100MB max for image uploads
 
+        // Set error logger for debugging HTTP connection issues
+        server.set_error_logger([](const httplib::Error& err, const httplib::Request* req) {
+            std::string path = req ? req->path : "unknown";
+            std::cerr << "[HTTP Error] " << static_cast<int>(err)
+                      << " on path: " << path << std::endl;
+        });
+
         // Determine webui path
         std::string webui_path;
 #ifdef SDCPP_WEBUI_ENABLED
