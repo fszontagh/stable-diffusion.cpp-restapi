@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from './stores/app'
+import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { useTheme } from './composables/useTheme'
 import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
 import Toast from './components/Toast.vue'
@@ -9,15 +11,30 @@ import AssistantQuestion from './components/AssistantQuestion.vue'
 import FloatingPreview from './components/FloatingPreview.vue'
 import ApiOfflineOverlay from './components/ApiOfflineOverlay.vue'
 import ErrorBoundary from './components/ErrorBoundary.vue'
+import ShortcutsHelpModal from './components/ShortcutsHelpModal.vue'
 
 const store = useAppStore()
+const shortcutsModalRef = ref<InstanceType<typeof ShortcutsHelpModal>>()
+
+// Initialize keyboard shortcuts
+useKeyboardShortcuts()
+
+// Initialize theme system (loads saved theme from localStorage)
+useTheme()
+
+// Listen for show shortcuts help event
+const handleShowShortcuts = (event: CustomEvent) => {
+  shortcutsModalRef.value?.show(event.detail.shortcuts)
+}
 
 onMounted(() => {
   store.startPolling()
+  window.addEventListener('show-shortcuts-help', handleShowShortcuts as EventListener)
 })
 
 onUnmounted(() => {
   store.stopPolling()
+  window.removeEventListener('show-shortcuts-help', handleShowShortcuts as EventListener)
 })
 </script>
 
@@ -45,6 +62,7 @@ onUnmounted(() => {
     <FloatingPreview />
     <Assistant />
     <AssistantQuestion />
+    <ShortcutsHelpModal ref="shortcutsModalRef" />
   </ErrorBoundary>
 </template>
 

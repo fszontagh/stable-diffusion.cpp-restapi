@@ -12,6 +12,7 @@ import Upscale from './views/Upscale.vue'
 import Queue from './views/Queue.vue'
 import Chat from './views/Chat.vue'
 import Downloads from './views/Downloads.vue'
+import Settings from './views/Settings.vue'
 
 const routes = [
   { path: '/', redirect: '/dashboard' },
@@ -21,7 +22,8 @@ const routes = [
   { path: '/generate', name: 'Generate', component: Generate },
   { path: '/upscale', name: 'Upscale', component: Upscale },
   { path: '/queue', name: 'Queue', component: Queue },
-  { path: '/chat', name: 'Chat', component: Chat }
+  { path: '/chat', name: 'Chat', component: Chat },
+  { path: '/settings', name: 'Settings', component: Settings }
 ]
 
 const router = createRouter({

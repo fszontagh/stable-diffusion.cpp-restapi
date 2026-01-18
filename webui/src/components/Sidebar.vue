@@ -39,6 +39,10 @@ const navItems = computed(() => {
       </router-link>
     </nav>
     <div class="sidebar-footer">
+      <router-link to="/settings" :class="['nav-item', { active: route.path === '/settings' }]">
+        <span class="nav-icon">&#9881;</span>
+        <span class="nav-label">Settings</span>
+      </router-link>
       <a href="/output" target="_blank" class="nav-item">
         <span class="nav-icon">&#128193;</span>
         <span class="nav-label">Output Files</span>
