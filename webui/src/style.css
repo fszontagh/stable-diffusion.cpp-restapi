@@ -64,6 +64,12 @@ a:hover {
   text-decoration: underline;
 }
 
+a:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
@@ -140,6 +146,11 @@ a:hover {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .btn-primary {
@@ -240,6 +251,13 @@ a:hover {
   border-color: var(--accent-primary);
 }
 
+.form-input:focus-visible,
+.form-select:focus-visible,
+.form-textarea:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 0;
+}
+
 .form-input::placeholder,
 .form-textarea::placeholder {
   color: var(--text-muted);
@@ -271,6 +289,11 @@ a:hover {
   height: 18px;
   accent-color: var(--accent-primary);
   cursor: pointer;
+}
+
+.form-checkbox input:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .form-row {
@@ -337,6 +360,11 @@ a:hover {
 .tab.active {
   color: var(--accent-primary);
   border-bottom-color: var(--accent-primary);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
 }
 
 /* Badges */
@@ -560,6 +588,11 @@ a:hover {
   background: var(--bg-hover);
 }
 
+.accordion-header:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
 .accordion-content {
   padding: 16px;
   background: var(--bg-secondary);
@@ -710,6 +743,12 @@ a:hover {
 
 .modal-close:hover {
   color: var(--text-primary);
+}
+
+.modal-close:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .modal-body {
