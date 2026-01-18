@@ -340,12 +340,24 @@ export class ApiError extends Error {
 
 class ApiClient {
   private baseUrl: string
+  private pendingRequests = new Map<string, Promise<unknown>>()
 
   constructor(baseUrl = '') {
     this.baseUrl = baseUrl
   }
 
+  private getRequestKey(method: string, endpoint: string, data?: unknown): string {
+    return `${method}:${endpoint}:${JSON.stringify(data || '')}`
+  }
+
   private async request<T>(method: string, endpoint: string, data?: unknown): Promise<T> {
+    // Check for duplicate requests (only for GET requests to avoid blocking mutations)
+    const requestKey = this.getRequestKey(method, endpoint, data)
+    if (method === 'GET' && this.pendingRequests.has(requestKey)) {
+      console.log(`[API] Deduplicating request: ${requestKey}`)
+      return this.pendingRequests.get(requestKey) as Promise<T>
+    }
+
     // Add breadcrumb for Sentry
     if (typeof window !== 'undefined') {
       try {
@@ -367,42 +379,57 @@ class ApiClient {
       options.body = JSON.stringify(data)
     }
 
-    try {
-      const response = await fetch(this.baseUrl + endpoint, options)
-      const json = await response.json()
+    // Create the request promise
+    const requestPromise = (async () => {
+      try {
+        const response = await fetch(this.baseUrl + endpoint, options)
+        const json = await response.json()
 
-      if (!response.ok) {
-        const error = new ApiError(json.error || 'Request failed', response.status)
-        
-        // Add error breadcrumb
-        if (typeof window !== 'undefined') {
-          try {
-            const { addBreadcrumb } = await import('../services/sentry')
-            addBreadcrumb('api-error', `${method} ${endpoint} failed`, { 
-              status: response.status,
-              error: json.error 
-            })
-          } catch (e) {
-            // Sentry not available, ignore
+        if (!response.ok) {
+          const error = new ApiError(json.error || 'Request failed', response.status)
+          
+          // Add error breadcrumb
+          if (typeof window !== 'undefined') {
+            try {
+              const { addBreadcrumb } = await import('../services/sentry')
+              addBreadcrumb('api-error', `${method} ${endpoint} failed`, { 
+                status: response.status,
+                error: json.error 
+              })
+            } catch (e) {
+              // Sentry not available, ignore
+            }
           }
+          
+          throw error
+        }
+
+        return json as T
+      } catch (error) {
+        // Re-throw ApiErrors as-is
+        if (error instanceof ApiError) {
+          throw error
         }
         
-        throw error
+        // Wrap other errors
+        throw new ApiError(
+          error instanceof Error ? error.message : 'Network request failed',
+          0
+        )
+      } finally {
+        // Remove from pending requests after 5 seconds to prevent instant re-requests
+        setTimeout(() => {
+          this.pendingRequests.delete(requestKey)
+        }, 5000)
       }
+    })()
 
-      return json as T
-    } catch (error) {
-      // Re-throw ApiErrors as-is
-      if (error instanceof ApiError) {
-        throw error
-      }
-      
-      // Wrap other errors
-      throw new ApiError(
-        error instanceof Error ? error.message : 'Network request failed',
-        0
-      )
+    // Store promise for GET requests only
+    if (method === 'GET') {
+      this.pendingRequests.set(requestKey, requestPromise)
     }
+
+    return requestPromise
   }
 
   // Health
