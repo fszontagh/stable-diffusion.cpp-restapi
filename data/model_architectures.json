@@ -122,6 +122,28 @@
         "height": 1024
       }
     },
+    "Vega": {
+      "name": "Vega (Segmind)",
+      "description": "Segmind Vega - distilled SDXL model with 1B parameters. Optimized for speed while maintaining quality similar to SDXL.",
+      "aliases": ["Segmind-Vega", "SDXL-Vega", "segmind-vega"],
+      "requiredComponents": {},
+      "optionalComponents": {
+        "vae": "Recommended for better color accuracy"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "vae_decode_only": true,
+        "force_sdxl_vae_conv_scale": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 7.0,
+        "steps": 20,
+        "sampler": "euler_a",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
     "LCM-SDXL": {
       "name": "LCM (SDXL)",
       "description": "Latent Consistency Model distilled from SDXL. Enables fast 2-8 step generation at 1024x1024. Negative prompts have no effect.",
