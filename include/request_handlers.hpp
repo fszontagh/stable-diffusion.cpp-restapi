@@ -68,6 +68,7 @@ private:
     void handle_get_queue(const httplib::Request& req, httplib::Response& res);
     void handle_get_job(const httplib::Request& req, httplib::Response& res);
     void handle_cancel_job(const httplib::Request& req, httplib::Response& res);
+    void handle_delete_jobs(const httplib::Request& req, httplib::Response& res);
     
     // Health endpoint
     void handle_health(const httplib::Request& req, httplib::Response& res);

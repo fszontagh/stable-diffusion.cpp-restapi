@@ -658,6 +658,10 @@ class ApiClient {
     return this.request('DELETE', `/queue/${jobId}`)
   }
 
+  async deleteJobs(jobIds: string[]): Promise<{ success: boolean; deleted: number; failed: number; total: number; failed_job_ids?: string[] }> {
+    return this.request('DELETE', '/queue/jobs', { job_ids: jobIds })
+  }
+
   // Restart a job by resubmitting with same params
   async restartJob(job: Job): Promise<JobSubmitResponse> {
     if (!job.params) {
@@ -849,7 +853,7 @@ export interface PreviewSettingsUpdateResponse {
 
 // Assistant Types
 export interface AssistantAction {
-  type: 'set_setting' | 'load_model' | 'set_component' | 'unload_model' | 'refresh_models' | 'generate' | 'cancel_job' | 'navigate' | 'set_image' | 'apply_recommended_settings' | 'highlight_setting' | 'load_upscaler' | 'unload_upscaler' | 'upscale' | 'ask_user' | 'download_model' | 'get_job' | 'search_jobs' | 'load_job_model' | 'convert_model' | 'get_status' | 'get_models' | 'get_settings' | 'get_architectures'
+  type: 'set_setting' | 'load_model' | 'set_component' | 'unload_model' | 'refresh_models' | 'generate' | 'cancel_job' | 'navigate' | 'set_image' | 'apply_recommended_settings' | 'highlight_setting' | 'load_upscaler' | 'unload_upscaler' | 'upscale' | 'ask_user' | 'download_model' | 'get_job' | 'search_jobs' | 'load_job_model' | 'convert_model' | 'get_status' | 'get_models' | 'get_settings' | 'get_architectures' | 'list_jobs' | 'delete_jobs'
   parameters: Record<string, unknown>
 }
 

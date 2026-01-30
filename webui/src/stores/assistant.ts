@@ -1889,6 +1889,73 @@ export const useAssistantStore = defineStore('assistant', () => {
             successes.push(`get_architectures: ${JSON.stringify(archPresets)}`)
             break
           }
+
+          case 'list_jobs': {
+            // List jobs with optional ordering, limit, and offset
+            // Returns only job IDs, with metadata about job status counts
+            const order = ((action.parameters.order as string) || 'DESC').toUpperCase()
+            const limit = (action.parameters.limit as number) || 10
+            const offset = (action.parameters.offset as number) || 0
+
+            // Validate order parameter
+            if (order !== 'ASC' && order !== 'DESC') {
+              errors.push('Invalid order parameter: must be "ASC" or "DESC"')
+              break
+            }
+
+            // Fetch queue from backend with the specified filters
+            // The backend supports offset/limit for pagination
+            try {
+              const queueResponse = await api.getQueue({
+                limit,
+                offset
+              })
+
+              // Extract job IDs from the results
+              const jobIds = (queueResponse.items || []).map(job => job.job_id)
+
+              // Build metadata about job status counts (from queue stats)
+              const metadata = {
+                status_counts: {
+                  pending: queueResponse.pending_count,
+                  processing: queueResponse.processing_count,
+                  completed: queueResponse.completed_count,
+                  failed: queueResponse.failed_count,
+                  total: queueResponse.total_count
+                },
+                returned_count: jobIds.length,
+                limit,
+                offset
+              }
+
+              successes.push(`list_jobs: ${JSON.stringify({ jobs: jobIds, metadata })}`)
+            } catch (e) {
+              throw new Error(`Failed to list jobs: ${e instanceof Error ? e.message : 'Unknown error'}`)
+            }
+            break
+          }
+
+          case 'delete_jobs': {
+            // Delete one or more queue items
+            // IMPORTANT: The assistant is instructed to ask the user for confirmation
+            // before calling this action (via ask_user tool)
+            const jobIds = action.parameters.job_ids as string[]
+
+            // Validate job_ids parameter
+            if (!jobIds || !Array.isArray(jobIds) || jobIds.length === 0) {
+              errors.push('delete_jobs requires job_ids array parameter')
+              break
+            }
+
+            try {
+              const response = await api.deleteJobs(jobIds)
+              appStore.showToast(`Deleted ${response.deleted} jobs`, 'success')
+              successes.push(`delete_jobs: deleted ${response.deleted}/${response.total} jobs`)
+            } catch (e) {
+              throw new Error(`Failed to delete jobs: ${e instanceof Error ? e.message : 'Unknown error'}`)
+            }
+            break
+          }
         }
       } catch (e) {
         const errorMsg = e instanceof Error ? e.message : 'Unknown error'

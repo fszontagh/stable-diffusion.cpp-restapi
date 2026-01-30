@@ -560,6 +560,39 @@ nlohmann::json AssistantClient::build_tools() const {
         }}
     });
 
+    // list_jobs tool
+    tools.push_back({
+        {"type", "function"},
+        {"function", {
+            {"name", "list_jobs"},
+            {"description", "List jobs with optional ordering and pagination. Returns only job IDs with metadata about job status counts."},
+            {"parameters", {
+                {"type", "object"},
+                {"properties", {
+                    {"order", {{"type", "string"}, {"enum", {"ASC", "DESC"}}, {"description", "Sort order by creation time (default: DESC for newest first)"}}},
+                    {"limit", {{"type", "integer"}, {"description", "Number of jobs to return (default: 10)"}}},
+                    {"offset", {{"type", "integer"}, {"description", "Skip first N jobs for pagination (default: 0)"}}}
+                }}
+            }}
+        }}
+    });
+
+    // delete_jobs tool
+    tools.push_back({
+        {"type", "function"},
+        {"function", {
+            {"name", "delete_jobs"},
+            {"description", "Delete one or more queue jobs. IMPORTANT: You MUST ask the user for confirmation using the ask_user tool before deleting any jobs. Only jobs that are not currently processing can be deleted (pending, completed, failed, or cancelled jobs)."},
+            {"parameters", {
+                {"type", "object"},
+                {"required", nlohmann::json::array({"job_ids"})},
+                {"properties", {
+                    {"job_ids", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Array of job IDs to delete"}}}
+                }}
+            }}
+        }}
+    });
+
     return tools;
 }
 
