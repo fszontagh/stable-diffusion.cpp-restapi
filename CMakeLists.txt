@@ -28,6 +28,8 @@ option(SD_METAL   "Enable Metal backend for stable-diffusion.cpp" OFF)
 option(SD_HIPBLAS "Enable ROCm/HIP backend for stable-diffusion.cpp" OFF)
 option(SD_OPENCL  "Enable OpenCL backend for stable-diffusion.cpp" OFF)
 option(SDCPP_WEBUI "Build and include Web UI (requires Node.js/npm)" ON)
+option(SDCPP_WEBSOCKET "Build WebSocket server for real-time updates" ON)
+option(FORCE_WEBSOCKET "Force WebSocket even if WebUI is disabled" OFF)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
@@ -77,35 +79,40 @@ FetchContent_Declare(
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(json)
 
-# uSockets (C library for uWebSockets)
-FetchContent_Declare(
-    usockets
-    GIT_REPOSITORY https://github.com/uNetworking/uSockets.git
-    GIT_TAG        v0.8.8
-)
-FetchContent_MakeAvailable(usockets)
+# uSockets and uWebSockets (only if WebSocket enabled)
+if(SDCPP_WEBSOCKET)
+    # uSockets (C library for uWebSockets)
+    FetchContent_Declare(
+        usockets
+        GIT_REPOSITORY https://github.com/uNetworking/uSockets.git
+        GIT_TAG        v0.8.8
+    )
+    FetchContent_MakeAvailable(usockets)
 
-# uWebSockets (header-only WebSocket library)
-FetchContent_Declare(
-    uwebsockets
-    GIT_REPOSITORY https://github.com/uNetworking/uWebSockets.git
-    GIT_TAG        v20.74.0
-)
-FetchContent_MakeAvailable(uwebsockets)
+    # uWebSockets (header-only WebSocket library)
+    FetchContent_Declare(
+        uwebsockets
+        GIT_REPOSITORY https://github.com/uNetworking/uWebSockets.git
+        GIT_TAG        v20.74.0
+    )
+    FetchContent_MakeAvailable(uwebsockets)
 
-# Build uSockets as a static library (without SSL for simplicity)
-add_library(uSockets STATIC
-    ${usockets_SOURCE_DIR}/src/eventing/epoll_kqueue.c
-    ${usockets_SOURCE_DIR}/src/context.c
-    ${usockets_SOURCE_DIR}/src/loop.c
-    ${usockets_SOURCE_DIR}/src/socket.c
-    ${usockets_SOURCE_DIR}/src/bsd.c
-)
-target_include_directories(uSockets PUBLIC ${usockets_SOURCE_DIR}/src)
-target_compile_definitions(uSockets PRIVATE LIBUS_NO_SSL=1)
+    # Build uSockets as a static library (without SSL for simplicity)
+    add_library(uSockets STATIC
+        ${usockets_SOURCE_DIR}/src/eventing/epoll_kqueue.c
+        ${usockets_SOURCE_DIR}/src/context.c
+        ${usockets_SOURCE_DIR}/src/loop.c
+        ${usockets_SOURCE_DIR}/src/socket.c
+        ${usockets_SOURCE_DIR}/src/bsd.c
+    )
+    target_include_directories(uSockets PUBLIC ${usockets_SOURCE_DIR}/src)
+    target_compile_definitions(uSockets PRIVATE LIBUS_NO_SSL=1)
+endif()
 
-# Find zlib for uWebSockets compression support
-find_package(ZLIB REQUIRED)
+# Find zlib for uWebSockets compression support (if WebSocket is enabled)
+if(SDCPP_WEBSOCKET)
+    find_package(ZLIB REQUIRED)
+endif()
 
 #
 # stable-diffusion.cpp via FetchContent
@@ -185,7 +192,7 @@ endif()
 #
 # Main executable
 #
-add_executable(sdcpp-restapi
+set(SDCPP_SOURCES
     src/main.cpp
     src/config.cpp
     src/utils.cpp
@@ -194,7 +201,6 @@ add_executable(sdcpp-restapi
     src/sd_wrapper.cpp
     src/request_handlers.cpp
     src/stb_impl.cpp
-    src/websocket_server.cpp
     src/ollama_client.cpp
     src/assistant_client.cpp
     src/architecture_manager.cpp
@@ -202,13 +208,26 @@ add_executable(sdcpp-restapi
     src/settings_manager.cpp
 )
 
+# Add WebSocket server source only if enabled
+if(SDCPP_WEBSOCKET)
+    list(APPEND SDCPP_SOURCES src/websocket_server.cpp)
+endif()
+
+add_executable(sdcpp-restapi ${SDCPP_SOURCES})
+
 target_include_directories(sdcpp-restapi PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${stable-diffusion_SOURCE_DIR}
     ${stable-diffusion_SOURCE_DIR}/thirdparty
-    ${uwebsockets_SOURCE_DIR}/src
-    ${usockets_SOURCE_DIR}/src
 )
+
+# Add WebSocket includes only if enabled
+if(SDCPP_WEBSOCKET)
+    target_include_directories(sdcpp-restapi PRIVATE
+        ${uwebsockets_SOURCE_DIR}/src
+        ${usockets_SOURCE_DIR}/src
+    )
+endif()
 
 target_link_libraries(sdcpp-restapi PRIVATE
     stable-diffusion
@@ -216,9 +235,15 @@ target_link_libraries(sdcpp-restapi PRIVATE
     nlohmann_json::nlohmann_json
     Threads::Threads
     OpenSSL::Crypto
-    uSockets
-    ZLIB::ZLIB
 )
+
+# Add WebSocket libraries only if enabled
+if(SDCPP_WEBSOCKET)
+    target_link_libraries(sdcpp-restapi PRIVATE
+        uSockets
+        ZLIB::ZLIB
+    )
+endif()
 
 # Link CUDA runtime and set compile definition for scheduling fix
 if(SD_CUDA)
@@ -231,6 +256,21 @@ if(MSVC)
     target_compile_options(sdcpp-restapi PRIVATE /W4)
 else()
     target_compile_options(sdcpp-restapi PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+#
+# WebSocket logic: Auto-disable if WebUI is disabled (unless forced)
+#
+if(NOT SDCPP_WEBUI AND NOT FORCE_WEBSOCKET)
+    if(SDCPP_WEBSOCKET)
+        message(STATUS "WebSocket: auto-disabled (WebUI is disabled, use -DFORCE_WEBSOCKET=ON to override)")
+    endif()
+    set(SDCPP_WEBSOCKET OFF CACHE BOOL "WebSocket disabled (WebUI disabled)" FORCE)
+endif()
+
+# WebSocket compile definition
+if(SDCPP_WEBSOCKET)
+    target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_WEBSOCKET_ENABLED=1)
 endif()
 
 #
@@ -266,6 +306,6 @@ message(STATUS "Metal backend:   ${SD_METAL}")
 message(STATUS "ROCm backend:    ${SD_HIPBLAS}")
 message(STATUS "OpenCL backend:  ${SD_OPENCL}")
 message(STATUS "Web UI:          ${SDCPP_WEBUI}")
-message(STATUS "WebSocket:       enabled (uWebSockets)")
+message(STATUS "WebSocket:       ${SDCPP_WEBSOCKET}")
 message(STATUS "===================================")
 message(STATUS "")

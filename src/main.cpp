@@ -17,7 +17,9 @@
 #include "model_manager.hpp"
 #include "queue_manager.hpp"
 #include "request_handlers.hpp"
+#ifdef SDCPP_WEBSOCKET_ENABLED
 #include "websocket_server.hpp"
+#endif
 #include "sd_error_capture.hpp"
 #include "stable-diffusion.h"
 
@@ -67,7 +69,9 @@ void sd_log_callback(sd_log_level_t level, const char* text, void* /*data*/) {
 static std::atomic<bool> g_running{true};
 static std::atomic<int> g_signal_count{0};
 static httplib::Server* g_server = nullptr;
+#ifdef SDCPP_WEBSOCKET_ENABLED
 static sdcpp::WebSocketServer* g_ws_server = nullptr;
+#endif
 
 /**
  * Signal handler for graceful shutdown
@@ -92,9 +96,11 @@ void signal_handler(int signal) {
         }
 
         // Signal WebSocket server to stop (but don't join thread from signal handler)
+#ifdef SDCPP_WEBSOCKET_ENABLED
         if (g_ws_server) {
             g_ws_server->request_stop();
         }
+#endif
     } else {
         // Second signal - force immediate exit
         const char* msg = "\nForce quit!\n";
@@ -300,7 +306,12 @@ int main(int argc, char* argv[]) {
 
         // Initialize Request Handlers and register routes
         std::cout << "Registering API routes..." << std::endl;
-        sdcpp::RequestHandlers handlers(model_manager, queue_manager, config.paths.output, webui_path, config.server.ws_port, config.ollama, config.assistant, config_path);
+#ifdef SDCPP_WEBSOCKET_ENABLED
+        int ws_port_to_use = config.server.ws_port;
+#else
+        int ws_port_to_use = 0;  // WebSocket disabled at build time
+#endif
+        sdcpp::RequestHandlers handlers(model_manager, queue_manager, config.paths.output, webui_path, ws_port_to_use, config.ollama, config.assistant, config_path);
         handlers.register_routes(server);
 
         // Set error handler for HTTP errors (404, etc.)
@@ -339,7 +350,8 @@ int main(int argc, char* argv[]) {
             res.set_content(error_json.dump(), "application/json");
         });
 
-        // Initialize WebSocket server (if enabled)
+        // Initialize WebSocket server (if enabled at build time and in config)
+#ifdef SDCPP_WEBSOCKET_ENABLED
         std::unique_ptr<sdcpp::WebSocketServer> ws_server;
         if (config.server.ws_port > 0) {
             std::cout << "Initializing WebSocket server..." << std::endl;
@@ -347,7 +359,12 @@ int main(int argc, char* argv[]) {
             sdcpp::set_websocket_server(ws_server.get());
             g_ws_server = ws_server.get();
             ws_server->start();
+        } else {
+            std::cout << "WebSocket server disabled in config (ws_port: 0)" << std::endl;
         }
+#else
+        std::cout << "WebSocket server disabled at build time" << std::endl;
+#endif
 
         // Start the queue worker
         std::cout << "Starting queue worker..." << std::endl;
@@ -358,9 +375,11 @@ int main(int argc, char* argv[]) {
         std::cout << "SDCPP-RESTAPI Server Started" << std::endl;
         std::cout << "========================================" << std::endl;
         std::cout << "HTTP API:     http://" << config.server.host << ":" << config.server.port << std::endl;
+#ifdef SDCPP_WEBSOCKET_ENABLED
         if (config.server.ws_port > 0) {
             std::cout << "WebSocket:    ws://" << config.server.host << ":" << config.server.ws_port << std::endl;
         }
+#endif
         std::cout << "Output URL:   http://" << config.server.host << ":" << config.server.port << "/output/" << std::endl;
         if (!webui_path.empty()) {
             std::cout << "Web UI:       http://" << config.server.host << ":" << config.server.port << "/ui/" << std::endl;
@@ -377,12 +396,14 @@ int main(int argc, char* argv[]) {
 
         // Cleanup
         // Stop WebSocket server first (to prevent new event broadcasts)
+#ifdef SDCPP_WEBSOCKET_ENABLED
         if (ws_server) {
             std::cout << "Stopping WebSocket server..." << std::endl;
             ws_server->stop();
             sdcpp::set_websocket_server(nullptr);
             g_ws_server = nullptr;
         }
+#endif
 
         std::cout << "Stopping queue worker..." << std::endl;
         queue_manager.stop();
