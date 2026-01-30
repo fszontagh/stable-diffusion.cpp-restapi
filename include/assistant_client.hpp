@@ -146,20 +146,40 @@ Available tools/actions:
   It automatically loads the correct model with all its components exactly as they were when the job was created.
   Use this instead of load_model when you want to replicate a job's model configuration.
   Example: { "type": "load_job_model", "parameters": { "job_id": "abc123" } }
-- search_jobs: Search for jobs by prompt text, model, architecture, status, or type.
-  Parameters:
-    - prompt: (string, optional) Search for jobs containing this text in their prompt
-    - model: (string, optional) Search by model name (partial match, case-insensitive)
-    - architecture: (string, optional) Search by model architecture: "SD1"|"SD2"|"SDXL"|"Flux"|"SD3"|"Z-Image"|"Qwen"|"Wan" etc.
-    - status: (string, optional) Filter by status: "pending"|"processing"|"completed"|"failed"|"cancelled"
-    - type: (string, optional) Filter by job type: "txt2img"|"img2img"|"txt2vid"|"upscale"
-    - limit: (number, optional, default 10) Maximum results to return
-  IMPORTANT: After this action executes, you will receive the search results in last_action_results
-  and should continue with follow-up actions (like load_job_model) based on the jobs found.
-  Example: { "type": "search_jobs", "parameters": { "prompt": "cat", "status": "completed" } }
-  Example: { "type": "search_jobs", "parameters": { "architecture": "Z-Image", "limit": 5 } }
-  Example: { "type": "search_jobs", "parameters": { "model": "flux", "status": "completed" } }
-- navigate: Navigate to a view (view: "dashboard"|"models"|"generate"|"queue"|"upscale"|"chat")
+ - search_jobs: Search for jobs by prompt text, model, architecture, status, or type.
+   Parameters:
+     - prompt: (string, optional) Search for jobs containing this text in their prompt
+     - model: (string, optional) Search by model name (partial match, case-insensitive)
+     - architecture: (string, optional) Search by model architecture: "SD1"|"SD2"|"SDXL"|"Flux"|"SD3"|"Z-Image"|"Qwen"|"Wan" etc.
+     - status: (string, optional) Filter by status: "pending"|"processing"|"completed"|"failed"|"cancelled"
+     - type: (string, optional) Filter by job type: "txt2img"|"img2img"|"txt2vid"|"upscale"
+     - limit: (number, optional, default 10) Maximum results to return
+   IMPORTANT: After this action executes, you will receive the search results in last_action_results
+   and should continue with follow-up actions (like load_job_model) based on the jobs found.
+   Example: { "type": "search_jobs", "parameters": { "prompt": "cat", "status": "completed" } }
+   Example: { "type": "search_jobs", "parameters": { "architecture": "Z-Image", "limit": 5 } }
+   Example: { "type": "search_jobs", "parameters": { "model": "flux", "status": "completed" } }
+ - list_jobs: List jobs with pagination. Returns only job IDs and status count metadata.
+   Use this to browse jobs without full search criteria.
+   Parameters:
+     - order: (string, optional, default "DESC") Sort order: "ASC" (oldest first) or "DESC" (newest first)
+     - limit: (number, optional, default 10) Number of jobs to return
+     - offset: (number, optional, default 0) Skip first N jobs for pagination
+   Returns: array of job_ids and metadata with status_counts (pending/processing/completed/failed/total)
+   Example: { "type": "list_jobs", "parameters": { "limit": 20, "order": "DESC" } }
+   Example: { "type": "list_jobs", "parameters": { "limit": 10, "offset": 20 } }
+ - delete_jobs: Delete one or more queue jobs. ONLY works for jobs not currently processing.
+   IMPORTANT: You MUST use ask_user to get confirmation before calling this action!
+   Parameters:
+     - job_ids: (string[], required) Array of job IDs to delete
+   Example workflow:
+     1. First ask: { "type": "ask_user", "parameters": {
+         "title": "Delete Jobs",
+         "question": "Are you sure you want to delete 3 jobs? This cannot be undone.",
+         "options": ["Yes, delete them", "No, cancel"]
+       }}
+     2. If user confirms: { "type": "delete_jobs", "parameters": { "job_ids": ["id1", "id2", "id3"] } }
+ - navigate: Navigate to a view (view: "dashboard"|"models"|"generate"|"queue"|"upscale"|"chat")
 - apply_recommended_settings: Apply the recommended settings for the current model architecture
 - highlight_setting: Scroll to and highlight a setting field (field: string)
 - load_upscaler: Load an ESRGAN upscaler model (model_name: string, tile_size: optional number, default 128)
