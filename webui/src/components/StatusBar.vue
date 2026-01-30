@@ -21,11 +21,21 @@ function handleReconnect() {
   store.showToast('Attempting to reconnect...', 'info')
 }
 
+// Check if WebSocket is available at build time
+const wsAvailable = computed(() => {
+  return store.health?.ws_port !== null && store.health?.ws_port !== undefined
+})
+
 // Connection status text
 const connectionStatusText = computed(() => {
+  // If WebSocket is not available at build time, show polling mode
+  if (!wsAvailable.value) {
+    return 'Polling Mode'
+  }
+  
   switch (store.wsState) {
     case 'connected':
-      return 'Connected'
+      return 'Real-time'
     case 'connecting':
       return 'Connecting...'
     case 'reconnecting':
@@ -117,11 +127,11 @@ const hasProgress = computed(() => {
           <line x1="1" y1="1" x2="23" y2="23"/>
         </svg>
       </button>
-      <div class="connection-status" :class="{ connected: store.wsConnected }" role="status" :aria-label="`Connection status: ${connectionStatusText}`">
-        <span class="status-dot" :class="store.wsConnected ? 'connected' : 'disconnected'" aria-hidden="true"></span>
+      <div class="connection-status" :class="{ connected: store.wsConnected, polling: !wsAvailable }" role="status" :aria-label="`Connection status: ${connectionStatusText}`">
+        <span class="status-dot" :class="wsAvailable ? (store.wsConnected ? 'connected' : 'disconnected') : 'polling'" aria-hidden="true"></span>
         <span class="status-text">{{ connectionStatusText }}</span>
         <button
-          v-if="store.wsState === 'disconnected'"
+          v-if="wsAvailable && store.wsState === 'disconnected'"
           class="reconnect-btn"
           @click="handleReconnect"
           title="Attempt to reconnect"
@@ -323,6 +333,20 @@ const hasProgress = computed(() => {
 
 .connection-status.connected .status-text {
   color: var(--accent-success);
+}
+
+.connection-status.polling .status-text {
+  color: var(--text-secondary);
+}
+
+.status-dot.polling {
+  background: var(--text-muted);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
 }
 
 .reconnect-btn {
