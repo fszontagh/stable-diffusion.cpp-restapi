@@ -103,6 +103,9 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     server.Delete(R"(/queue/([a-f0-9\-]+))", [this](const httplib::Request& req, httplib::Response& res) {
         handle_cancel_job(req, res);
     });
+    server.Delete("/queue/jobs", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_delete_jobs(req, res);
+    });
 
     // Thumbnail endpoint - must be before file browser
     server.Get(R"(/thumb/(.*))", [this](const httplib::Request& req, httplib::Response& res) {
@@ -814,6 +817,53 @@ void RequestHandlers::handle_cancel_job(const httplib::Request& req, httplib::Re
         });
     } else {
         send_error(res, "Cannot cancel job (not found or already processing)", 400);
+    }
+}
+
+void RequestHandlers::handle_delete_jobs(const httplib::Request& req, httplib::Response& res) {
+    try {
+        nlohmann::json body = parse_json_body(req);
+        
+        if (!body.contains("job_ids") || !body["job_ids"].is_array()) {
+            send_error(res, "job_ids array is required in request body", 400);
+            return;
+        }
+        
+        auto job_ids = body["job_ids"].get<std::vector<std::string>>();
+        
+        if (job_ids.empty()) {
+            send_error(res, "job_ids array cannot be empty", 400);
+            return;
+        }
+        
+        int deleted = 0;
+        int failed = 0;
+        std::vector<std::string> failed_job_ids;
+        
+        for (const auto& job_id : job_ids) {
+            if (queue_manager_.delete_job(job_id)) {
+                deleted++;
+            } else {
+                failed++;
+                failed_job_ids.push_back(job_id);
+            }
+        }
+        
+        nlohmann::json response = {
+            {"success", true},
+            {"deleted", deleted},
+            {"failed", failed},
+            {"total", static_cast<int>(job_ids.size())}
+        };
+        
+        if (!failed_job_ids.empty()) {
+            response["failed_job_ids"] = failed_job_ids;
+        }
+        
+        send_json(res, response);
+        
+    } catch (const std::exception& e) {
+        send_error(res, std::string("Failed to delete jobs: ") + e.what(), 500);
     }
 }
 
