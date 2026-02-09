@@ -43,17 +43,6 @@ SERVER_PORT=""
 MODELS_DIR=""
 OUTPUT_DIR=""
 
-# Ollama configuration values
-OLLAMA_ENABLED=""
-OLLAMA_ENDPOINT=""
-OLLAMA_API_KEY=""
-OLLAMA_MODEL=""
-OLLAMA_TEMPERATURE=""
-OLLAMA_MAX_TOKENS=""
-OLLAMA_SYSTEM_PROMPT=""
-OLLAMA_TIMEOUT=""
-OLLAMA_MAX_HISTORY=""
-
 # Assistant configuration values
 ASSISTANT_ENABLED=""
 ASSISTANT_ENDPOINT=""
@@ -108,9 +97,6 @@ Options:
 
 If a config file already exists at ${CONFIG_FILE},
 values from it will be used as defaults for the prompts.
-
-The installer will also ask about Ollama configuration for AI-powered
-prompt enhancement. This can be a local Ollama instance or a cloud endpoint.
 
 Examples:
     sudo $0                                    # Install interactively
@@ -432,9 +418,6 @@ do_install() {
 
     # Read existing config values as defaults
     local DEFAULT_HOST DEFAULT_PORT DEFAULT_MODELS DEFAULT_OUTPUT
-    local DEFAULT_OLLAMA_ENABLED DEFAULT_OLLAMA_ENDPOINT DEFAULT_OLLAMA_API_KEY
-    local DEFAULT_OLLAMA_MODEL DEFAULT_OLLAMA_TEMPERATURE DEFAULT_OLLAMA_MAX_TOKENS
-    local DEFAULT_OLLAMA_SYSTEM_PROMPT DEFAULT_OLLAMA_TIMEOUT DEFAULT_OLLAMA_MAX_HISTORY
     local DEFAULT_ASSISTANT_ENABLED DEFAULT_ASSISTANT_ENDPOINT DEFAULT_ASSISTANT_API_KEY
     local DEFAULT_ASSISTANT_MODEL DEFAULT_ASSISTANT_TEMPERATURE DEFAULT_ASSISTANT_MAX_TOKENS
     local DEFAULT_ASSISTANT_SYSTEM_PROMPT DEFAULT_ASSISTANT_TIMEOUT DEFAULT_ASSISTANT_MAX_HISTORY
@@ -449,16 +432,14 @@ do_install() {
         DEFAULT_MODELS=$(dirname "$DEFAULT_MODELS")
         DEFAULT_OUTPUT=$(read_config_value '.paths.output' "${INSTALL_DIR}/output")
 
-        # Read Ollama config
-        DEFAULT_OLLAMA_ENABLED=$(read_config_value '.ollama.enabled' 'false')
-        DEFAULT_OLLAMA_ENDPOINT=$(read_config_value '.ollama.endpoint' 'http://localhost:11434')
-        DEFAULT_OLLAMA_API_KEY=$(read_config_value '.ollama.api_key' '')
-        DEFAULT_OLLAMA_MODEL=$(read_config_value '.ollama.model' 'llama3.2')
-        DEFAULT_OLLAMA_TEMPERATURE=$(read_config_value '.ollama.temperature' '0.7')
-        DEFAULT_OLLAMA_MAX_TOKENS=$(read_config_value '.ollama.max_tokens' '500')
-        DEFAULT_OLLAMA_SYSTEM_PROMPT=$(read_config_value '.ollama.system_prompt' '')
-        DEFAULT_OLLAMA_TIMEOUT=$(read_config_value '.ollama.timeout_seconds' '60')
-        DEFAULT_OLLAMA_MAX_HISTORY=$(read_config_value '.ollama.max_history' '100')
+        # Migration: remove deprecated "ollama" config section if present
+        if command -v jq &>/dev/null; then
+            if jq -e '.ollama' "${CONFIG_FILE}" &>/dev/null; then
+                print_info "Migrating config: removing deprecated 'ollama' section..."
+                jq 'del(.ollama)' "${CONFIG_FILE}" > "${CONFIG_FILE}.migrated"
+                mv "${CONFIG_FILE}.migrated" "${CONFIG_FILE}"
+            fi
+        fi
 
         # Read Assistant config
         DEFAULT_ASSISTANT_ENABLED=$(read_config_value '.assistant.enabled' 'false')
@@ -476,17 +457,6 @@ do_install() {
         DEFAULT_PORT="8080"
         DEFAULT_MODELS="${INSTALL_DIR}/models"
         DEFAULT_OUTPUT="${INSTALL_DIR}/output"
-
-        # Default Ollama config
-        DEFAULT_OLLAMA_ENABLED="false"
-        DEFAULT_OLLAMA_ENDPOINT="http://localhost:11434"
-        DEFAULT_OLLAMA_API_KEY=""
-        DEFAULT_OLLAMA_MODEL="llama3.2"
-        DEFAULT_OLLAMA_TEMPERATURE="0.7"
-        DEFAULT_OLLAMA_MAX_TOKENS="500"
-        DEFAULT_OLLAMA_SYSTEM_PROMPT=""
-        DEFAULT_OLLAMA_TIMEOUT="60"
-        DEFAULT_OLLAMA_MAX_HISTORY="100"
 
         # Default Assistant config
         DEFAULT_ASSISTANT_ENABLED="false"
@@ -529,55 +499,11 @@ do_install() {
     fi
 
     echo
-    print_info "Ollama Configuration (AI Prompt Enhancement)"
-    echo "=============================================="
-    echo
-    echo "  Ollama is an AI service that can enhance your image generation prompts."
-    echo "  It can be a local Ollama server or a cloud endpoint."
-    echo
-
-    # Determine default yes/no for ollama enabled
-    local ollama_default_yn="no"
-    if [[ "$DEFAULT_OLLAMA_ENABLED" == "true" ]]; then
-        ollama_default_yn="yes"
-    fi
-
-    prompt_yes_no "Enable Ollama for prompt enhancement?" "$ollama_default_yn" "OLLAMA_ENABLED"
-
-    if [[ "$OLLAMA_ENABLED" == "true" ]]; then
-        echo
-        prompt_value "Ollama API endpoint" "$DEFAULT_OLLAMA_ENDPOINT" "OLLAMA_ENDPOINT"
-        prompt_optional "API key (for cloud endpoints, leave empty for local)" "$DEFAULT_OLLAMA_API_KEY" "OLLAMA_API_KEY"
-        prompt_value "Model name" "$DEFAULT_OLLAMA_MODEL" "OLLAMA_MODEL"
-        prompt_value "Temperature (0.0-1.0)" "$DEFAULT_OLLAMA_TEMPERATURE" "OLLAMA_TEMPERATURE"
-        prompt_value "Max tokens for response" "$DEFAULT_OLLAMA_MAX_TOKENS" "OLLAMA_MAX_TOKENS"
-        prompt_value "Request timeout (seconds)" "$DEFAULT_OLLAMA_TIMEOUT" "OLLAMA_TIMEOUT"
-        prompt_value "Max history entries" "$DEFAULT_OLLAMA_MAX_HISTORY" "OLLAMA_MAX_HISTORY"
-        # System prompt is not prompted - it can be multiline and complex
-        # User can edit the config file directly if they want to customize it
-        OLLAMA_SYSTEM_PROMPT="$DEFAULT_OLLAMA_SYSTEM_PROMPT"
-        echo
-        echo -e "  ${YELLOW}Note:${NC} To customize the system prompt, edit ${CONFIG_FILE}"
-        echo "        after installation. Leave empty to use the default prompt."
-    else
-        # Set defaults even if disabled (they'll be in the config but won't be used)
-        OLLAMA_ENDPOINT="$DEFAULT_OLLAMA_ENDPOINT"
-        OLLAMA_API_KEY="$DEFAULT_OLLAMA_API_KEY"
-        OLLAMA_MODEL="$DEFAULT_OLLAMA_MODEL"
-        OLLAMA_TEMPERATURE="$DEFAULT_OLLAMA_TEMPERATURE"
-        OLLAMA_MAX_TOKENS="$DEFAULT_OLLAMA_MAX_TOKENS"
-        OLLAMA_TIMEOUT="$DEFAULT_OLLAMA_TIMEOUT"
-        OLLAMA_MAX_HISTORY="$DEFAULT_OLLAMA_MAX_HISTORY"
-        OLLAMA_SYSTEM_PROMPT="$DEFAULT_OLLAMA_SYSTEM_PROMPT"
-    fi
-
-    echo
     print_info "Assistant Configuration (AI Helper in WebUI)"
     echo "=============================================="
     echo
     echo "  The Assistant is an LLM-powered helper that can provide suggestions,"
-    echo "  help troubleshoot errors, and even adjust generation settings for you."
-    echo "  It uses a separate LLM configuration from Ollama prompt enhancement."
+    echo "  help troubleshoot errors, enhance prompts, and adjust generation settings."
     echo
 
     # Determine default yes/no for assistant enabled
@@ -629,11 +555,6 @@ do_install() {
     print_info "  Models directory:  ${MODELS_DIR}"
     print_info "  Output directory:  ${OUTPUT_DIR}"
     print_info "  Service user:      ${SERVICE_USER}"
-    if [[ "$OLLAMA_ENABLED" == "true" ]]; then
-        print_info "  Ollama:            enabled (${OLLAMA_ENDPOINT})"
-    else
-        print_info "  Ollama:            disabled"
-    fi
     if [[ "$ASSISTANT_ENABLED" == "true" ]]; then
         print_info "  Assistant:         enabled (${ASSISTANT_ENDPOINT})"
     else
@@ -680,11 +601,6 @@ do_install() {
     print_info "Creating configuration..."
 
     # Convert boolean to JSON boolean
-    local OLLAMA_ENABLED_JSON="false"
-    if [[ "$OLLAMA_ENABLED" == "true" ]]; then
-        OLLAMA_ENABLED_JSON="true"
-    fi
-
     local ASSISTANT_ENABLED_JSON="false"
     if [[ "$ASSISTANT_ENABLED" == "true" ]]; then
         ASSISTANT_ENABLED_JSON="true"
@@ -696,19 +612,13 @@ do_install() {
     fi
 
     # Use jq to properly escape strings for JSON (handles newlines, quotes, etc.)
-    local OLLAMA_SYSTEM_PROMPT_JSON
-    local OLLAMA_API_KEY_JSON
     local ASSISTANT_SYSTEM_PROMPT_JSON
     local ASSISTANT_API_KEY_JSON
     if command -v jq &>/dev/null; then
-        OLLAMA_SYSTEM_PROMPT_JSON=$(printf '%s' "$OLLAMA_SYSTEM_PROMPT" | jq -Rs '.')
-        OLLAMA_API_KEY_JSON=$(printf '%s' "$OLLAMA_API_KEY" | jq -Rs '.')
         ASSISTANT_SYSTEM_PROMPT_JSON=$(printf '%s' "$ASSISTANT_SYSTEM_PROMPT" | jq -Rs '.')
         ASSISTANT_API_KEY_JSON=$(printf '%s' "$ASSISTANT_API_KEY" | jq -Rs '.')
     else
         # Fallback: basic escaping (won't handle all cases but better than nothing)
-        OLLAMA_SYSTEM_PROMPT_JSON="\"$(printf '%s' "$OLLAMA_SYSTEM_PROMPT" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')\""
-        OLLAMA_API_KEY_JSON="\"${OLLAMA_API_KEY}\""
         ASSISTANT_SYSTEM_PROMPT_JSON="\"$(printf '%s' "$ASSISTANT_SYSTEM_PROMPT" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')\""
         ASSISTANT_API_KEY_JSON="\"${ASSISTANT_API_KEY}\""
     fi
@@ -741,17 +651,6 @@ do_install() {
         "llm": "${MODELS_DIR}/Text-encoder",
         "output": "${OUTPUT_DIR}"
     },
-    "ollama": {
-        "enabled": ${OLLAMA_ENABLED_JSON},
-        "endpoint": "${OLLAMA_ENDPOINT}",
-        "api_key": ${OLLAMA_API_KEY_JSON},
-        "model": "${OLLAMA_MODEL}",
-        "temperature": ${OLLAMA_TEMPERATURE},
-        "max_tokens": ${OLLAMA_MAX_TOKENS},
-        "system_prompt": ${OLLAMA_SYSTEM_PROMPT_JSON},
-        "timeout_seconds": ${OLLAMA_TIMEOUT},
-        "max_history": ${OLLAMA_MAX_HISTORY}
-    },
     "assistant": {
         "enabled": ${ASSISTANT_ENABLED_JSON},
         "endpoint": "${ASSISTANT_ENDPOINT}",
@@ -781,7 +680,9 @@ CONFIGEOF
             .paths.esrgan = ($old.paths.esrgan // .paths.esrgan) |
             .paths.webui = ($old.paths.webui // .paths.webui // "") |
             .sd_defaults = ($old.sd_defaults // .sd_defaults // {}) |
-            .preview = ($old.preview // .preview // {})
+            .preview = ($old.preview // .preview // {}) |
+            # Remove deprecated ollama config if present
+            del(.ollama)
         ' "${CONFIG_FILE}" "${TEMP_NEW_CONFIG}" > "${CONFIG_FILE}.new"
 
         mv "${CONFIG_FILE}.new" "${CONFIG_FILE}"
@@ -816,17 +717,6 @@ CONFIGEOF
         "keep_vae_on_cpu": false,
         "flash_attn": true,
         "offload_to_cpu": false
-    },
-    "ollama": {
-        "enabled": ${OLLAMA_ENABLED_JSON},
-        "endpoint": "${OLLAMA_ENDPOINT}",
-        "api_key": ${OLLAMA_API_KEY_JSON},
-        "model": "${OLLAMA_MODEL}",
-        "temperature": ${OLLAMA_TEMPERATURE},
-        "max_tokens": ${OLLAMA_MAX_TOKENS},
-        "system_prompt": ${OLLAMA_SYSTEM_PROMPT_JSON},
-        "timeout_seconds": ${OLLAMA_TIMEOUT},
-        "max_history": ${OLLAMA_MAX_HISTORY}
     },
     "assistant": {
         "enabled": ${ASSISTANT_ENABLED_JSON},
@@ -938,11 +828,6 @@ SERVICEEOF
     echo "  Models:      ${MODELS_DIR}/"
     echo "  Output:      ${OUTPUT_DIR}/"
     echo "  Service:     ${SERVICE_USER}"
-    if [[ "$OLLAMA_ENABLED" == "true" ]]; then
-        echo "  Ollama:      enabled (${OLLAMA_ENDPOINT}, model: ${OLLAMA_MODEL})"
-    else
-        echo "  Ollama:      disabled"
-    fi
     if [[ "$ASSISTANT_ENABLED" == "true" ]]; then
         echo "  Assistant:   enabled (${ASSISTANT_ENDPOINT}, model: ${ASSISTANT_MODEL})"
     else
