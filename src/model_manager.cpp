@@ -693,7 +693,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.keep_clip_on_cpu = params.keep_clip_on_cpu;
     ctx_params.keep_vae_on_cpu = params.keep_vae_on_cpu;
     ctx_params.keep_control_net_on_cpu = params.keep_controlnet_on_cpu;
-    ctx_params.diffusion_flash_attn = params.flash_attn;
+    ctx_params.flash_attn = params.flash_attn;  // Enable flash attention for all models (CLIP, VAE, diffusion)
     ctx_params.offload_params_to_cpu = params.offload_to_cpu;
     ctx_params.enable_mmap = params.enable_mmap;
     ctx_params.vae_decode_only = params.vae_decode_only;
@@ -744,7 +744,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
               << ", vae_decode_only=" << ctx_params.vae_decode_only
               << ", vae_conv_direct=" << ctx_params.vae_conv_direct
               << ", diffusion_conv_direct=" << ctx_params.diffusion_conv_direct
-              << ", flash_attn=" << ctx_params.diffusion_flash_attn
+              << ", flash_attn=" << ctx_params.flash_attn
               << ", offload_to_cpu=" << ctx_params.offload_params_to_cpu
               << ", free_params_immediately=" << ctx_params.free_params_immediately
               << ", tae_preview_only=" << ctx_params.tae_preview_only
