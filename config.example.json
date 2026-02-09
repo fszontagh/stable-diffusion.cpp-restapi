@@ -26,17 +26,6 @@
         "flash_attn": true,
         "offload_to_cpu": false
     },
-    "ollama": {
-        "enabled": false,
-        "endpoint": "http://localhost:11434",
-        "api_key": "",
-        "model": "llama3.2",
-        "temperature": 0.7,
-        "max_tokens": 2000,
-        "system_prompt": "You are an expert at enhancing image generation prompts for Stable Diffusion models. When given a prompt, improve it by adding artistic details, lighting descriptions, style references, quality tags, and technical parameters that will help generate better images. Keep the original intent but make it more descriptive and effective. Output ONLY the enhanced prompt without explanations or commentary.",
-        "timeout_seconds": 60,
-        "max_history": 100
-    },
     "preview": {
         "enabled": true,
         "mode": "tae",

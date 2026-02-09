@@ -311,7 +311,7 @@ int main(int argc, char* argv[]) {
 #else
         int ws_port_to_use = 0;  // WebSocket disabled at build time
 #endif
-        sdcpp::RequestHandlers handlers(model_manager, queue_manager, config.paths.output, webui_path, ws_port_to_use, config.ollama, config.assistant, config_path);
+        sdcpp::RequestHandlers handlers(model_manager, queue_manager, config.paths.output, webui_path, ws_port_to_use, config.assistant, config_path);
         handlers.register_routes(server);
 
         // Set error handler for HTTP errors (404, etc.)

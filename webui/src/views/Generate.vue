@@ -4,7 +4,6 @@ import { useDebounceFn } from '@vueuse/core'
 import { useAppStore } from '../stores/app'
 import { api, type GenerationParams, type Img2ImgParams, type Txt2VidParams } from '../api/client'
 import ImageUploader from '../components/ImageUploader.vue'
-import PromptEnhancer from '../components/PromptEnhancer.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import Lightbox from '../components/Lightbox.vue'
 import LoadedModelPanel from '../components/LoadedModelPanel.vue'
@@ -15,9 +14,6 @@ const store = useAppStore()
 // Highlighted setting for assistant navigation
 const highlightedSetting = ref<string | null>(null)
 let highlightTimeout: ReturnType<typeof setTimeout> | null = null
-
-// Ollama integration
-const ollamaEnabled = computed(() => store.ollamaStatus?.enabled ?? false)
 
 const mode = ref<'txt2img' | 'img2img' | 'txt2vid'>('txt2img')
 const submitting = ref(false)
@@ -831,10 +827,7 @@ async function handleSubmit() {
       <!-- Prompt Section -->
       <div class="card">
         <div class="form-group" data-setting="prompt" :class="{ 'setting-highlighted': highlightedSetting === 'prompt' }">
-          <div class="form-label-row">
-            <label class="form-label">Prompt</label>
-            <PromptEnhancer v-if="ollamaEnabled" v-model="prompt" />
-          </div>
+          <label class="form-label">Prompt</label>
           <HighlightedPrompt
             v-model="prompt"
             placeholder="A beautiful landscape with mountains and a lake..."

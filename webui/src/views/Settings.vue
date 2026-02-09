@@ -65,21 +65,6 @@ const previewSettings = ref({
   quality: 75
 })
 
-// Ollama settings
-const ollamaSettings = ref({
-  enabled: false,
-  endpoint: 'http://localhost:11434',
-  model: '',
-  temperature: 0.7,
-  max_tokens: 500,
-  timeout_seconds: 60,
-  max_history: 100,
-  system_prompt: ''
-})
-const ollamaConnectionTesting = ref(false)
-const ollamaConnectionStatus = ref<'unknown' | 'connected' | 'disconnected'>('unknown')
-const ollamaAvailableModels = ref<string[]>([])
-
 // Assistant settings
 const assistantSettings = ref({
   enabled: false,
@@ -103,7 +88,6 @@ const tabs = [
   { id: 'general', label: 'General', icon: '⚙️' },
   { id: 'generation', label: 'Generation', icon: '🎯' },
   { id: 'preview', label: 'Preview', icon: '👁️' },
-  { id: 'ollama', label: 'Ollama', icon: '🤖' },
   { id: 'assistant', label: 'Assistant', icon: '🧠' },
   { id: 'themes', label: 'Themes', icon: '🎨' },
   { id: 'import-export', label: 'Import/Export', icon: '📦' }
@@ -153,16 +137,6 @@ const previewModeOptions = [
   { value: 'vae', label: 'VAE (High Quality)' }
 ]
 
-// Ollama model options
-const ollamaModelOptions = computed(() => {
-  if (ollamaAvailableModels.value.length === 0) {
-    return ollamaSettings.value.model
-      ? [{ value: ollamaSettings.value.model, label: ollamaSettings.value.model }]
-      : []
-  }
-  return ollamaAvailableModels.value.map(m => ({ value: m, label: m }))
-})
-
 // Assistant model options
 const assistantModelOptions = computed(() => {
   if (assistantAvailableModels.value.length === 0) {
@@ -180,7 +154,6 @@ async function loadSettings() {
       loadUIPreferences(),
       loadGenerationDefaults(),
       loadPreviewSettings(),
-      loadOllamaSettings(),
       loadAssistantSettings()
     ])
   } catch (e) {
@@ -332,19 +305,6 @@ async function loadPreviewSettings() {
   previewSettings.value = settings
 }
 
-async function loadOllamaSettings() {
-  try {
-    const settings = await api.getOllamaSettings()
-    ollamaSettings.value = settings
-    // Try to get available models
-    if (settings.enabled) {
-      testOllamaConnection()
-    }
-  } catch (e) {
-    // Ollama might not be configured
-  }
-}
-
 async function loadAssistantSettings() {
   try {
     const settings = await api.getAssistantSettings()
@@ -395,44 +355,6 @@ async function savePreviewSettings() {
 
 // Debounced save for preview settings
 const debouncedSavePreview = useDebounceFn(savePreviewSettings, 500)
-
-async function saveOllamaSettings() {
-  try {
-    const result = await api.updateOllamaSettings(ollamaSettings.value)
-    if (result.success) {
-      ollamaSettings.value = result.settings
-      store.showToast('Ollama settings saved', 'success')
-      await store.fetchOllamaStatus()
-    }
-  } catch (e) {
-    store.showToast('Failed to save Ollama settings', 'error')
-  }
-}
-
-// Debounced save for ollama settings
-const debouncedSaveOllama = useDebounceFn(saveOllamaSettings, 500)
-
-async function testOllamaConnection() {
-  ollamaConnectionTesting.value = true
-  try {
-    const status = await api.getOllamaStatus()
-    ollamaConnectionStatus.value = status.connected ? 'connected' : 'disconnected'
-    if (status.available_models) {
-      ollamaAvailableModels.value = status.available_models
-    }
-  } catch (e) {
-    ollamaConnectionStatus.value = 'disconnected'
-    ollamaAvailableModels.value = []
-  } finally {
-    ollamaConnectionTesting.value = false
-  }
-}
-
-function resetOllamaSystemPrompt() {
-  ollamaSettings.value.system_prompt = ''
-  debouncedSaveOllama()
-  store.showToast('System prompt reset to default', 'success')
-}
 
 async function saveAssistantSettings() {
   try {
@@ -872,146 +794,6 @@ loadSettings()
                     @update:model-value="debouncedSavePreview"
                   />
                 </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Ollama Tab -->
-          <div v-if="activeTab === 'ollama'" class="tab-panel">
-            <h3>Ollama Integration</h3>
-            <p class="help-text">Connect to Ollama for AI-powered prompt enhancement.</p>
-
-            <!-- Connection Status Banner -->
-            <div class="connection-status" :class="ollamaConnectionStatus">
-              <div class="status-info">
-                <span class="status-indicator"></span>
-                <span class="status-text">
-                  {{ ollamaConnectionStatus === 'connected' ? 'Connected' :
-                     ollamaConnectionStatus === 'disconnected' ? 'Disconnected' : 'Unknown' }}
-                </span>
-                <span class="status-endpoint">{{ ollamaSettings.endpoint }}</span>
-              </div>
-              <button
-                class="btn btn-secondary btn-sm"
-                @click="testOllamaConnection"
-                :disabled="ollamaConnectionTesting"
-              >
-                {{ ollamaConnectionTesting ? 'Testing...' : 'Test Connection' }}
-              </button>
-            </div>
-
-            <!-- Enable Toggle -->
-            <div class="settings-card">
-              <div class="settings-card-body">
-                <SwitchField
-                  v-model="ollamaSettings.enabled"
-                  label="Enable Ollama Integration"
-                  description="Connect to Ollama for AI prompt enhancement"
-                  @update:model-value="debouncedSaveOllama"
-                />
-              </div>
-            </div>
-
-            <!-- Connection Settings -->
-            <div class="settings-card" :class="{ 'settings-disabled': !ollamaSettings.enabled }">
-              <div class="settings-card-header">
-                <h4>Connection Settings</h4>
-              </div>
-              <div class="settings-card-body">
-                <div class="form-row">
-                  <SettingField
-                    v-model="ollamaSettings.endpoint"
-                    label="Endpoint URL"
-                    description="Ollama API endpoint"
-                    type="text"
-                    placeholder="http://localhost:11434"
-                    :disabled="!ollamaSettings.enabled"
-                    @update:model-value="debouncedSaveOllama"
-                  />
-                  <SettingField
-                    v-model="ollamaSettings.model"
-                    label="Model"
-                    :description="ollamaAvailableModels.length > 0 ? 'Select from available models' : 'Enter model name'"
-                    :type="ollamaAvailableModels.length > 0 ? 'select' : 'text'"
-                    :options="ollamaModelOptions"
-                    placeholder="llama2"
-                    :disabled="!ollamaSettings.enabled"
-                    @update:model-value="debouncedSaveOllama"
-                  />
-                </div>
-
-                <SettingField
-                  v-model="ollamaSettings.timeout_seconds"
-                  label="Timeout"
-                  description="Request timeout in seconds"
-                  type="number"
-                  :disabled="!ollamaSettings.enabled"
-                  @update:model-value="debouncedSaveOllama"
-                />
-              </div>
-            </div>
-
-            <!-- Generation Parameters -->
-            <div class="settings-card" :class="{ 'settings-disabled': !ollamaSettings.enabled }">
-              <div class="settings-card-header">
-                <h4>Generation Parameters</h4>
-              </div>
-              <div class="settings-card-body">
-                <SliderField
-                  v-model="ollamaSettings.temperature"
-                  label="Temperature"
-                  description="Creativity of responses. Higher = more creative, lower = more focused."
-                  :min="0"
-                  :max="2"
-                  :step="0.1"
-                  :precision="1"
-                  :disabled="!ollamaSettings.enabled"
-                  @update:model-value="debouncedSaveOllama"
-                />
-
-                <div class="form-row">
-                  <SettingField
-                    v-model="ollamaSettings.max_tokens"
-                    label="Max Tokens"
-                    description="Maximum response length"
-                    type="number"
-                    :disabled="!ollamaSettings.enabled"
-                    @update:model-value="debouncedSaveOllama"
-                  />
-                  <SettingField
-                    v-model="ollamaSettings.max_history"
-                    label="Max History"
-                    description="History entries to keep"
-                    type="number"
-                    :disabled="!ollamaSettings.enabled"
-                    @update:model-value="debouncedSaveOllama"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <!-- System Prompt -->
-            <div class="settings-card" :class="{ 'settings-disabled': !ollamaSettings.enabled }">
-              <div class="settings-card-header">
-                <h4>System Prompt</h4>
-                <button
-                  class="btn btn-secondary btn-sm"
-                  @click="resetOllamaSystemPrompt"
-                  :disabled="!ollamaSettings.enabled"
-                >
-                  Reset to Default
-                </button>
-              </div>
-              <div class="settings-card-body">
-                <SettingField
-                  v-model="ollamaSettings.system_prompt"
-                  label=""
-                  description="Customize AI behavior for prompt enhancement. Leave empty for default."
-                  type="textarea"
-                  placeholder="You are a helpful AI assistant that enhances image generation prompts..."
-                  :disabled="!ollamaSettings.enabled"
-                  @update:model-value="debouncedSaveOllama"
-                />
               </div>
             </div>
           </div>
