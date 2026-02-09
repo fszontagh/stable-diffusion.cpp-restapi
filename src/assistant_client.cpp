@@ -273,7 +273,7 @@ nlohmann::json AssistantClient::build_tools() const {
         {"function", {
             {"name", "unload_model"},
             {"description", "Unload the currently loaded model"},
-            {"parameters", {{"type", "object"}, {"properties", {}}}}
+            {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}
         }}
     });
 
@@ -283,7 +283,7 @@ nlohmann::json AssistantClient::build_tools() const {
         {"function", {
             {"name", "refresh_models"},
             {"description", "Refresh the list of available models by rescanning model directories. Use this after downloading or converting models to make them available for loading."},
-            {"parameters", {{"type", "object"}, {"properties", {}}}}
+            {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}
         }}
     });
 
@@ -293,7 +293,7 @@ nlohmann::json AssistantClient::build_tools() const {
         {"function", {
             {"name", "get_status"},
             {"description", "Get current application status including loaded model info, upscaler state, and queue statistics. ALWAYS call this first before loading models or making assumptions about state."},
-            {"parameters", {{"type", "object"}, {"properties", {}}}}
+            {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}
         }}
     });
 
@@ -303,7 +303,7 @@ nlohmann::json AssistantClient::build_tools() const {
         {"function", {
             {"name", "get_models"},
             {"description", "Get list of all available models organized by type (checkpoints, diffusion_models, vae, loras, clip, t5, llm, esrgan, etc.)"},
-            {"parameters", {{"type", "object"}, {"properties", {}}}}
+            {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}
         }}
     });
 
@@ -313,7 +313,7 @@ nlohmann::json AssistantClient::build_tools() const {
         {"function", {
             {"name", "get_settings"},
             {"description", "Get current generation settings (prompt, dimensions, steps, cfg_scale, sampler, scheduler, etc.)"},
-            {"parameters", {{"type", "object"}, {"properties", {}}}}
+            {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}
         }}
     });
 
@@ -323,7 +323,7 @@ nlohmann::json AssistantClient::build_tools() const {
         {"function", {
             {"name", "get_architectures"},
             {"description", "Get all architecture presets with their required components and recommended settings (SD1.5, SDXL, Flux, SD3, Z-Image, etc.)"},
-            {"parameters", {{"type", "object"}, {"properties", {}}}}
+            {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}
         }}
     });
 
@@ -433,7 +433,7 @@ nlohmann::json AssistantClient::build_tools() const {
         {"function", {
             {"name", "apply_recommended_settings"},
             {"description", "Apply recommended settings for the current model architecture"},
-            {"parameters", {{"type", "object"}, {"properties", {}}}}
+            {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}
         }}
     });
 
@@ -476,7 +476,7 @@ nlohmann::json AssistantClient::build_tools() const {
         {"function", {
             {"name", "unload_upscaler"},
             {"description", "Unload the current upscaler model"},
-            {"parameters", {{"type", "object"}, {"properties", {}}}}
+            {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}
         }}
     });
 
