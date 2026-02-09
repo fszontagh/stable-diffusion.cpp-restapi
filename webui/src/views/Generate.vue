@@ -261,13 +261,13 @@ function handleClickOutside(event: MouseEvent) {
 const samplers = computed(() =>
   store.samplers.length > 0
     ? store.samplers
-    : ['euler', 'euler_a', 'heun', 'dpm2', 'dpm++2s_a', 'dpm++2m', 'dpm++2mv2', 'ipndm', 'ipndm_v', 'lcm', 'ddim_trailing', 'tcd']
+    : ['euler', 'euler_a', 'heun', 'dpm2', 'dpm++2s_a', 'dpm++2m', 'dpm++2mv2', 'ipndm', 'ipndm_v', 'lcm', 'ddim_trailing', 'tcd', 'res_multistep', 'res_2s']
 )
 
 const schedulers = computed(() =>
   store.schedulers.length > 0
     ? store.schedulers
-    : ['discrete', 'karras', 'exponential', 'ays', 'gits', 'sgm_uniform', 'simple', 'smoothstep', 'lcm']
+    : ['discrete', 'karras', 'exponential', 'ays', 'gits', 'sgm_uniform', 'simple', 'smoothstep', 'kl_optimal', 'lcm', 'bong_tangent']
 )
 
 // Recommended settings per model architecture

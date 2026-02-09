@@ -277,7 +277,9 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             "ipndm_v",
             "lcm",
             "ddim_trailing",
-            "tcd"
+            "tcd",
+            "res_multistep",
+            "res_2s"
         }},
         {"schedulers", {
             "discrete",
@@ -288,7 +290,9 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             "sgm_uniform",
             "simple",
             "smoothstep",
-            "lcm"
+            "kl_optimal",
+            "lcm",
+            "bong_tangent"
         }},
         {"quantization_types", nlohmann::json::array({
             {{"id", "f32"}, {"name", "F32 (32-bit float)"}, {"bits", 32}},
