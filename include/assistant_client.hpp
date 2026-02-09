@@ -12,6 +12,9 @@
 
 namespace sdcpp {
 
+// Forward declaration
+class ToolExecutor;
+
 /**
  * Default system prompt for the assistant
  */
@@ -389,9 +392,11 @@ public:
      * @param config Assistant configuration
      * @param data_dir Directory for storing history file
      * @param config_file_path Path to config.json for persisting settings (optional)
+     * @param tool_executor Optional tool executor for backend query tool execution
      */
     explicit AssistantClient(const AssistantConfig& config, const std::string& data_dir,
-                              const std::string& config_file_path = "");
+                              const std::string& config_file_path = "",
+                              ToolExecutor* tool_executor = nullptr);
 
     ~AssistantClient();
 
@@ -515,6 +520,9 @@ private:
     mutable std::mutex config_mutex_;
     mutable std::mutex history_mutex_;
     std::vector<ConversationMessage> history_;
+
+    // Tool executor for backend query tools (may be null)
+    ToolExecutor* tool_executor_;
 };
 
 } // namespace sdcpp

@@ -30,6 +30,7 @@ option(SD_OPENCL  "Enable OpenCL backend for stable-diffusion.cpp" OFF)
 option(SDCPP_WEBUI "Build and include Web UI (requires Node.js/npm)" ON)
 option(SDCPP_WEBSOCKET "Build WebSocket server for real-time updates" ON)
 option(FORCE_WEBSOCKET "Force WebSocket even if WebUI is disabled" OFF)
+option(SDCPP_ASSISTANT "Build LLM Assistant feature" ON)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
@@ -201,11 +202,15 @@ set(SDCPP_SOURCES
     src/sd_wrapper.cpp
     src/request_handlers.cpp
     src/stb_impl.cpp
-    src/assistant_client.cpp
     src/architecture_manager.cpp
     src/download_manager.cpp
     src/settings_manager.cpp
 )
+
+# Add assistant sources only if enabled
+if(SDCPP_ASSISTANT)
+    list(APPEND SDCPP_SOURCES src/assistant_client.cpp src/tool_executor.cpp)
+endif()
 
 # Add WebSocket server source only if enabled
 if(SDCPP_WEBSOCKET)
@@ -272,6 +277,11 @@ if(SDCPP_WEBSOCKET)
     target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_WEBSOCKET_ENABLED=1)
 endif()
 
+# Assistant compile definition
+if(SDCPP_ASSISTANT)
+    target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_ASSISTANT_ENABLED=1)
+endif()
+
 #
 # Web UI (optional)
 #
@@ -306,5 +316,6 @@ message(STATUS "ROCm backend:    ${SD_HIPBLAS}")
 message(STATUS "OpenCL backend:  ${SD_OPENCL}")
 message(STATUS "Web UI:          ${SDCPP_WEBUI}")
 message(STATUS "WebSocket:       ${SDCPP_WEBSOCKET}")
+message(STATUS "LLM Assistant:   ${SDCPP_ASSISTANT}")
 message(STATUS "===================================")
 message(STATUS "")

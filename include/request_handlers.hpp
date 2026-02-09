@@ -6,9 +6,13 @@
 #include <memory>
 
 #include "config.hpp"
-#include "assistant_client.hpp"
 #include "architecture_manager.hpp"
 #include "settings_manager.hpp"
+
+#ifdef SDCPP_ASSISTANT_ENABLED
+#include "assistant_client.hpp"
+#include "tool_executor.hpp"
+#endif
 
 namespace sdcpp {
 
@@ -85,6 +89,7 @@ private:
     void handle_get_preview_settings(const httplib::Request& req, httplib::Response& res);
     void handle_update_preview_settings(const httplib::Request& req, httplib::Response& res);
 
+#ifdef SDCPP_ASSISTANT_ENABLED
     // Assistant endpoints
     void handle_assistant_chat(const httplib::Request& req, httplib::Response& res);
     void handle_assistant_history(const httplib::Request& req, httplib::Response& res);
@@ -92,6 +97,7 @@ private:
     void handle_assistant_status(const httplib::Request& req, httplib::Response& res);
     void handle_assistant_get_settings(const httplib::Request& req, httplib::Response& res);
     void handle_assistant_update_settings(const httplib::Request& req, httplib::Response& res);
+#endif
 
     // Architecture endpoints
     void handle_get_architectures(const httplib::Request& req, httplib::Response& res);
@@ -135,9 +141,13 @@ private:
     std::string output_dir_;
     std::string webui_dir_;
     int ws_port_;
-    std::unique_ptr<AssistantClient> assistant_client_;
     std::unique_ptr<ArchitectureManager> architecture_manager_;
     std::unique_ptr<SettingsManager> settings_manager_;
+
+#ifdef SDCPP_ASSISTANT_ENABLED
+    std::unique_ptr<ToolExecutor> tool_executor_;
+    std::unique_ptr<AssistantClient> assistant_client_;
+#endif
 };
 
 } // namespace sdcpp

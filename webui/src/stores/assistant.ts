@@ -11,8 +11,7 @@ import {
   type Img2ImgParams,
   type Txt2VidParams,
   type UpscaleParams,
-  type ConvertParams,
-  type Job
+  type ConvertParams
 } from '../api/client'
 import { useAppStore } from './app'
 import { wsService, type JobStatusChangedData } from '../services/websocket'
@@ -757,32 +756,9 @@ export const useAssistantStore = defineStore('assistant', () => {
             return
           }
 
-          // Auto-continue if actions succeeded and produced results that need follow-up
-          // This enables multi-step workflows like: search -> load -> apply settings
-          const actionResults = lastActionResults.value
-          if (actionResults && actionResults.successes.length > 0 && errors.length === 0) {
-            // Check if any action produced data that needs follow-up (e.g., search results, job details)
-            const needsFollowUp = actionResults.successes.some(s =>
-              s.includes('search_jobs:') ||
-              s.includes('get_job:') ||
-              s.includes('get_status:') ||
-              s.includes('get_models:') ||
-              s.includes('get_settings:') ||
-              s.includes('get_architectures:') ||
-              s.includes('Results:')
-            )
-
-            if (needsFollowUp && retryCount < MAX_ACTION_RETRIES) {
-              // Small delay before continuation
-              await new Promise(resolve => setTimeout(resolve, 300))
-
-              // Send continuation message - the results are in lastActionResults
-              const continueMessage = `Actions completed successfully. The results are in last_action_results. Please continue with the task.`
-              isLoading.value = false // Reset so recursive call works
-              await sendMessage(continueMessage, true, retryCount + 1)
-              return
-            }
-          }
+          // Note: Query tool auto-continuation is no longer needed here because
+          // the backend now executes query tools (get_status, get_models, etc.)
+          // and feeds results back to the LLM before returning the final response.
         }
 
         hasSuggestion.value = false
@@ -1359,54 +1335,7 @@ export const useAssistantStore = defineStore('assistant', () => {
             return errors
           }
 
-          case 'get_job': {
-            // Get detailed information about a specific job by ID
-            const jobId = action.parameters.job_id as string
-
-            if (!jobId) {
-              errors.push('get_job requires job_id parameter')
-              break
-            }
-
-            try {
-              const job = await api.getJob(jobId)
-              if (!job) {
-                errors.push(`Job not found: ${jobId}`)
-                break
-              }
-
-              // Format job details for the LLM
-              const jobDetails = {
-                job_id: job.job_id,
-                type: job.type,
-                status: job.status,
-                error: job.error,
-                progress: job.progress,
-                model_settings: job.model_settings,
-                params: job.params,
-                outputs: job.outputs,
-                created_at: job.created_at,
-                completed_at: job.completed_at
-              }
-
-              successes.push(`get_job: Found job ${jobId} (status: ${job.status})`)
-
-              // Send the job details back to the LLM so it can continue with its task
-              // This is an info-gathering action, so we need to give the LLM the results
-              const jobDetailsMsg = `Here are the details for job ${jobId}:\n\`\`\`json\n${JSON.stringify(jobDetails, null, 2)}\n\`\`\`\nPlease continue with the task using this information.`
-
-              // Trigger a follow-up to let the LLM continue with the retrieved info
-              // Hide from chat since it's just JSON data for the LLM
-              setTimeout(async () => {
-                await sendMessage(jobDetailsMsg, true, 0, true)
-              }, 100)
-
-              // Return early - the follow-up message will continue the task
-              return errors
-            } catch (e) {
-              throw new Error(`Failed to get job: ${e instanceof Error ? e.message : 'Unknown error'}`)
-            }
-          }
+          // Note: get_job is now executed on the backend
 
           case 'load_job_model': {
             // Load the exact model configuration from a completed job
@@ -1517,111 +1446,7 @@ export const useAssistantStore = defineStore('assistant', () => {
             break
           }
 
-          case 'search_jobs': {
-            // Search jobs by prompt text, model architecture, or other criteria
-            const searchPrompt = action.parameters.prompt as string
-            const searchStatus = action.parameters.status as string
-            const searchType = action.parameters.type as string
-            const searchModel = action.parameters.model as string
-            const searchArchitecture = action.parameters.architecture as string
-            const limit = (action.parameters.limit as number) || 10
-
-            let results: Job[] = []
-
-            // If architecture filter is specified, use backend API to search all jobs
-            // (local queue data is paginated and doesn't contain all jobs)
-            if (searchArchitecture) {
-              try {
-                const queueResponse = await api.getQueue({
-                  architecture: searchArchitecture,
-                  status: searchStatus || undefined,
-                  type: searchType || undefined,
-                  search: searchPrompt || undefined,
-                  limit: limit
-                })
-                results = queueResponse.items || []
-
-                // Additional client-side filter for model name (not supported by backend)
-                if (searchModel) {
-                  results = results.filter(job => {
-                    const jobModel = ((job.model_settings?.model_name as string) || '').toLowerCase()
-                    return jobModel.includes(searchModel.toLowerCase())
-                  })
-                }
-              } catch (e) {
-                errors.push(`Failed to search jobs: ${e instanceof Error ? e.message : 'Unknown error'}`)
-                break
-              }
-            } else {
-              // No architecture filter - search in locally loaded queue data
-              let allJobs: Job[] = []
-              if (appStore.queue?.items && appStore.queue.items.length > 0) {
-                allJobs = appStore.queue.items
-              } else if (appStore.queue?.groups && appStore.queue.groups.length > 0) {
-                // Flatten jobs from all date groups
-                allJobs = appStore.queue.groups.flatMap(group => group.items || [])
-              }
-
-              // Filter jobs based on search criteria
-              results = allJobs.filter(job => {
-                let match = true
-
-                // Filter by prompt text (case-insensitive partial match)
-                if (searchPrompt) {
-                  const jobPrompt = ((job.params?.prompt as string) || '').toLowerCase()
-                  match = match && jobPrompt.includes(searchPrompt.toLowerCase())
-                }
-
-                // Filter by status
-                if (searchStatus) {
-                  match = match && job.status === searchStatus
-                }
-
-                // Filter by type
-                if (searchType) {
-                  match = match && job.type === searchType
-                }
-
-                // Filter by model name (case-insensitive partial match)
-                if (searchModel) {
-                  const jobModel = ((job.model_settings?.model_name as string) || '').toLowerCase()
-                  match = match && jobModel.includes(searchModel.toLowerCase())
-                }
-
-                return match
-              })
-
-              // Limit results
-              results = results.slice(0, limit)
-            }
-
-            // Format results for the LLM - include full details for each job
-            const formattedResults = results.map(job => {
-              const promptStr = (job.params?.prompt as string) || ''
-              return {
-                job_id: job.job_id,
-                type: job.type,
-                status: job.status,
-                prompt: promptStr.substring(0, 200) + (promptStr.length > 200 ? '...' : ''),
-                negative_prompt: ((job.params?.negative_prompt as string) || '').substring(0, 100),
-                model_settings: job.model_settings,
-                params: {
-                  width: job.params?.width,
-                  height: job.params?.height,
-                  steps: job.params?.steps,
-                  cfg_scale: job.params?.cfg_scale,
-                  sampler: job.params?.sampler,
-                  seed: job.params?.seed
-                },
-                error: job.error,
-                outputs: job.outputs?.slice(0, 2)
-              }
-            })
-
-            // Add detailed results to successes so LLM can continue with the data
-            successes.push(`search_jobs: Found ${results.length} matching jobs. Results:\n${JSON.stringify(formattedResults, null, 2)}`)
-            break
-          }
+          // Note: search_jobs is now executed on the backend
 
           case 'download_model': {
             // Download a model from URL, CivitAI, or HuggingFace
@@ -1797,143 +1622,9 @@ export const useAssistantStore = defineStore('assistant', () => {
             break
           }
 
-          case 'get_status': {
-            // Return current application status to the assistant
-            const statusInfo = {
-              model_info: {
-                loaded: appStore.modelLoaded,
-                loading: appStore.modelLoading,
-                name: appStore.modelName,
-                type: appStore.modelType,
-                architecture: appStore.modelArchitecture,
-                components: appStore.loadedComponents || {}
-              },
-              upscaler_info: {
-                loaded: appStore.upscalerLoaded,
-                name: appStore.upscalerName
-              },
-              queue_stats: appStore.queueStats,
-              recent_errors: (() => {
-                const recentErrorsList: string[] = []
-                if (appStore.lastLoadError) {
-                  recentErrorsList.push(`Model load error: ${appStore.lastLoadError}`)
-                }
-                const errorHistory = appStore.recentErrors?.slice(0, 10) || []
-                for (const err of errorHistory) {
-                  const timeAgo = Math.round((Date.now() - err.timestamp) / 1000 / 60)
-                  const timeStr = timeAgo < 1 ? 'just now' : `${timeAgo}m ago`
-                  recentErrorsList.push(`[${timeStr}] ${err.source}: ${err.message}`)
-                }
-                return recentErrorsList
-              })(),
-              recent_jobs: (appStore.queue?.items || []).slice(0, 10).map(job => ({
-                job_id: job.job_id,
-                type: job.type,
-                status: job.status,
-                error: job.error,
-                model_settings: job.model_settings ? {
-                  model_name: job.model_settings.model_name,
-                  model_type: job.model_settings.model_type,
-                  model_architecture: job.model_settings.model_architecture
-                } : undefined
-              }))
-            }
-            successes.push(`get_status: ${JSON.stringify(statusInfo)}`)
-            break
-          }
-
-          case 'get_models': {
-            // Return available models organized by type
-            const models = appStore.models
-            if (!models) {
-              await appStore.fetchModels()
-            }
-            const availableModels = {
-              checkpoints: (appStore.models?.checkpoints || []).map(m => m.name),
-              diffusion_models: (appStore.models?.diffusion_models || []).map(m => m.name),
-              vae: (appStore.models?.vae || []).map(m => m.name),
-              loras: (appStore.models?.loras || []).map(m => m.name),
-              clip: (appStore.models?.clip || []).map(m => m.name),
-              t5: (appStore.models?.t5 || []).map(m => m.name),
-              controlnets: (appStore.models?.controlnets || []).map(m => m.name),
-              esrgan: (appStore.models?.esrgan || []).map(m => m.name),
-              llm: (appStore.models?.llm || []).map(m => m.name),
-              taesd: (appStore.models?.taesd || []).map(m => m.name)
-            }
-            successes.push(`get_models: ${JSON.stringify(availableModels)}`)
-            break
-          }
-
-          case 'get_settings': {
-            // Return current generation settings
-            const currentSettings = gatherCurrentSettings()
-            successes.push(`get_settings: ${JSON.stringify(currentSettings)}`)
-            break
-          }
-
-          case 'get_architectures': {
-            // Return architecture presets
-            // Ensure architectures are loaded
-            if (Object.keys(architectures.value).length === 0) {
-              await fetchArchitectures()
-            }
-            const archPresets = Object.fromEntries(
-              Object.entries(architectures.value).map(([id, preset]) => [id, {
-                name: preset.name,
-                description: preset.description,
-                requiredComponents: preset.requiredComponents,
-                optionalComponents: preset.optionalComponents,
-                generationDefaults: preset.generationDefaults
-              }])
-            )
-            successes.push(`get_architectures: ${JSON.stringify(archPresets)}`)
-            break
-          }
-
-          case 'list_jobs': {
-            // List jobs with optional ordering, limit, and offset
-            // Returns only job IDs, with metadata about job status counts
-            const order = ((action.parameters.order as string) || 'DESC').toUpperCase()
-            const limit = (action.parameters.limit as number) || 10
-            const offset = (action.parameters.offset as number) || 0
-
-            // Validate order parameter
-            if (order !== 'ASC' && order !== 'DESC') {
-              errors.push('Invalid order parameter: must be "ASC" or "DESC"')
-              break
-            }
-
-            // Fetch queue from backend with the specified filters
-            // The backend supports offset/limit for pagination
-            try {
-              const queueResponse = await api.getQueue({
-                limit,
-                offset
-              })
-
-              // Extract job IDs from the results
-              const jobIds = (queueResponse.items || []).map(job => job.job_id)
-
-              // Build metadata about job status counts (from queue stats)
-              const metadata = {
-                status_counts: {
-                  pending: queueResponse.pending_count,
-                  processing: queueResponse.processing_count,
-                  completed: queueResponse.completed_count,
-                  failed: queueResponse.failed_count,
-                  total: queueResponse.total_count
-                },
-                returned_count: jobIds.length,
-                limit,
-                offset
-              }
-
-              successes.push(`list_jobs: ${JSON.stringify({ jobs: jobIds, metadata })}`)
-            } catch (e) {
-              throw new Error(`Failed to list jobs: ${e instanceof Error ? e.message : 'Unknown error'}`)
-            }
-            break
-          }
+          // Note: Query tools (get_status, get_models, get_settings, get_architectures, list_jobs)
+          // are now executed on the backend and their results fed back to the LLM.
+          // The frontend no longer needs to handle these cases.
 
           case 'delete_jobs': {
             // Delete one or more queue items

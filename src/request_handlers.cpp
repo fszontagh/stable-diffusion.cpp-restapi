@@ -1,9 +1,13 @@
 #include "request_handlers.hpp"
 #include "model_manager.hpp"
 #include "queue_manager.hpp"
-#include "assistant_client.hpp"
 #include "download_manager.hpp"
 #include "settings_manager.hpp"
+
+#ifdef SDCPP_ASSISTANT_ENABLED
+#include "assistant_client.hpp"
+#include "tool_executor.hpp"
+#endif
 
 #include <iostream>
 #include <filesystem>
@@ -28,7 +32,6 @@ RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queu
                                  const AssistantConfig& assistant_config,
                                  const std::string& config_file_path)
     : model_manager_(model_manager), queue_manager_(queue_manager), output_dir_(output_dir), webui_dir_(webui_dir), ws_port_(ws_port)
-    , assistant_client_(std::make_unique<AssistantClient>(assistant_config, output_dir, config_file_path))
     , architecture_manager_(std::make_unique<ArchitectureManager>(output_dir))
     , settings_manager_(std::make_unique<SettingsManager>(config_file_path, output_dir)) {
 
@@ -36,6 +39,18 @@ RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queu
     if (!settings_manager_->initialize()) {
         std::cerr << "[RequestHandlers] Warning: Failed to initialize settings manager" << std::endl;
     }
+
+#ifdef SDCPP_ASSISTANT_ENABLED
+    // Create tool executor for backend query tool execution
+    tool_executor_ = std::make_unique<ToolExecutor>(
+        model_manager_, queue_manager_, architecture_manager_.get());
+
+    // Create assistant client with tool executor
+    assistant_client_ = std::make_unique<AssistantClient>(
+        assistant_config, output_dir, config_file_path, tool_executor_.get());
+#else
+    (void)assistant_config;  // Suppress unused parameter warning
+#endif
 }
 
 void RequestHandlers::register_routes(httplib::Server& server) {
@@ -145,6 +160,7 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         handle_update_preview_settings(req, res);
     });
 
+#ifdef SDCPP_ASSISTANT_ENABLED
     // Assistant routes (LLM helper)
     server.Post("/assistant/chat", [this](const httplib::Request& req, httplib::Response& res) {
         handle_assistant_chat(req, res);
@@ -164,6 +180,7 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     server.Put("/assistant/settings", [this](const httplib::Request& req, httplib::Response& res) {
         handle_assistant_update_settings(req, res);
     });
+#endif
 
     // Settings endpoints
     server.Get("/settings/generation", [this](const httplib::Request& req, httplib::Response& res) {
@@ -1831,6 +1848,7 @@ void RequestHandlers::handle_update_preview_settings(const httplib::Request& req
     });
 }
 
+#ifdef SDCPP_ASSISTANT_ENABLED
 // ==================== Assistant Handlers ====================
 
 void RequestHandlers::handle_assistant_chat(const httplib::Request& req, httplib::Response& res) {
@@ -1918,6 +1936,7 @@ void RequestHandlers::handle_assistant_update_settings(const httplib::Request& r
         send_error(res, "Failed to update settings", 500);
     }
 }
+#endif // SDCPP_ASSISTANT_ENABLED
 
 void RequestHandlers::handle_get_architectures(const httplib::Request& /*req*/, httplib::Response& res) {
     // Get current model architecture if loaded
