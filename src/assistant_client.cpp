@@ -747,15 +747,13 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
     // Build messages array with history and context
     nlohmann::json messages = build_messages(user_message, context);
 
-    // Note: Native tool calling is disabled for now.
-    // Ollama's tool calling requires multi-turn conversation with role="tool" responses,
-    // which would require significant refactoring since our actions are executed in the frontend.
-    // We rely on text-based json:action blocks instead, which work with all models.
-
-    // Build request body (without native tools)
+    // Build request body with native tools for Ollama
+    // Tools are sent so the LLM can use native tool calling format
+    // The response handling already supports extracting tool_calls
     nlohmann::json request_body = {
         {"model", config_.model},
         {"messages", messages},
+        {"tools", build_tools()},
         {"stream", false},
         {"options", {
             {"temperature", config_.temperature},
