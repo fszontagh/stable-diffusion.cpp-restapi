@@ -681,43 +681,6 @@ class ApiClient {
     }
   }
 
-  // Ollama - Prompt Enhancement
-  async enhancePrompt(params: EnhancePromptRequest): Promise<EnhancePromptResponse> {
-    return this.request('POST', '/ollama/enhance', params)
-  }
-
-  async getPromptHistory(limit = 50, offset = 0): Promise<PromptHistoryResponse> {
-    return this.request('GET', `/ollama/history?limit=${limit}&offset=${offset}`)
-  }
-
-  async getPromptHistoryEntry(id: string): Promise<PromptHistoryEntry> {
-    return this.request('GET', `/ollama/history/${id}`)
-  }
-
-  async deletePromptHistoryEntry(id: string): Promise<{ success: boolean }> {
-    return this.request('DELETE', `/ollama/history/${id}`)
-  }
-
-  async clearPromptHistory(): Promise<{ success: boolean }> {
-    return this.request('DELETE', '/ollama/history')
-  }
-
-  async getOllamaStatus(): Promise<OllamaStatusResponse> {
-    return this.request('GET', '/ollama/status')
-  }
-
-  async getOllamaModels(): Promise<{ models: string[] }> {
-    return this.request('GET', '/ollama/models')
-  }
-
-  async getOllamaSettings(): Promise<OllamaSettings> {
-    return this.request('GET', '/ollama/settings')
-  }
-
-  async updateOllamaSettings(settings: Partial<OllamaSettings>): Promise<OllamaSettingsUpdateResponse> {
-    return this.request('PUT', '/ollama/settings', settings)
-  }
-
   // Preview settings
   async getPreviewSettings(): Promise<PreviewSettings> {
     return this.request('GET', '/preview/settings')
@@ -779,62 +742,6 @@ class ApiClient {
   async resetSettings(): Promise<{ success: boolean; message: string }> {
     return this.request('POST', '/settings/reset')
   }
-}
-
-// Ollama Types
-export interface EnhancePromptRequest {
-  prompt: string
-  system_prompt?: string
-}
-
-export interface EnhancePromptResponse {
-  success: boolean
-  id?: string
-  original_prompt?: string
-  enhanced_prompt?: string
-  model_used?: string
-  created_at?: number
-  error?: string
-}
-
-export interface PromptHistoryEntry {
-  id: string
-  original_prompt: string
-  enhanced_prompt: string
-  model_used: string
-  created_at: number
-  success: boolean
-  error_message?: string
-}
-
-export interface PromptHistoryResponse {
-  total_count: number
-  items: PromptHistoryEntry[]
-}
-
-export interface OllamaStatusResponse {
-  enabled: boolean
-  connected: boolean
-  endpoint: string
-  model: string
-  available_models?: string[]
-}
-
-export interface OllamaSettings {
-  enabled: boolean
-  endpoint: string
-  model: string
-  temperature: number
-  max_tokens: number
-  timeout_seconds: number
-  max_history: number
-  system_prompt: string
-  has_api_key: boolean
-}
-
-export interface OllamaSettingsUpdateResponse {
-  success: boolean
-  settings: OllamaSettings
 }
 
 // Preview Types

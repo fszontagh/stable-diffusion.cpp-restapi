@@ -201,7 +201,6 @@ set(SDCPP_SOURCES
     src/sd_wrapper.cpp
     src/request_handlers.cpp
     src/stb_impl.cpp
-    src/ollama_client.cpp
     src/assistant_client.cpp
     src/architecture_manager.cpp
     src/download_manager.cpp

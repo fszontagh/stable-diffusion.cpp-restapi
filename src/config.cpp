@@ -79,33 +79,6 @@ void from_json(const nlohmann::json& j, SDDefaultsConfig& c) {
     c.offload_to_cpu = j.value("offload_to_cpu", false);
 }
 
-// OllamaConfig JSON serialization
-void to_json(nlohmann::json& j, const OllamaConfig& c) {
-    j = nlohmann::json{
-        {"enabled", c.enabled},
-        {"endpoint", c.endpoint},
-        {"api_key", c.api_key},
-        {"model", c.model},
-        {"temperature", c.temperature},
-        {"max_tokens", c.max_tokens},
-        {"system_prompt", c.system_prompt},
-        {"timeout_seconds", c.timeout_seconds},
-        {"max_history", c.max_history}
-    };
-}
-
-void from_json(const nlohmann::json& j, OllamaConfig& c) {
-    c.enabled = j.value("enabled", false);
-    c.endpoint = j.value("endpoint", "http://localhost:11434");
-    c.api_key = j.value("api_key", "");
-    c.model = j.value("model", "llama3.2");
-    c.temperature = j.value("temperature", 0.7f);
-    c.max_tokens = j.value("max_tokens", 500);
-    c.system_prompt = j.value("system_prompt", "");
-    c.timeout_seconds = j.value("timeout_seconds", 60);
-    c.max_history = j.value("max_history", 100);
-}
-
 // PreviewConfig JSON serialization
 void to_json(nlohmann::json& j, const PreviewConfig& c) {
     j = nlohmann::json{
@@ -160,7 +133,6 @@ void to_json(nlohmann::json& j, const Config& c) {
         {"server", c.server},
         {"paths", c.paths},
         {"sd_defaults", c.sd_defaults},
-        {"ollama", c.ollama},
         {"preview", c.preview},
         {"assistant", c.assistant}
     };
@@ -175,9 +147,6 @@ void from_json(const nlohmann::json& j, Config& c) {
     }
     if (j.contains("sd_defaults")) {
         c.sd_defaults = j["sd_defaults"].get<SDDefaultsConfig>();
-    }
-    if (j.contains("ollama")) {
-        c.ollama = j["ollama"].get<OllamaConfig>();
     }
     if (j.contains("preview")) {
         c.preview = j["preview"].get<PreviewConfig>();

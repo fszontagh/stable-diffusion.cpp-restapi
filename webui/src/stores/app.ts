@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api, type HealthResponse, type ModelsResponse, type QueueResponse, type OptionsResponse, type Job, type OllamaStatusResponse, type QueueFilters, type GenerationDefaults, type UIPreferences } from '../api/client'
+import { api, type HealthResponse, type ModelsResponse, type QueueResponse, type OptionsResponse, type Job, type QueueFilters, type GenerationDefaults, type UIPreferences } from '../api/client'
 import {
   wsService,
   type ConnectionState,
@@ -28,7 +28,6 @@ export const useAppStore = defineStore('app', () => {
   const models = ref<ModelsResponse | null>(null)
   const queue = ref<QueueResponse | null>(null)
   const options = ref<OptionsResponse | null>(null)
-  const ollamaStatus = ref<OllamaStatusResponse | null>(null)
   const connected = ref(false)
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -424,15 +423,6 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  async function fetchOllamaStatus() {
-    try {
-      ollamaStatus.value = await api.getOllamaStatus()
-    } catch (e) {
-      // Ollama might be disabled, set a default disabled state
-      ollamaStatus.value = { enabled: false, connected: false, endpoint: '', model: '' }
-    }
-  }
-
   function showToast(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') {
     const id = ++toastId
     toasts.value.push({ id, message, type })
@@ -715,7 +705,6 @@ export const useAppStore = defineStore('app', () => {
       await Promise.all([
         fetchQueue(),
         fetchOptions(),
-        fetchOllamaStatus(),
         fetchGenerationDefaults(),
         fetchUIPreferences()
       ])
@@ -778,7 +767,6 @@ export const useAppStore = defineStore('app', () => {
     models,
     queue,
     options,
-    ollamaStatus,
     connected,
     loading,
     error,
@@ -819,7 +807,6 @@ export const useAppStore = defineStore('app', () => {
     fetchModels,
     fetchQueue,
     fetchOptions,
-    fetchOllamaStatus,
     setQueueFilters,
     showToast,
     removeToast,

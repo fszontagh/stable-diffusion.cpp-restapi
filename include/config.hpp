@@ -46,21 +46,6 @@ struct SDDefaultsConfig {
 };
 
 /**
- * Ollama integration configuration for prompt enhancement
- */
-struct OllamaConfig {
-    bool enabled = false;                                    // Enable/disable Ollama integration
-    std::string endpoint = "http://localhost:11434";         // Ollama API endpoint
-    std::string api_key = "";                                // Optional API key for cloud endpoints
-    std::string model = "llama3.2";                          // Model name to use
-    float temperature = 0.7f;                                // Generation temperature
-    int max_tokens = 500;                                    // Maximum tokens for response
-    std::string system_prompt = "";                          // Custom system prompt (empty = use default)
-    int timeout_seconds = 60;                                // Request timeout
-    int max_history = 100;                                   // Maximum history entries to keep
-};
-
-/**
  * Preview configuration for live generation previews
  */
 struct PreviewConfig {
@@ -72,8 +57,8 @@ struct PreviewConfig {
 };
 
 /**
- * LLM Assistant configuration (separate from Ollama prompt enhancement)
- * Provides a Clippy-like assistant that can observe user interactions and help with settings
+ * LLM Assistant configuration
+ * Provides an AI assistant that can help with settings, prompt enhancement, and more
  */
 struct AssistantConfig {
     bool enabled = false;                                    // Enable/disable assistant
@@ -95,7 +80,6 @@ struct Config {
     ServerConfig server;
     PathsConfig paths;
     SDDefaultsConfig sd_defaults;
-    OllamaConfig ollama;
     PreviewConfig preview;
     AssistantConfig assistant;
     
@@ -128,9 +112,6 @@ void from_json(const nlohmann::json& j, PathsConfig& c);
 
 void to_json(nlohmann::json& j, const SDDefaultsConfig& c);
 void from_json(const nlohmann::json& j, SDDefaultsConfig& c);
-
-void to_json(nlohmann::json& j, const OllamaConfig& c);
-void from_json(const nlohmann::json& j, OllamaConfig& c);
 
 void to_json(nlohmann::json& j, const PreviewConfig& c);
 void from_json(const nlohmann::json& j, PreviewConfig& c);

@@ -1,7 +1,6 @@
 #include "request_handlers.hpp"
 #include "model_manager.hpp"
 #include "queue_manager.hpp"
-#include "ollama_client.hpp"
 #include "assistant_client.hpp"
 #include "download_manager.hpp"
 #include "settings_manager.hpp"
@@ -25,11 +24,10 @@ namespace sdcpp {
 
 RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queue_manager,
                                  const std::string& output_dir, const std::string& webui_dir,
-                                 int ws_port, const OllamaConfig& ollama_config,
+                                 int ws_port,
                                  const AssistantConfig& assistant_config,
                                  const std::string& config_file_path)
     : model_manager_(model_manager), queue_manager_(queue_manager), output_dir_(output_dir), webui_dir_(webui_dir), ws_port_(ws_port)
-    , ollama_client_(std::make_unique<OllamaClient>(ollama_config, output_dir, config_file_path))
     , assistant_client_(std::make_unique<AssistantClient>(assistant_config, output_dir, config_file_path))
     , architecture_manager_(std::make_unique<ArchitectureManager>(output_dir))
     , settings_manager_(std::make_unique<SettingsManager>(config_file_path, output_dir)) {
@@ -138,35 +136,6 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     } else {
         std::cout << "[Routes] WebUI routes NOT registered (webui_dir is empty)" << std::endl;
     }
-
-    // Ollama routes (prompt enhancement)
-    server.Post("/ollama/enhance", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_ollama_enhance(req, res);
-    });
-    server.Get("/ollama/history", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_ollama_history(req, res);
-    });
-    server.Get(R"(/ollama/history/([a-f0-9\-]+))", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_ollama_history_entry(req, res);
-    });
-    server.Delete(R"(/ollama/history/([a-f0-9\-]+))", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_ollama_delete_history_entry(req, res);
-    });
-    server.Delete("/ollama/history", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_ollama_clear_history(req, res);
-    });
-    server.Get("/ollama/status", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_ollama_status(req, res);
-    });
-    server.Get("/ollama/models", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_ollama_models(req, res);
-    });
-    server.Get("/ollama/settings", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_ollama_get_settings(req, res);
-    });
-    server.Put("/ollama/settings", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_ollama_update_settings(req, res);
-    });
 
     // Preview settings routes
     server.Get("/preview/settings", [this](const httplib::Request& req, httplib::Response& res) {
@@ -1788,142 +1757,6 @@ void RequestHandlers::handle_webui(const httplib::Request& req, httplib::Respons
 
     std::string mime_type = get_mime_type(full_path.string());
     res.set_content(content, mime_type);
-}
-
-// Ollama Handlers
-
-void RequestHandlers::handle_ollama_enhance(const httplib::Request& req, httplib::Response& res) {
-    auto json = parse_json_body(req);
-    if (json.is_null()) {
-        send_error(res, "Invalid JSON body", 400);
-        return;
-    }
-
-    if (!json.contains("prompt") || !json["prompt"].is_string()) {
-        send_error(res, "Missing required field: prompt", 400);
-        return;
-    }
-
-    std::string prompt = json["prompt"].get<std::string>();
-    std::optional<std::string> custom_system_prompt;
-
-    if (json.contains("system_prompt") && json["system_prompt"].is_string()) {
-        custom_system_prompt = json["system_prompt"].get<std::string>();
-    }
-
-    auto [success, result] = ollama_client_->enhance_prompt(prompt, custom_system_prompt);
-
-    if (success) {
-        // Get the most recent history entry (just added)
-        auto history = ollama_client_->get_history(1, 0);
-        if (!history.empty()) {
-            const auto& entry = history[0];
-            send_json(res, {
-                {"success", true},
-                {"id", entry.id},
-                {"original_prompt", entry.original_prompt},
-                {"enhanced_prompt", entry.enhanced_prompt},
-                {"model_used", entry.model_used},
-                {"created_at", entry.created_at}
-            });
-        } else {
-            send_json(res, {
-                {"success", true},
-                {"enhanced_prompt", result}
-            });
-        }
-    } else {
-        send_json(res, {
-            {"success", false},
-            {"error", result}
-        }, 500);
-    }
-}
-
-void RequestHandlers::handle_ollama_history(const httplib::Request& req, httplib::Response& res) {
-    size_t limit = 50;
-    size_t offset = 0;
-
-    if (req.has_param("limit")) {
-        try {
-            limit = std::stoul(req.get_param_value("limit"));
-        } catch (...) {}
-    }
-    if (req.has_param("offset")) {
-        try {
-            offset = std::stoul(req.get_param_value("offset"));
-        } catch (...) {}
-    }
-
-    auto history = ollama_client_->get_history(limit, offset);
-    size_t total_count = ollama_client_->get_history_count();
-
-    nlohmann::json items = nlohmann::json::array();
-    for (const auto& entry : history) {
-        items.push_back(entry.to_json());
-    }
-
-    send_json(res, {
-        {"total_count", total_count},
-        {"items", items}
-    });
-}
-
-void RequestHandlers::handle_ollama_history_entry(const httplib::Request& req, httplib::Response& res) {
-    std::string id = req.matches[1].str();
-
-    auto entry = ollama_client_->get_history_entry(id);
-    if (entry) {
-        send_json(res, entry->to_json());
-    } else {
-        send_error(res, "History entry not found", 404);
-    }
-}
-
-void RequestHandlers::handle_ollama_delete_history_entry(const httplib::Request& req, httplib::Response& res) {
-    std::string id = req.matches[1].str();
-
-    if (ollama_client_->delete_history_entry(id)) {
-        send_json(res, {{"success", true}});
-    } else {
-        send_error(res, "History entry not found", 404);
-    }
-}
-
-void RequestHandlers::handle_ollama_clear_history(const httplib::Request& /*req*/, httplib::Response& res) {
-    ollama_client_->clear_history();
-    send_json(res, {{"success", true}});
-}
-
-void RequestHandlers::handle_ollama_status(const httplib::Request& /*req*/, httplib::Response& res) {
-    send_json(res, ollama_client_->get_status());
-}
-
-void RequestHandlers::handle_ollama_models(const httplib::Request& /*req*/, httplib::Response& res) {
-    auto models = ollama_client_->get_available_models();
-    send_json(res, {{"models", models}});
-}
-
-void RequestHandlers::handle_ollama_get_settings(const httplib::Request& /*req*/, httplib::Response& res) {
-    send_json(res, ollama_client_->get_settings());
-}
-
-void RequestHandlers::handle_ollama_update_settings(const httplib::Request& req, httplib::Response& res) {
-    auto json = parse_json_body(req);
-    if (json.is_null()) {
-        send_error(res, "Invalid JSON body", 400);
-        return;
-    }
-
-    if (ollama_client_->update_settings(json)) {
-        // Return updated settings
-        send_json(res, {
-            {"success", true},
-            {"settings", ollama_client_->get_settings()}
-        });
-    } else {
-        send_error(res, "Failed to update settings", 500);
-    }
 }
 
 void RequestHandlers::handle_get_preview_settings(const httplib::Request& /*req*/, httplib::Response& res) {

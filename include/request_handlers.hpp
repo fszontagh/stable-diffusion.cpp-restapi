@@ -6,7 +6,6 @@
 #include <memory>
 
 #include "config.hpp"
-#include "ollama_client.hpp"
 #include "assistant_client.hpp"
 #include "architecture_manager.hpp"
 #include "settings_manager.hpp"
@@ -29,13 +28,12 @@ public:
      * @param output_dir Output directory path for file browser
      * @param webui_dir Optional webui directory path for serving web UI
      * @param ws_port WebSocket server port (0 if disabled)
-     * @param ollama_config Ollama configuration for prompt enhancement
      * @param assistant_config Assistant configuration for LLM helper
      * @param config_file_path Path to config.json for persisting settings (optional)
      */
     RequestHandlers(ModelManager& model_manager, QueueManager& queue_manager,
                     const std::string& output_dir, const std::string& webui_dir = "",
-                    int ws_port = 0, const OllamaConfig& ollama_config = OllamaConfig{},
+                    int ws_port = 0,
                     const AssistantConfig& assistant_config = AssistantConfig{},
                     const std::string& config_file_path = "");
 
@@ -52,24 +50,24 @@ private:
     void handle_load_model(const httplib::Request& req, httplib::Response& res);
     void handle_unload_model(const httplib::Request& req, httplib::Response& res);
     void handle_get_model_hash(const httplib::Request& req, httplib::Response& res);
-    
+
     // Generation endpoints
     void handle_txt2img(const httplib::Request& req, httplib::Response& res);
     void handle_img2img(const httplib::Request& req, httplib::Response& res);
     void handle_txt2vid(const httplib::Request& req, httplib::Response& res);
     void handle_upscale(const httplib::Request& req, httplib::Response& res);
     void handle_convert(const httplib::Request& req, httplib::Response& res);
-    
+
     // Upscaler endpoints
     void handle_load_upscaler(const httplib::Request& req, httplib::Response& res);
     void handle_unload_upscaler(const httplib::Request& req, httplib::Response& res);
-    
+
     // Queue endpoints
     void handle_get_queue(const httplib::Request& req, httplib::Response& res);
     void handle_get_job(const httplib::Request& req, httplib::Response& res);
     void handle_cancel_job(const httplib::Request& req, httplib::Response& res);
     void handle_delete_jobs(const httplib::Request& req, httplib::Response& res);
-    
+
     // Health endpoint
     void handle_health(const httplib::Request& req, httplib::Response& res);
 
@@ -82,17 +80,6 @@ private:
 
     // Web UI endpoint
     void handle_webui(const httplib::Request& req, httplib::Response& res);
-
-    // Ollama endpoints
-    void handle_ollama_enhance(const httplib::Request& req, httplib::Response& res);
-    void handle_ollama_history(const httplib::Request& req, httplib::Response& res);
-    void handle_ollama_history_entry(const httplib::Request& req, httplib::Response& res);
-    void handle_ollama_delete_history_entry(const httplib::Request& req, httplib::Response& res);
-    void handle_ollama_clear_history(const httplib::Request& req, httplib::Response& res);
-    void handle_ollama_status(const httplib::Request& req, httplib::Response& res);
-    void handle_ollama_models(const httplib::Request& req, httplib::Response& res);
-    void handle_ollama_get_settings(const httplib::Request& req, httplib::Response& res);
-    void handle_ollama_update_settings(const httplib::Request& req, httplib::Response& res);
 
     // Preview settings endpoints
     void handle_get_preview_settings(const httplib::Request& req, httplib::Response& res);
@@ -148,7 +135,6 @@ private:
     std::string output_dir_;
     std::string webui_dir_;
     int ws_port_;
-    std::unique_ptr<OllamaClient> ollama_client_;
     std::unique_ptr<AssistantClient> assistant_client_;
     std::unique_ptr<ArchitectureManager> architecture_manager_;
     std::unique_ptr<SettingsManager> settings_manager_;
