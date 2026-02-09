@@ -1,4 +1,5 @@
 #include "assistant_client.hpp"
+#include "tool_executor.hpp"
 #include "utils.hpp"
 
 #include <httplib.h>
@@ -84,10 +85,12 @@ nlohmann::json AssistantResponse::to_json() const {
 
 // AssistantClient implementation
 AssistantClient::AssistantClient(const AssistantConfig& config, const std::string& data_dir,
-                                   const std::string& config_file_path)
+                                   const std::string& config_file_path,
+                                   ToolExecutor* tool_executor)
     : config_(config)
     , history_file_((fs::path(data_dir) / "assistant_history.json").string())
     , config_file_path_(config_file_path)
+    , tool_executor_(tool_executor)
 {
     load_history();
     std::cout << "[AssistantClient] Initialized with endpoint: " << config_.endpoint
@@ -95,6 +98,9 @@ AssistantClient::AssistantClient(const AssistantConfig& config, const std::strin
               << " | enabled: " << (config_.enabled ? "true" : "false");
     if (!config_file_path_.empty()) {
         std::cout << " | config persistence enabled";
+    }
+    if (tool_executor_) {
+        std::cout << " | backend tool execution enabled";
     }
     std::cout << std::endl;
 }
@@ -747,133 +753,209 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
     // Build messages array with history and context
     nlohmann::json messages = build_messages(user_message, context);
 
-    // Build request body with native tools for Ollama
-    // Tools are sent so the LLM can use native tool calling format
-    // The response handling already supports extracting tool_calls
-    nlohmann::json request_body = {
-        {"model", config_.model},
-        {"messages", messages},
-        {"tools", build_tools()},
-        {"stream", false},
-        {"options", {
-            {"temperature", config_.temperature},
-            {"num_predict", config_.max_tokens}
-        }}
-    };
+    // Tool execution loop - execute backend tools and feed results back to LLM
+    const int MAX_TOOL_ITERATIONS = 10;
+    std::vector<AssistantAction> ui_actions;  // Actions to pass to frontend
+    std::string final_response_text;
+    int total_tool_calls = 0;
 
-    std::cout << "[AssistantClient] Sending chat request to " << config_.endpoint
-              << "/api/chat" << std::endl;
+    for (int iteration = 0; iteration < MAX_TOOL_ITERATIONS; ++iteration) {
+        // Build request body with native tools for Ollama
+        nlohmann::json request_body = {
+            {"model", config_.model},
+            {"messages", messages},
+            {"tools", build_tools()},
+            {"stream", false},
+            {"options", {
+                {"temperature", config_.temperature},
+                {"num_predict", config_.max_tokens}
+            }}
+        };
 
-    // Make request
-    auto res = client.Post("/api/chat", headers, request_body.dump(), "application/json");
+        std::cout << "[AssistantClient] Sending chat request (iteration " << iteration + 1
+                  << ") to " << config_.endpoint << "/api/chat" << std::endl;
 
-    if (!res) {
-        response.error = "Failed to connect to LLM server: " + httplib::to_string(res.error());
-        std::cerr << "[AssistantClient] Connection error: " << response.error.value() << std::endl;
-        return response;
-    }
+        // Make request
+        auto res = client.Post("/api/chat", headers, request_body.dump(), "application/json");
 
-    if (res->status != 200) {
-        response.error = "LLM API error: HTTP " + std::to_string(res->status);
-        std::cerr << "[AssistantClient] API error: " << res->status << " - " << res->body << std::endl;
-        return response;
-    }
+        if (!res) {
+            response.error = "Failed to connect to LLM server: " + httplib::to_string(res.error());
+            std::cerr << "[AssistantClient] Connection error: " << response.error.value() << std::endl;
+            return response;
+        }
 
-    // Parse response
-    try {
-        auto response_json = nlohmann::json::parse(res->body);
+        if (res->status != 200) {
+            response.error = "LLM API error: HTTP " + std::to_string(res->status);
+            std::cerr << "[AssistantClient] API error: " << res->status << " - " << res->body << std::endl;
+            return response;
+        }
 
-        std::string response_text;
-        std::vector<AssistantAction> tool_actions;
-        bool used_native_tools = false;
+        // Parse response
+        nlohmann::json response_json;
+        try {
+            response_json = nlohmann::json::parse(res->body);
+        } catch (const nlohmann::json::exception& e) {
+            response.error = "Failed to parse LLM response: " + std::string(e.what());
+            return response;
+        }
 
-        if (response_json.contains("message")) {
-            const auto& message = response_json["message"];
-
-            // First, try to extract native tool_calls (Ollama tool calling)
-            if (message.contains("tool_calls") && message["tool_calls"].is_array() &&
-                !message["tool_calls"].empty()) {
-                tool_actions = extract_tool_calls(message);
-                used_native_tools = !tool_actions.empty();
-                if (used_native_tools) {
-                    std::cout << "[AssistantClient] Using native Ollama tool calling: "
-                              << tool_actions.size() << " tool calls" << std::endl;
-                }
+        if (!response_json.contains("message")) {
+            // Try alternate response format
+            if (response_json.contains("response")) {
+                final_response_text = response_json["response"].get<std::string>();
+                break;
             }
+            response.error = "LLM response missing 'message' field";
+            return response;
+        }
 
-            // Get text content (may be empty if only tool calls)
+        const auto& message = response_json["message"];
+
+        // Check for tool_calls
+        bool has_tool_calls = message.contains("tool_calls") &&
+                              message["tool_calls"].is_array() &&
+                              !message["tool_calls"].empty();
+
+        if (!has_tool_calls) {
+            // No tool calls - this is the final response
             if (message.contains("content") && message["content"].is_string()) {
-                response_text = message["content"].get<std::string>();
+                final_response_text = message["content"].get<std::string>();
             }
-        } else if (response_json.contains("response")) {
-            response_text = response_json["response"].get<std::string>();
+            break;
         }
 
-        // If we got native tool calls, use those; otherwise try text-based extraction
-        if (used_native_tools) {
-            response.success = true;
-            response.actions = tool_actions;
-            response.message = response_text;
+        // Add assistant message with tool_calls to conversation
+        messages.push_back(message);
 
-            // Trim whitespace from message
-            auto& msg = response.message;
-            msg.erase(0, msg.find_first_not_of(" \t\n\r"));
-            if (!msg.empty()) {
-                msg.erase(msg.find_last_not_of(" \t\n\r") + 1);
-            }
-        } else {
-            // Fall back to text-based action extraction
-            if (response_text.empty()) {
-                response.error = "LLM returned an empty response";
-                return response;
-            }
-            // Parse the response to extract message and actions from text
-            response = parse_response(response_text);
-        }
+        // Process each tool call
+        bool executed_backend_tool = false;
+        for (const auto& tool_call : message["tool_calls"]) {
+            if (!tool_call.contains("function")) continue;
 
-        // Add user message to history
-        {
-            std::lock_guard<std::mutex> lock(history_mutex_);
+            const auto& func = tool_call["function"];
+            std::string tool_name = func.value("name", "");
+            if (tool_name.empty()) continue;
 
-            ConversationMessage user_msg;
-            user_msg.role = MessageRole::User;
-            user_msg.content = user_message;
-            user_msg.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch()
-            ).count();
-            history_.insert(history_.begin(), user_msg);
-
-            // Add assistant response to history
-            ConversationMessage assistant_msg;
-            assistant_msg.role = MessageRole::Assistant;
-            // For native tool calls, store a summary of the calls for history
-            if (used_native_tools && response_text.empty()) {
-                std::string tool_summary = "[Tool calls: ";
-                for (size_t i = 0; i < tool_actions.size(); ++i) {
-                    if (i > 0) tool_summary += ", ";
-                    tool_summary += tool_actions[i].type;
+            // Parse arguments
+            nlohmann::json params = nlohmann::json::object();
+            if (func.contains("arguments")) {
+                if (func["arguments"].is_string()) {
+                    try {
+                        params = nlohmann::json::parse(func["arguments"].get<std::string>());
+                    } catch (...) {
+                        params = nlohmann::json::object();
+                    }
+                } else if (func["arguments"].is_object()) {
+                    params = func["arguments"];
                 }
-                tool_summary += "]";
-                assistant_msg.content = tool_summary;
-            } else {
-                assistant_msg.content = response_text;
             }
-            assistant_msg.timestamp = user_msg.timestamp;
-            history_.insert(history_.begin(), assistant_msg);
 
-            prune_history();
-            save_history();
+            total_tool_calls++;
+
+            // Check if this is a backend tool
+            if (tool_executor_ && tool_executor_->is_backend_tool(tool_name)) {
+                // Execute on backend
+                std::cout << "[AssistantClient] Executing backend tool: " << tool_name << std::endl;
+                nlohmann::json result = tool_executor_->execute(tool_name, params);
+
+                // Add tool result message (Ollama format)
+                messages.push_back({
+                    {"role", "tool"},
+                    {"content", result.dump()}
+                });
+                executed_backend_tool = true;
+            } else {
+                // Collect as UI action for frontend
+                std::cout << "[AssistantClient] Collected UI action: " << tool_name << std::endl;
+                AssistantAction action;
+                action.type = tool_name;
+                action.parameters = params;
+                ui_actions.push_back(action);
+            }
         }
 
-        std::cout << "[AssistantClient] Chat successful"
-                  << ", message length: " << response.message.length()
-                  << ", actions: " << response.actions.size()
-                  << ", native tools: " << (used_native_tools ? "yes" : "no") << std::endl;
+        // If we only collected UI actions (no backend tools executed), break the loop
+        // The frontend needs to execute these actions
+        if (!executed_backend_tool) {
+            // Get any text content from the message
+            if (message.contains("content") && message["content"].is_string()) {
+                final_response_text = message["content"].get<std::string>();
+            }
+            break;
+        }
 
-    } catch (const nlohmann::json::exception& e) {
-        response.error = "Failed to parse LLM response: " + std::string(e.what());
-        return response;
+        // Continue loop to send tool results back to LLM
     }
+
+    // Check if we hit max iterations
+    if (total_tool_calls >= MAX_TOOL_ITERATIONS * 5) {  // Reasonable upper bound
+        std::cerr << "[AssistantClient] Warning: High number of tool calls: " << total_tool_calls << std::endl;
+    }
+
+    // Build final response
+    response.success = true;
+    response.actions = ui_actions;
+
+    // If no native tool calls were used, try text-based action extraction
+    if (ui_actions.empty() && !final_response_text.empty()) {
+        auto text_actions = extract_actions(final_response_text);
+        if (!text_actions.empty()) {
+            response.actions = text_actions;
+            // Remove action blocks from message
+            std::regex action_block_regex(R"(`{2,3}json:action\s*\n[\s\S]*?\n`{2,3})", std::regex::icase);
+            final_response_text = std::regex_replace(final_response_text, action_block_regex, "");
+        }
+    }
+
+    // Trim whitespace from final response
+    auto trim = [](std::string& s) {
+        s.erase(0, s.find_first_not_of(" \t\n\r"));
+        if (!s.empty()) {
+            s.erase(s.find_last_not_of(" \t\n\r") + 1);
+        }
+    };
+    trim(final_response_text);
+    response.message = final_response_text;
+
+    // Add to conversation history
+    {
+        std::lock_guard<std::mutex> lock(history_mutex_);
+
+        ConversationMessage user_msg;
+        user_msg.role = MessageRole::User;
+        user_msg.content = user_message;
+        user_msg.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()
+        ).count();
+        history_.insert(history_.begin(), user_msg);
+
+        // Add assistant response to history
+        ConversationMessage assistant_msg;
+        assistant_msg.role = MessageRole::Assistant;
+        if (!final_response_text.empty()) {
+            assistant_msg.content = final_response_text;
+        } else if (!ui_actions.empty()) {
+            // Store summary of actions for history
+            std::string action_summary = "[Actions: ";
+            for (size_t i = 0; i < ui_actions.size(); ++i) {
+                if (i > 0) action_summary += ", ";
+                action_summary += ui_actions[i].type;
+            }
+            action_summary += "]";
+            assistant_msg.content = action_summary;
+        }
+        assistant_msg.timestamp = user_msg.timestamp;
+        history_.insert(history_.begin(), assistant_msg);
+
+        prune_history();
+        save_history();
+    }
+
+    std::cout << "[AssistantClient] Chat completed"
+              << " | iterations: " << (total_tool_calls > 0 ? "multiple" : "1")
+              << " | message length: " << response.message.length()
+              << " | UI actions: " << response.actions.size()
+              << " | backend tool calls: " << total_tool_calls << std::endl;
 
     return response;
 }
