@@ -204,18 +204,16 @@ nlohmann::json ToolExecutor::execute_list_jobs(const nlohmann::json& params) {
             {"status", queue_status_to_string(item.status)}
         };
 
-        // Add prompt (truncated to 80 chars) if available
-        if (item.params.contains("prompt") && item.params["prompt"].is_string()) {
-            std::string prompt = item.params["prompt"].get<std::string>();
-            if (prompt.length() > 80) {
-                prompt = prompt.substr(0, 77) + "...";
-            }
-            job_info["prompt"] = prompt;
-        }
+        // Add timestamps
+        auto created_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            item.created_at.time_since_epoch()).count();
+        job_info["created_at"] = created_ms;
 
-        // Add model name if available
-        if (item.model_settings.contains("model_name") && item.model_settings["model_name"].is_string()) {
-            job_info["model"] = item.model_settings["model_name"].get<std::string>();
+        // Add finished_at if completed or failed
+        if (item.status == QueueStatus::Completed || item.status == QueueStatus::Failed) {
+            auto finished_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                item.completed_at.time_since_epoch()).count();
+            job_info["finished_at"] = finished_ms;
         }
 
         // Add error message if failed
