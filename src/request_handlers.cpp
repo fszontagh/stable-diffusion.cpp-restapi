@@ -1947,12 +1947,16 @@ void RequestHandlers::handle_assistant_chat_stream(const httplib::Request& req, 
     res.set_chunked_content_provider(
         "text/event-stream",
         [this, message, context](size_t /*offset*/, httplib::DataSink& sink) {
+            std::cout << "[SSE] Starting chunked content provider" << std::endl;
             bool success = assistant_client_->chat_stream(
                 message,
                 context,
                 [&sink](const std::string& event, const nlohmann::json& data) {
                     std::string sse = "event: " + event + "\ndata: " + data.dump() + "\n\n";
-                    return sink.write(sse.c_str(), sse.size());
+                    std::cout << "[SSE] Writing event: " << event << " (" << sse.size() << " bytes)" << std::endl;
+                    bool result = sink.write(sse.c_str(), sse.size());
+                    std::cout << "[SSE] Write result: " << (result ? "success" : "failed") << std::endl;
+                    return result;
                 }
             );
 
