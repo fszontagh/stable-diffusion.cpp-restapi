@@ -5,6 +5,7 @@ import { useAssistantStore } from '../stores/assistant'
 import { useAppStore } from '../stores/app'
 import type { AssistantAction } from '../api/client'
 import { marked } from 'marked'
+import CollapsibleSection from '../components/CollapsibleSection.vue'
 
 // Configure marked for safe rendering
 marked.setOptions({
@@ -163,6 +164,35 @@ function formatMessage(content: string): string {
   return marked.parse(cleaned) as string
 }
 
+// Format thinking/reasoning content
+function formatThinking(thinking: string): string {
+  if (!thinking) return ''
+
+  // Convert line breaks to <br> and wrap in paragraphs
+  let formatted = thinking
+    .replace(/\n\n+/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+
+  // Wrap in paragraph tags
+  return `<p>${formatted}</p>`
+}
+
+// Format tool parameters for display
+function formatToolParams(params: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(params, null, 2)
+  } catch {
+    return String(params)
+  }
+}
+
+// Truncate result for display
+function truncateResult(result: string, maxLength = 200): string {
+  if (!result) return ''
+  if (result.length <= maxLength) return result
+  return result.substring(0, maxLength) + '...'
+}
+
 // Format timestamp
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp)
@@ -263,10 +293,51 @@ const visibleMessages = computed(() =>
         >
           <div class="message-avatar" v-if="msg.role === 'assistant'">&#129302;</div>
           <div class="message-bubble">
-            <div class="message-content" v-html="formatMessage(msg.content)"></div>
+            <!-- Thinking/Reasoning section (collapsible, default closed) -->
+            <CollapsibleSection
+              v-if="msg.role === 'assistant' && msg.thinking"
+              title="Reasoning"
+              variant="thinking"
+              :default-open="false"
+            >
+              <div class="thinking-content" v-html="formatThinking(msg.thinking)"></div>
+            </CollapsibleSection>
 
-            <!-- Action badges for assistant messages -->
-            <div v-if="msg.role === 'assistant' && msg.actions?.length" class="message-actions">
+            <!-- Main message content -->
+            <div class="message-content">
+              <span v-html="formatMessage(msg.content)"></span>
+              <span v-if="msg.isStreaming" class="streaming-cursor">&#9612;</span>
+            </div>
+
+            <!-- Tool calls section (collapsible, default closed) -->
+            <CollapsibleSection
+              v-if="msg.role === 'assistant' && msg.toolCalls?.length"
+              title="Tool Calls"
+              variant="tool"
+              :badge="msg.toolCalls.length"
+              :default-open="false"
+            >
+              <div class="tool-calls-list">
+                <div
+                  v-for="(call, i) in msg.toolCalls"
+                  :key="i"
+                  class="tool-call-item"
+                >
+                  <div class="tool-call-header">
+                    <span class="tool-name">{{ call.name }}</span>
+                    <span v-if="call.executedOnBackend" class="backend-badge">Backend</span>
+                  </div>
+                  <pre class="tool-params">{{ formatToolParams(call.parameters) }}</pre>
+                  <div v-if="call.result" class="tool-result">
+                    <span class="result-label">Result:</span>
+                    <pre>{{ truncateResult(call.result) }}</pre>
+                  </div>
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            <!-- Action badges for assistant messages (only show if no toolCalls) -->
+            <div v-if="msg.role === 'assistant' && msg.actions?.length && !msg.toolCalls?.length" class="message-actions">
               <span class="actions-label">Applied:</span>
               <div class="action-list">
                 <span
@@ -858,5 +929,102 @@ const visibleMessages = computed(() =>
   .suggestion-chips {
     flex-direction: column;
   }
+}
+
+/* Streaming cursor */
+.streaming-cursor {
+  animation: blink 0.7s infinite;
+  margin-left: 2px;
+  color: var(--accent-primary);
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Thinking content */
+.thinking-content {
+  font-style: italic;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.thinking-content :deep(p) {
+  margin: 0 0 8px;
+}
+
+.thinking-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* Tool calls */
+.tool-calls-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-call-item {
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tool-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.backend-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(34, 197, 94, 0.2);
+  color: rgb(74, 222, 128);
+  border-radius: 4px;
+}
+
+.tool-params {
+  font-size: 11px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 6px 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 4px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tool-result {
+  margin-top: 6px;
+}
+
+.result-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.tool-result pre {
+  font-size: 11px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 6px 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
 }
 </style>

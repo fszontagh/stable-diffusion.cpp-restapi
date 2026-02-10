@@ -695,6 +695,97 @@ class ApiClient {
     return this.request('POST', '/assistant/chat', request)
   }
 
+  /**
+   * Stream assistant chat response via Server-Sent Events
+   * @param request The chat request
+   * @param callbacks Callbacks for streaming events
+   * @returns Promise that resolves when streaming is complete
+   */
+  async assistantChatStream(
+    request: AssistantChatRequest,
+    callbacks: AssistantStreamCallbacks
+  ): Promise<void> {
+    const response = await fetch(this.baseUrl + '/assistant/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      callbacks.onError?.(error || 'Stream request failed')
+      return
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      callbacks.onError?.('No response body')
+      return
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // Keep incomplete line in buffer
+
+        let currentEvent = ''
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7)
+          } else if (line.startsWith('data: ') && currentEvent) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              switch (currentEvent) {
+                case 'content':
+                  callbacks.onContent?.(data.content || '')
+                  break
+                case 'thinking':
+                  callbacks.onThinking?.(data.content || '')
+                  break
+                case 'tool_call':
+                  callbacks.onToolCall?.({
+                    name: data.name,
+                    parameters: data.parameters || {},
+                    result: data.result,
+                    executedOnBackend: data.executed_on_backend
+                  })
+                  break
+                case 'done':
+                  callbacks.onDone?.({
+                    success: true,
+                    message: data.message || '',
+                    thinking: data.thinking,
+                    actions: data.actions,
+                    tool_calls: data.tool_calls
+                  })
+                  break
+                case 'error':
+                  callbacks.onError?.(data.error || 'Unknown streaming error')
+                  break
+              }
+            } catch (e) {
+              console.warn('Failed to parse SSE data:', line.slice(6))
+            }
+            currentEvent = ''
+          }
+        }
+      }
+    } catch (e) {
+      callbacks.onError?.(e instanceof Error ? e.message : 'Stream read error')
+    } finally {
+      reader.releaseLock()
+    }
+  }
+
   async getAssistantHistory(): Promise<AssistantHistoryResponse> {
     return this.request('GET', '/assistant/history')
   }
@@ -764,12 +855,22 @@ export interface AssistantAction {
   parameters: Record<string, unknown>
 }
 
+export interface ToolCallInfo {
+  name: string
+  parameters: Record<string, unknown>
+  result?: string
+  executedOnBackend?: boolean
+}
+
 export interface AssistantMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: number
   actions?: AssistantAction[]
-  hidden?: boolean  // Internal messages that shouldn't be shown in UI
+  thinking?: string           // Thinking/reasoning trace from LLM
+  toolCalls?: ToolCallInfo[]  // All tool calls made during the request
+  hidden?: boolean            // Internal messages that shouldn't be shown in UI
+  isStreaming?: boolean       // True while message is being streamed
 }
 
 export interface AssistantContext {
@@ -837,8 +938,18 @@ export interface AssistantChatRequest {
 export interface AssistantChatResponse {
   success: boolean
   message?: string
+  thinking?: string            // Thinking/reasoning trace from LLM
   actions?: AssistantAction[]
+  tool_calls?: ToolCallInfo[]  // All tool calls made during the request
   error?: string
+}
+
+export interface AssistantStreamCallbacks {
+  onContent?: (content: string) => void
+  onThinking?: (thinking: string) => void
+  onToolCall?: (toolCall: ToolCallInfo) => void
+  onDone?: (response: AssistantChatResponse) => void
+  onError?: (error: string) => void
 }
 
 export interface AssistantHistoryResponse {

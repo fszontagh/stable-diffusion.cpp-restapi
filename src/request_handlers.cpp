@@ -167,6 +167,9 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     server.Post("/assistant/chat", [this](const httplib::Request& req, httplib::Response& res) {
         handle_assistant_chat(req, res);
     });
+    server.Post("/assistant/chat/stream", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_assistant_chat_stream(req, res);
+    });
     server.Get("/assistant/history", [this](const httplib::Request& req, httplib::Response& res) {
         handle_assistant_history(req, res);
     });
@@ -1878,6 +1881,20 @@ void RequestHandlers::handle_assistant_chat(const httplib::Request& req, httplib
             {"message", response.message}
         };
 
+        // Include thinking/reasoning if present
+        if (!response.thinking.empty()) {
+            result["thinking"] = response.thinking;
+        }
+
+        // Include tool calls info if any
+        if (!response.tool_calls.empty()) {
+            nlohmann::json tool_calls_json = nlohmann::json::array();
+            for (const auto& tc : response.tool_calls) {
+                tool_calls_json.push_back(tc.to_json());
+            }
+            result["tool_calls"] = tool_calls_json;
+        }
+
         if (!response.actions.empty()) {
             nlohmann::json actions_json = nlohmann::json::array();
             for (const auto& action : response.actions) {
@@ -1893,6 +1910,61 @@ void RequestHandlers::handle_assistant_chat(const httplib::Request& req, httplib
             {"error", response.error.value_or("Unknown error")}
         }, 500);
     }
+}
+
+void RequestHandlers::handle_assistant_chat_stream(const httplib::Request& req, httplib::Response& res) {
+    auto json = parse_json_body(req);
+    if (json.is_null()) {
+        res.set_header("Content-Type", "text/event-stream");
+        res.set_header("Cache-Control", "no-cache");
+        res.set_header("Connection", "keep-alive");
+        res.set_header("X-Accel-Buffering", "no");
+        res.body = "event: error\ndata: {\"error\": \"Invalid JSON body\"}\n\n";
+        res.status = 400;
+        return;
+    }
+
+    std::string message = json.value("message", "");
+    if (message.empty()) {
+        res.set_header("Content-Type", "text/event-stream");
+        res.set_header("Cache-Control", "no-cache");
+        res.set_header("Connection", "keep-alive");
+        res.set_header("X-Accel-Buffering", "no");
+        res.body = "event: error\ndata: {\"error\": \"Message is required\"}\n\n";
+        res.status = 400;
+        return;
+    }
+
+    nlohmann::json context = json.value("context", nlohmann::json::object());
+
+    // Set SSE headers
+    res.set_header("Content-Type", "text/event-stream");
+    res.set_header("Cache-Control", "no-cache");
+    res.set_header("Connection", "keep-alive");
+    res.set_header("X-Accel-Buffering", "no");
+
+    // Use chunked content provider for streaming
+    res.set_chunked_content_provider(
+        "text/event-stream",
+        [this, message, context](size_t /*offset*/, httplib::DataSink& sink) {
+            bool success = assistant_client_->chat_stream(
+                message,
+                context,
+                [&sink](const std::string& event, const nlohmann::json& data) {
+                    std::string sse = "event: " + event + "\ndata: " + data.dump() + "\n\n";
+                    return sink.write(sse.c_str(), sse.size());
+                }
+            );
+
+            if (!success) {
+                std::string error_sse = "event: error\ndata: {\"error\": \"Stream failed\"}\n\n";
+                sink.write(error_sse.c_str(), error_sse.size());
+            }
+
+            sink.done();
+            return true;
+        }
+    );
 }
 
 void RequestHandlers::handle_assistant_history(const httplib::Request& /*req*/, httplib::Response& res) {

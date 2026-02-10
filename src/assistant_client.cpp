@@ -6,6 +6,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <filesystem>
 #include <algorithm>
 #include <regex>
@@ -61,6 +62,19 @@ AssistantAction AssistantAction::from_json(const nlohmann::json& j) {
     return action;
 }
 
+// ToolCallInfo JSON serialization
+nlohmann::json ToolCallInfo::to_json() const {
+    nlohmann::json j = {
+        {"name", name},
+        {"parameters", parameters},
+        {"executed_on_backend", executed_on_backend}
+    };
+    if (!result.empty()) {
+        j["result"] = result;
+    }
+    return j;
+}
+
 // AssistantResponse JSON serialization
 nlohmann::json AssistantResponse::to_json() const {
     nlohmann::json j = {
@@ -68,12 +82,24 @@ nlohmann::json AssistantResponse::to_json() const {
         {"message", message}
     };
 
+    if (!thinking.empty()) {
+        j["thinking"] = thinking;
+    }
+
     if (!actions.empty()) {
         nlohmann::json actions_json = nlohmann::json::array();
         for (const auto& action : actions) {
             actions_json.push_back(action.to_json());
         }
         j["actions"] = actions_json;
+    }
+
+    if (!tool_calls.empty()) {
+        nlohmann::json tool_calls_json = nlohmann::json::array();
+        for (const auto& tc : tool_calls) {
+            tool_calls_json.push_back(tc.to_json());
+        }
+        j["tool_calls"] = tool_calls_json;
     }
 
     if (error.has_value()) {
@@ -756,7 +782,9 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
     // Tool execution loop - execute backend tools and feed results back to LLM
     const int MAX_TOOL_ITERATIONS = 10;
     std::vector<AssistantAction> ui_actions;  // Actions to pass to frontend
+    std::vector<ToolCallInfo> all_tool_calls; // Track all tool calls for response
     std::string final_response_text;
+    std::string final_thinking_text;          // Thinking/reasoning from LLM
     int total_tool_calls = 0;
 
     for (int iteration = 0; iteration < MAX_TOOL_ITERATIONS; ++iteration) {
@@ -766,6 +794,7 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
             {"messages", messages},
             {"tools", build_tools()},
             {"stream", false},
+            {"think", true},  // Enable thinking/reasoning trace for models that support it
             {"options", {
                 {"temperature", config_.temperature},
                 {"num_predict", config_.max_tokens}
@@ -811,6 +840,18 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
 
         const auto& message = response_json["message"];
 
+        // Extract thinking content if present (Ollama returns this as separate field)
+        if (message.contains("thinking") && message["thinking"].is_string()) {
+            std::string thinking = message["thinking"].get<std::string>();
+            if (!thinking.empty()) {
+                if (!final_thinking_text.empty()) {
+                    final_thinking_text += "\n\n";
+                }
+                final_thinking_text += thinking;
+                std::cout << "[AssistantClient] Received thinking content (" << thinking.length() << " chars)" << std::endl;
+            }
+        }
+
         // Check for tool_calls
         bool has_tool_calls = message.contains("tool_calls") &&
                               message["tool_calls"].is_array() &&
@@ -852,11 +893,20 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
 
             total_tool_calls++;
 
+            // Track tool call info
+            ToolCallInfo tc_info;
+            tc_info.name = tool_name;
+            tc_info.parameters = params;
+
             // Check if this is a backend tool
             if (tool_executor_ && tool_executor_->is_backend_tool(tool_name)) {
                 // Execute on backend
                 std::cout << "[AssistantClient] Executing backend tool: " << tool_name << std::endl;
                 nlohmann::json result = tool_executor_->execute(tool_name, params);
+
+                // Store result in tool call info
+                tc_info.result = result.dump();
+                tc_info.executed_on_backend = true;
 
                 // Add tool result message (Ollama format)
                 messages.push_back({
@@ -867,11 +917,15 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
             } else {
                 // Collect as UI action for frontend
                 std::cout << "[AssistantClient] Collected UI action: " << tool_name << std::endl;
+                tc_info.executed_on_backend = false;
+
                 AssistantAction action;
                 action.type = tool_name;
                 action.parameters = params;
                 ui_actions.push_back(action);
             }
+
+            all_tool_calls.push_back(tc_info);
         }
 
         // If we only collected UI actions (no backend tools executed), break the loop
@@ -895,6 +949,7 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
     // Build final response
     response.success = true;
     response.actions = ui_actions;
+    response.tool_calls = all_tool_calls;
 
     // If no native tool calls were used, try text-based action extraction
     if (ui_actions.empty() && !final_response_text.empty()) {
@@ -907,7 +962,7 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
         }
     }
 
-    // Trim whitespace from final response
+    // Trim whitespace from final response and thinking
     auto trim = [](std::string& s) {
         s.erase(0, s.find_first_not_of(" \t\n\r"));
         if (!s.empty()) {
@@ -915,7 +970,9 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
         }
     };
     trim(final_response_text);
+    trim(final_thinking_text);
     response.message = final_response_text;
+    response.thinking = final_thinking_text;
 
     // Add to conversation history
     {
@@ -954,10 +1011,279 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
     std::cout << "[AssistantClient] Chat completed"
               << " | iterations: " << (total_tool_calls > 0 ? "multiple" : "1")
               << " | message length: " << response.message.length()
+              << " | thinking length: " << response.thinking.length()
               << " | UI actions: " << response.actions.size()
-              << " | backend tool calls: " << total_tool_calls << std::endl;
+              << " | tool calls: " << response.tool_calls.size() << std::endl;
 
     return response;
+}
+
+bool AssistantClient::chat_stream(
+    const std::string& user_message,
+    const nlohmann::json& context,
+    StreamCallback callback
+) {
+    if (!config_.enabled) {
+        callback("error", {{"error", "Assistant is disabled"}});
+        return false;
+    }
+
+    // Parse endpoint URL
+    std::string host, path;
+    int port;
+    bool is_ssl;
+    if (!parse_url(config_.endpoint, host, port, path, is_ssl)) {
+        callback("error", {{"error", "Invalid LLM endpoint URL"}});
+        return false;
+    }
+
+    // Create HTTP client (same as chat() method)
+    httplib::Client client(host, port);
+    client.set_connection_timeout(config_.timeout_seconds);
+    client.set_read_timeout(config_.timeout_seconds);
+    client.set_write_timeout(config_.timeout_seconds);
+
+    httplib::Headers headers;
+    if (!config_.api_key.empty()) {
+        headers.emplace("Authorization", "Bearer " + config_.api_key);
+    }
+    headers.emplace("Content-Type", "application/json");
+
+    // Build messages array
+    nlohmann::json messages = build_messages(user_message, context);
+
+    // First: Execute tool loop (non-streaming) to get tool results
+    const int MAX_TOOL_ITERATIONS = 10;
+    std::vector<AssistantAction> ui_actions;
+    std::vector<ToolCallInfo> all_tool_calls;
+    int iteration = 0;
+
+    while (iteration < MAX_TOOL_ITERATIONS) {
+        // Non-streaming request for tool execution phase
+        nlohmann::json request_body = {
+            {"model", config_.model},
+            {"messages", messages},
+            {"tools", build_tools()},
+            {"stream", false},  // Non-streaming for tool phase
+            {"think", true},
+            {"options", {
+                {"temperature", config_.temperature},
+                {"num_predict", config_.max_tokens}
+            }}
+        };
+
+        std::cout << "[AssistantClient] Stream: tool iteration " << iteration + 1 << std::endl;
+
+        auto res = client.Post("/api/chat", headers, request_body.dump(), "application/json");
+        if (!res || res->status != 200) {
+            callback("error", {{"error", "Failed to get tool response"}});
+            return false;
+        }
+
+        nlohmann::json response_json;
+        try {
+            response_json = nlohmann::json::parse(res->body);
+        } catch (...) {
+            callback("error", {{"error", "Failed to parse tool response"}});
+            return false;
+        }
+
+        if (!response_json.contains("message")) {
+            callback("error", {{"error", "Invalid response format"}});
+            return false;
+        }
+
+        const auto& message = response_json["message"];
+
+        // Check for tool_calls
+        bool has_tool_calls = message.contains("tool_calls") &&
+                              message["tool_calls"].is_array() &&
+                              !message["tool_calls"].empty();
+
+        if (!has_tool_calls) {
+            // No more tool calls - we can stream the final response
+            break;
+        }
+
+        // Add assistant message with tool_calls to conversation
+        messages.push_back(message);
+
+        // Process tool calls
+        bool executed_backend_tool = false;
+        for (const auto& tool_call : message["tool_calls"]) {
+            if (!tool_call.contains("function")) continue;
+
+            const auto& func = tool_call["function"];
+            std::string tool_name = func.value("name", "");
+            if (tool_name.empty()) continue;
+
+            nlohmann::json params = nlohmann::json::object();
+            if (func.contains("arguments")) {
+                if (func["arguments"].is_string()) {
+                    try {
+                        params = nlohmann::json::parse(func["arguments"].get<std::string>());
+                    } catch (...) {}
+                } else if (func["arguments"].is_object()) {
+                    params = func["arguments"];
+                }
+            }
+
+            ToolCallInfo tc_info;
+            tc_info.name = tool_name;
+            tc_info.parameters = params;
+
+            if (tool_executor_ && tool_executor_->is_backend_tool(tool_name)) {
+                std::cout << "[AssistantClient] Stream: executing backend tool: " << tool_name << std::endl;
+                nlohmann::json result = tool_executor_->execute(tool_name, params);
+
+                tc_info.result = result.dump();
+                tc_info.executed_on_backend = true;
+
+                // Emit tool_call event
+                callback("tool_call", tc_info.to_json());
+
+                messages.push_back({
+                    {"role", "tool"},
+                    {"content", result.dump()}
+                });
+                executed_backend_tool = true;
+            } else {
+                tc_info.executed_on_backend = false;
+                callback("tool_call", tc_info.to_json());
+
+                AssistantAction action;
+                action.type = tool_name;
+                action.parameters = params;
+                ui_actions.push_back(action);
+            }
+
+            all_tool_calls.push_back(tc_info);
+        }
+
+        if (!executed_backend_tool) {
+            break;
+        }
+
+        iteration++;
+    }
+
+    // Now stream the final response
+    std::cout << "[AssistantClient] Stream: starting final response stream" << std::endl;
+
+    nlohmann::json stream_request = {
+        {"model", config_.model},
+        {"messages", messages},
+        {"stream", true},  // Now we stream!
+        {"think", true},
+        {"options", {
+            {"temperature", config_.temperature},
+            {"num_predict", config_.max_tokens}
+        }}
+    };
+
+    std::string accumulated_content;
+    std::string accumulated_thinking;
+    bool success = true;
+
+    // Use content receiver for streaming
+    auto stream_res = client.Post(
+        "/api/chat",
+        headers,
+        stream_request.dump(),
+        "application/json",
+        [&](const char* data, size_t data_length) {
+            std::string chunk(data, data_length);
+
+            // Ollama returns NDJSON - multiple JSON objects separated by newlines
+            std::istringstream stream(chunk);
+            std::string line;
+            while (std::getline(stream, line)) {
+                if (line.empty()) continue;
+
+                try {
+                    auto json = nlohmann::json::parse(line);
+
+                    if (json.contains("message")) {
+                        const auto& msg = json["message"];
+
+                        // Check for thinking content
+                        if (msg.contains("thinking") && !msg["thinking"].get<std::string>().empty()) {
+                            std::string thinking = msg["thinking"].get<std::string>();
+                            accumulated_thinking += thinking;
+                            callback("thinking", {{"content", thinking}});
+                        }
+
+                        // Check for regular content
+                        if (msg.contains("content") && !msg["content"].get<std::string>().empty()) {
+                            std::string content = msg["content"].get<std::string>();
+                            accumulated_content += content;
+                            callback("content", {{"content", content}});
+                        }
+                    }
+
+                    // Check if done
+                    if (json.value("done", false)) {
+                        // Done streaming
+                        return true;
+                    }
+                } catch (const nlohmann::json::exception& e) {
+                    // Skip malformed lines
+                    std::cerr << "[AssistantClient] Stream: JSON parse error: " << e.what() << std::endl;
+                }
+            }
+            return true;
+        }
+    );
+
+    if (!stream_res || stream_res->status != 200) {
+        callback("error", {{"error", "Stream request failed"}});
+        success = false;
+    }
+
+    // Send done event with actions and tool calls
+    nlohmann::json done_data;
+    if (!ui_actions.empty()) {
+        nlohmann::json actions_json = nlohmann::json::array();
+        for (const auto& action : ui_actions) {
+            actions_json.push_back(action.to_json());
+        }
+        done_data["actions"] = actions_json;
+    }
+    if (!all_tool_calls.empty()) {
+        nlohmann::json tool_calls_json = nlohmann::json::array();
+        for (const auto& tc : all_tool_calls) {
+            tool_calls_json.push_back(tc.to_json());
+        }
+        done_data["tool_calls"] = tool_calls_json;
+    }
+    callback("done", done_data);
+
+    // Add to conversation history
+    {
+        std::lock_guard<std::mutex> lock(history_mutex_);
+
+        ConversationMessage user_msg;
+        user_msg.role = MessageRole::User;
+        user_msg.content = user_message;
+        user_msg.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()
+        ).count();
+        history_.insert(history_.begin(), user_msg);
+
+        ConversationMessage assistant_msg;
+        assistant_msg.role = MessageRole::Assistant;
+        assistant_msg.content = accumulated_content;
+        assistant_msg.timestamp = user_msg.timestamp;
+        history_.insert(history_.begin(), assistant_msg);
+
+        prune_history();
+        save_history();
+    }
+
+    std::cout << "[AssistantClient] Stream completed | content: " << accumulated_content.length()
+              << " chars | thinking: " << accumulated_thinking.length() << " chars" << std::endl;
+
+    return success;
 }
 
 std::vector<ConversationMessage> AssistantClient::get_history() const {

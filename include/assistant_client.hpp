@@ -5,6 +5,7 @@
 #include <mutex>
 #include <optional>
 #include <chrono>
+#include <functional>
 
 #include <nlohmann/json.hpp>
 
@@ -370,12 +371,26 @@ struct AssistantAction {
 };
 
 /**
+ * Information about a tool call made by the LLM
+ */
+struct ToolCallInfo {
+    std::string name;           // Tool/function name
+    nlohmann::json parameters;  // Parameters passed to the tool
+    std::string result;         // Result from tool execution (for backend tools)
+    bool executed_on_backend;   // True if executed server-side
+
+    nlohmann::json to_json() const;
+};
+
+/**
  * Response from assistant
  */
 struct AssistantResponse {
     bool success;
     std::string message;                          // Text response to display
-    std::vector<AssistantAction> actions;         // Actions to execute
+    std::string thinking;                         // Thinking/reasoning trace from LLM
+    std::vector<AssistantAction> actions;         // Actions to execute (UI actions)
+    std::vector<ToolCallInfo> tool_calls;         // All tool calls made during the request
     std::optional<std::string> error;
 
     nlohmann::json to_json() const;
@@ -413,6 +428,27 @@ public:
     AssistantResponse chat(
         const std::string& user_message,
         const nlohmann::json& context
+    );
+
+    /**
+     * Callback for streaming chat events
+     * @param event Event type: "content", "thinking", "tool_call", "done", "error"
+     * @param data Event data as JSON
+     * @return true to continue streaming, false to abort
+     */
+    using StreamCallback = std::function<bool(const std::string& event, const nlohmann::json& data)>;
+
+    /**
+     * Stream a chat response with real-time updates
+     * @param user_message User's message
+     * @param context Current application context as JSON
+     * @param callback Called for each streaming event
+     * @return true if completed successfully
+     */
+    bool chat_stream(
+        const std::string& user_message,
+        const nlohmann::json& context,
+        StreamCallback callback
     );
 
     /**
