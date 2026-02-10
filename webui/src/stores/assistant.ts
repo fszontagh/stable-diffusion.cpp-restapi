@@ -11,7 +11,8 @@ import {
   type Img2ImgParams,
   type Txt2VidParams,
   type UpscaleParams,
-  type ConvertParams
+  type ConvertParams,
+  type ToolCallInfo
 } from '../api/client'
 import { useAppStore } from './app'
 import { wsService, type JobStatusChangedData } from '../services/websocket'
@@ -25,6 +26,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   const isOpen = ref(false)
   const isMinimized = ref(true)
   const isLoading = ref(false)
+  const useStreaming = ref(true) // Enable streaming responses by default
   const messages = ref<AssistantMessage[]>([])
   const hasSuggestion = ref(false)
   const suggestionText = ref('')
@@ -723,18 +725,25 @@ export const useAssistantStore = defineStore('assistant', () => {
         console.log(`[AssistantStore] API response received:`, {
           hasMessage: !!response.message?.trim(),
           messageLength: response.message?.length,
+          hasThinking: !!response.thinking?.trim(),
+          thinkingLength: response.thinking?.length || 0,
           actionsCount: response.actions?.length || 0,
-          actionTypes: response.actions?.map(a => a.type) || []
+          actionTypes: response.actions?.map(a => a.type) || [],
+          toolCallsCount: response.tool_calls?.length || 0
         })
 
-        // Add assistant response if there's a message or actions
+        // Add assistant response if there's a message, thinking, or actions
         const hasMessage = response.message && response.message.trim() !== ''
+        const hasThinking = response.thinking && response.thinking.trim() !== ''
         const hasActions = response.actions && response.actions.length > 0
+        const hasToolCalls = response.tool_calls && response.tool_calls.length > 0
 
-        if (hasMessage || hasActions) {
+        if (hasMessage || hasThinking || hasActions || hasToolCalls) {
           messages.value.push({
             role: 'assistant',
             content: response.message || '',
+            thinking: response.thinking || undefined,
+            toolCalls: response.tool_calls || undefined,
             timestamp: Date.now(),
             actions: response.actions
           })
@@ -772,6 +781,106 @@ export const useAssistantStore = defineStore('assistant', () => {
       appStore.showToast(`Assistant error: ${errorMsg}`, 'error')
     } finally {
       isLoading.value = false
+    }
+  }
+
+  // Send a message to the assistant using streaming
+  async function sendMessageStreaming(userMessage: string, isContinuation = false, retryCount = 0, hideFromChat = false) {
+    if (!enabled.value || isLoading.value || !userMessage.trim()) return
+
+    // Ensure models are loaded for context (refresh if stale)
+    if (!appStore.models || appStore.models.checkpoints.length === 0) {
+      await appStore.fetchModels()
+    }
+
+    // Only add user message on first attempt (not retries)
+    if (retryCount === 0) {
+      messages.value.push({
+        role: isContinuation ? 'system' : 'user',
+        content: isContinuation ? `🔄 ${userMessage}` : userMessage,
+        timestamp: Date.now(),
+        hidden: hideFromChat
+      })
+    }
+
+    isLoading.value = true
+    lastError.value = null
+
+    // Add placeholder assistant message for streaming
+    const msgIndex = messages.value.length
+    messages.value.push({
+      role: 'assistant',
+      content: '',
+      thinking: '',
+      toolCalls: [],
+      timestamp: Date.now(),
+      isStreaming: true
+    })
+
+    try {
+      await api.assistantChatStream(
+        {
+          message: userMessage,
+          context: gatherContext()
+        },
+        {
+          onContent: (content: string) => {
+            messages.value[msgIndex].content += content
+          },
+          onThinking: (thinking: string) => {
+            messages.value[msgIndex].thinking = (messages.value[msgIndex].thinking || '') + thinking
+          },
+          onToolCall: (toolCall: ToolCallInfo) => {
+            if (!messages.value[msgIndex].toolCalls) {
+              messages.value[msgIndex].toolCalls = []
+            }
+            messages.value[msgIndex].toolCalls!.push(toolCall)
+          },
+          onDone: async (response) => {
+            messages.value[msgIndex].isStreaming = false
+            messages.value[msgIndex].actions = response.actions
+
+            // Execute actions if any
+            if (response.actions && response.actions.length > 0) {
+              const errors = await executeActions(response.actions)
+
+              // Auto-retry if actions failed and we haven't exceeded retry limit
+              if (errors.length > 0 && retryCount < MAX_ACTION_RETRIES) {
+                await new Promise(resolve => setTimeout(resolve, 500))
+                const retryMessage = `Some actions failed. Please check last_action_results in context and try again with the correct action type.`
+                isLoading.value = false
+                await sendMessageStreaming(retryMessage, true, retryCount + 1)
+              }
+            }
+
+            hasSuggestion.value = false
+            isLoading.value = false
+          },
+          onError: (error: string) => {
+            messages.value[msgIndex].isStreaming = false
+            messages.value[msgIndex].content = `Error: ${error}`
+            lastError.value = error
+            appStore.showToast(`Assistant error: ${error}`, 'error')
+            isLoading.value = false
+          }
+        }
+      )
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : 'Unknown error'
+      messages.value[msgIndex].isStreaming = false
+      messages.value[msgIndex].content = `Error: ${errorMsg}`
+      lastError.value = errorMsg
+      appStore.showToast(`Assistant error: ${errorMsg}`, 'error')
+      isLoading.value = false
+    }
+  }
+
+  // Wrapper to choose between streaming and non-streaming
+  async function sendMessageAuto(userMessage: string, isContinuation = false, retryCount = 0, hideFromChat = false) {
+    if (useStreaming.value) {
+      return sendMessageStreaming(userMessage, isContinuation, retryCount, hideFromChat)
+    } else {
+      return sendMessage(userMessage, isContinuation, retryCount, hideFromChat)
     }
   }
 
@@ -1895,12 +2004,17 @@ export const useAssistantStore = defineStore('assistant', () => {
     messageCount,
     hasMessages,
 
+    // Streaming state
+    useStreaming,
+
     // Actions
     initialize,
     loadHistory,
     loadSettings,
     gatherContext,
     sendMessage,
+    sendMessageStreaming,
+    sendMessageAuto,
     executeActions,
     setCurrentView,
     toggleOpen,

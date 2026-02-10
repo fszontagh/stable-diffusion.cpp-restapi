@@ -92,6 +92,7 @@ private:
 #ifdef SDCPP_ASSISTANT_ENABLED
     // Assistant endpoints
     void handle_assistant_chat(const httplib::Request& req, httplib::Response& res);
+    void handle_assistant_chat_stream(const httplib::Request& req, httplib::Response& res);
     void handle_assistant_history(const httplib::Request& req, httplib::Response& res);
     void handle_assistant_clear_history(const httplib::Request& req, httplib::Response& res);
     void handle_assistant_status(const httplib::Request& req, httplib::Response& res);
