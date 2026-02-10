@@ -335,6 +335,9 @@ You: "Loading the SDXL model now." (WITH action block)
 
 This ensures users always have control over significant changes to their session.)";
 
+// Forward declaration for ConversationMessage
+struct ToolCallInfo;
+
 /**
  * Conversation message role
  */
@@ -350,6 +353,8 @@ enum class MessageRole {
 struct ConversationMessage {
     MessageRole role;
     std::string content;
+    std::string thinking;                    // Thinking/reasoning trace from LLM
+    std::vector<ToolCallInfo> tool_calls;    // Tool calls made during this message
     int64_t timestamp;
 
     nlohmann::json to_json() const;

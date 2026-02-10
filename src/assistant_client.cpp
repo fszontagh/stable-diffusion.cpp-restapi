@@ -17,11 +17,27 @@ namespace sdcpp {
 
 // ConversationMessage JSON serialization
 nlohmann::json ConversationMessage::to_json() const {
-    return {
+    nlohmann::json j = {
         {"role", role_to_string(role)},
         {"content", content},
         {"timestamp", timestamp}
     };
+
+    // Include thinking if present
+    if (!thinking.empty()) {
+        j["thinking"] = thinking;
+    }
+
+    // Include tool calls if any
+    if (!tool_calls.empty()) {
+        nlohmann::json tc_array = nlohmann::json::array();
+        for (const auto& tc : tool_calls) {
+            tc_array.push_back(tc.to_json());
+        }
+        j["tool_calls"] = tc_array;
+    }
+
+    return j;
 }
 
 ConversationMessage ConversationMessage::from_json(const nlohmann::json& j) {
@@ -29,6 +45,24 @@ ConversationMessage ConversationMessage::from_json(const nlohmann::json& j) {
     msg.role = string_to_role(j.value("role", "user"));
     msg.content = j.value("content", "");
     msg.timestamp = j.value("timestamp", 0LL);
+
+    // Load thinking if present
+    if (j.contains("thinking") && j["thinking"].is_string()) {
+        msg.thinking = j["thinking"].get<std::string>();
+    }
+
+    // Load tool calls if present
+    if (j.contains("tool_calls") && j["tool_calls"].is_array()) {
+        for (const auto& tc : j["tool_calls"]) {
+            ToolCallInfo info;
+            info.name = tc.value("name", "");
+            info.parameters = tc.value("parameters", nlohmann::json::object());
+            info.result = tc.value("result", "");
+            info.executed_on_backend = tc.value("executed_on_backend", false);
+            msg.tool_calls.push_back(info);
+        }
+    }
+
     return msg;
 }
 
@@ -1001,6 +1035,8 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
             action_summary += "]";
             assistant_msg.content = action_summary;
         }
+        assistant_msg.thinking = final_thinking_text;
+        assistant_msg.tool_calls = all_tool_calls;
         assistant_msg.timestamp = user_msg.timestamp;
         history_.insert(history_.begin(), assistant_msg);
 
@@ -1275,6 +1311,8 @@ bool AssistantClient::chat_stream(
         ConversationMessage assistant_msg;
         assistant_msg.role = MessageRole::Assistant;
         assistant_msg.content = accumulated_content;
+        assistant_msg.thinking = accumulated_thinking;
+        assistant_msg.tool_calls = all_tool_calls;
         assistant_msg.timestamp = user_msg.timestamp;
         history_.insert(history_.begin(), assistant_msg);
 
@@ -1283,7 +1321,8 @@ bool AssistantClient::chat_stream(
     }
 
     std::cout << "[AssistantClient] Stream completed | content: " << accumulated_content.length()
-              << " chars | thinking: " << accumulated_thinking.length() << " chars" << std::endl;
+              << " chars | thinking: " << accumulated_thinking.length() << " chars"
+              << " | tool_calls: " << all_tool_calls.size() << std::endl;
 
     return success;
 }
