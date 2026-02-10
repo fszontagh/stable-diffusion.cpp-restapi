@@ -80,7 +80,7 @@ async function handleSend() {
   if (!message || store.isLoading) return
 
   inputMessage.value = ''
-  await store.sendMessage(message)
+  await store.sendMessageAuto(message)
 }
 
 function handleKeyDown(event: KeyboardEvent) {

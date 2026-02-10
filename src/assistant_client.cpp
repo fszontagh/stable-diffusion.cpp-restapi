@@ -1210,6 +1210,7 @@ bool AssistantClient::chat_stream(
                         if (msg.contains("thinking") && !msg["thinking"].get<std::string>().empty()) {
                             std::string thinking = msg["thinking"].get<std::string>();
                             accumulated_thinking += thinking;
+                            std::cout << "[AssistantClient] Stream: emitting thinking chunk (" << thinking.size() << " bytes)" << std::endl;
                             callback("thinking", {{"content", thinking}});
                         }
 
@@ -1217,6 +1218,7 @@ bool AssistantClient::chat_stream(
                         if (msg.contains("content") && !msg["content"].get<std::string>().empty()) {
                             std::string content = msg["content"].get<std::string>();
                             accumulated_content += content;
+                            std::cout << "[AssistantClient] Stream: emitting content chunk (" << content.size() << " bytes)" << std::endl;
                             callback("content", {{"content", content}});
                         }
                     }

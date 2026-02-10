@@ -727,11 +727,17 @@ class ApiClient {
     let buffer = ''
 
     try {
+      console.log('[SSE] Stream started, reading chunks...')
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          console.log('[SSE] Stream done')
+          break
+        }
 
-        buffer += decoder.decode(value, { stream: true })
+        const chunk = decoder.decode(value, { stream: true })
+        console.log('[SSE] Received chunk:', chunk.length, 'bytes')
+        buffer += chunk
 
         // Parse SSE events from buffer
         const lines = buffer.split('\n')
@@ -741,9 +747,11 @@ class ApiClient {
         for (const line of lines) {
           if (line.startsWith('event: ')) {
             currentEvent = line.slice(7)
+            console.log('[SSE] Event type:', currentEvent)
           } else if (line.startsWith('data: ') && currentEvent) {
             try {
               const data = JSON.parse(line.slice(6))
+              console.log('[SSE] Event data:', currentEvent, data)
               switch (currentEvent) {
                 case 'content':
                   callbacks.onContent?.(data.content || '')
