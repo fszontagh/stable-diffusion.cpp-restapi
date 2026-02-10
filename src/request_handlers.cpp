@@ -32,7 +32,9 @@ RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queu
                                  const AssistantConfig& assistant_config,
                                  const std::string& config_file_path)
     : model_manager_(model_manager), queue_manager_(queue_manager), output_dir_(output_dir), webui_dir_(webui_dir), ws_port_(ws_port)
-    , architecture_manager_(std::make_unique<ArchitectureManager>(output_dir))
+    // ArchitectureManager uses config directory (where model_architectures.json lives), not output directory
+    , architecture_manager_(std::make_unique<ArchitectureManager>(
+          config_file_path.empty() ? output_dir : fs::path(config_file_path).parent_path().string()))
     , settings_manager_(std::make_unique<SettingsManager>(config_file_path, output_dir)) {
 
     // Initialize settings manager
