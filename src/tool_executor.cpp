@@ -209,11 +209,11 @@ nlohmann::json ToolExecutor::execute_list_jobs(const nlohmann::json& params) {
             item.created_at.time_since_epoch()).count();
         job_info["created_at"] = created_ms;
 
-        // Add finished_at if completed or failed
+        // Add completed_at if completed or failed
         if (item.status == QueueStatus::Completed || item.status == QueueStatus::Failed) {
-            auto finished_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            auto completed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 item.completed_at.time_since_epoch()).count();
-            job_info["finished_at"] = finished_ms;
+            job_info["completed_at"] = completed_ms;
         }
 
         // Add error message if failed
