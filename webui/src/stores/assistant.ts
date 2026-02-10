@@ -295,8 +295,21 @@ export const useAssistantStore = defineStore('assistant', () => {
         const isInternal = msg.role !== 'assistant' &&
           internalPatterns.some(pattern => msg.content.includes(pattern))
 
+        // Map snake_case from API to camelCase for frontend
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const apiMsg = msg as any
         return {
-          ...msg,
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          thinking: apiMsg.thinking || undefined,
+          toolCalls: apiMsg.tool_calls?.map((tc: any) => ({
+            name: tc.name,
+            parameters: tc.parameters,
+            result: tc.result,
+            executedOnBackend: tc.executed_on_backend
+          })) || undefined,
+          actions: msg.actions,
           hidden: isInternal
         }
       })

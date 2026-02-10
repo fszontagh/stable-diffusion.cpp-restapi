@@ -195,21 +195,46 @@ nlohmann::json ToolExecutor::execute_list_jobs(const nlohmann::json& params) {
 
     auto result = queue_manager_.get_jobs_paginated(filter);
 
-    // For list_jobs, we return only job IDs and minimal info (as per the plan)
-    nlohmann::json job_ids = nlohmann::json::array();
+    // Return job IDs with minimal but useful metadata
+    nlohmann::json jobs = nlohmann::json::array();
     for (const auto& item : result.items) {
-        job_ids.push_back({
+        nlohmann::json job_info = {
             {"job_id", item.job_id},
             {"type", generation_type_to_string(item.type)},
             {"status", queue_status_to_string(item.status)}
-        });
+        };
+
+        // Add prompt (truncated to 80 chars) if available
+        if (item.params.contains("prompt") && item.params["prompt"].is_string()) {
+            std::string prompt = item.params["prompt"].get<std::string>();
+            if (prompt.length() > 80) {
+                prompt = prompt.substr(0, 77) + "...";
+            }
+            job_info["prompt"] = prompt;
+        }
+
+        // Add model name if available
+        if (item.model_settings.contains("model_name") && item.model_settings["model_name"].is_string()) {
+            job_info["model"] = item.model_settings["model_name"].get<std::string>();
+        }
+
+        // Add error message if failed
+        if (item.status == QueueStatus::Failed && !item.error_message.empty()) {
+            std::string error = item.error_message;
+            if (error.length() > 50) {
+                error = error.substr(0, 47) + "...";
+            }
+            job_info["error"] = error;
+        }
+
+        jobs.push_back(job_info);
     }
 
-    std::cout << "[ToolExecutor] list_jobs: listed " << job_ids.size()
+    std::cout << "[ToolExecutor] list_jobs: listed " << jobs.size()
               << " jobs (offset=" << filter.offset << ", limit=" << filter.limit << ")" << std::endl;
 
     return {
-        {"jobs", job_ids},
+        {"jobs", jobs},
         {"total_count", result.total_count},
         {"offset", result.offset},
         {"limit", result.limit},
