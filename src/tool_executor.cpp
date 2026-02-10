@@ -82,12 +82,18 @@ nlohmann::json ToolExecutor::execute_get_status() {
 
     nlohmann::json recent_jobs = nlohmann::json::array();
     for (const auto& item : recent.items) {
-        recent_jobs.push_back({
+        nlohmann::json job_entry = {
             {"job_id", item.job_id},
             {"type", generation_type_to_string(item.type)},
             {"status", queue_status_to_string(item.status)},
             {"prompt", item.params.value("prompt", "")}
-        });
+        };
+        // Include model info so LLM knows which model was used for each job
+        if (!item.model_settings.empty()) {
+            job_entry["model_name"] = item.model_settings.value("model_name", "");
+            job_entry["model_architecture"] = item.model_settings.value("model_architecture", "");
+        }
+        recent_jobs.push_back(job_entry);
     }
     result["recent_jobs"] = recent_jobs;
 
