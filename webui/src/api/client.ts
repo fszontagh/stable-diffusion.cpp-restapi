@@ -697,6 +697,7 @@ class ApiClient {
 
   /**
    * Stream assistant chat response via Server-Sent Events
+   * Uses XHR with progress events for reliable streaming across browsers
    * @param request The chat request
    * @param callbacks Callbacks for streaming events
    * @returns Promise that resolves when streaming is complete
@@ -705,39 +706,22 @@ class ApiClient {
     request: AssistantChatRequest,
     callbacks: AssistantStreamCallbacks
   ): Promise<void> {
-    const response = await fetch(this.baseUrl + '/assistant/chat/stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request)
-    })
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', this.baseUrl + '/assistant/chat/stream', true)
+      xhr.setRequestHeader('Content-Type', 'application/json')
 
-    if (!response.ok) {
-      const error = await response.text()
-      callbacks.onError?.(error || 'Stream request failed')
-      return
-    }
+      let buffer = ''
+      let lastProcessedIndex = 0
 
-    const reader = response.body?.getReader()
-    if (!reader) {
-      callbacks.onError?.('No response body')
-      return
-    }
+      // Process new data as it arrives
+      const processNewData = () => {
+        const newData = xhr.responseText.substring(lastProcessedIndex)
+        lastProcessedIndex = xhr.responseText.length
 
-    const decoder = new TextDecoder()
-    let buffer = ''
+        if (!newData) return
 
-    try {
-      console.log('[SSE] Stream started, reading chunks...')
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-          console.log('[SSE] Stream done')
-          break
-        }
-
-        const chunk = decoder.decode(value, { stream: true })
-        console.log('[SSE] Received chunk:', chunk.length, 'bytes')
-        buffer += chunk
+        buffer += newData
 
         // Parse SSE events from buffer
         const lines = buffer.split('\n')
@@ -747,11 +731,9 @@ class ApiClient {
         for (const line of lines) {
           if (line.startsWith('event: ')) {
             currentEvent = line.slice(7)
-            console.log('[SSE] Event type:', currentEvent)
           } else if (line.startsWith('data: ') && currentEvent) {
             try {
               const data = JSON.parse(line.slice(6))
-              console.log('[SSE] Event data:', currentEvent, data)
               switch (currentEvent) {
                 case 'content':
                   callbacks.onContent?.(data.content || '')
@@ -787,11 +769,26 @@ class ApiClient {
           }
         }
       }
-    } catch (e) {
-      callbacks.onError?.(e instanceof Error ? e.message : 'Stream read error')
-    } finally {
-      reader.releaseLock()
-    }
+
+      xhr.onprogress = processNewData
+
+      xhr.onload = () => {
+        processNewData() // Process any remaining data
+        if (xhr.status === 200) {
+          resolve()
+        } else {
+          callbacks.onError?.(`Request failed with status ${xhr.status}`)
+          reject(new Error(`Request failed with status ${xhr.status}`))
+        }
+      }
+
+      xhr.onerror = () => {
+        callbacks.onError?.('Network error')
+        reject(new Error('Network error'))
+      }
+
+      xhr.send(JSON.stringify(request))
+    })
   }
 
   async getAssistantHistory(): Promise<AssistantHistoryResponse> {
