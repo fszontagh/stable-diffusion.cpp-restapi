@@ -98,6 +98,7 @@ private:
     void handle_assistant_status(const httplib::Request& req, httplib::Response& res);
     void handle_assistant_get_settings(const httplib::Request& req, httplib::Response& res);
     void handle_assistant_update_settings(const httplib::Request& req, httplib::Response& res);
+    void handle_assistant_model_info(const httplib::Request& req, httplib::Response& res);
 #endif
 
     // Architecture endpoints
