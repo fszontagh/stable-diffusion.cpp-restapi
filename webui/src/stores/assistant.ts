@@ -148,6 +148,34 @@ export const useAssistantStore = defineStore('assistant', () => {
         // Remove from pending
         pendingContinuations.value.delete(data.job_id)
 
+        // Small delay to let the queue update
+        await new Promise(resolve => setTimeout(resolve, 500))
+
+        // For completed jobs, fetch job details to get outputs
+        if (data.status === 'completed') {
+          try {
+            const job = await api.getJob(data.job_id)
+            if (job && job.outputs && job.outputs.length > 0) {
+              // Add a system message with generated outputs
+              const outputMessage: AssistantMessage = {
+                role: 'system',
+                content: `Generation completed`,
+                timestamp: Date.now(),
+                hidden: false,
+                generatedOutputs: {
+                  jobId: data.job_id,
+                  type: job.type || 'txt2img',
+                  outputs: job.outputs
+                }
+              }
+              messages.value.push(outputMessage)
+              console.log(`[AssistantStore] Added generated outputs for job ${data.job_id}:`, job.outputs)
+            }
+          } catch (e) {
+            console.error('[AssistantStore] Failed to fetch job details:', e)
+          }
+        }
+
         // Build the follow-up message
         let followUpMessage: string
         if (data.status === 'completed') {
@@ -157,9 +185,6 @@ export const useAssistantStore = defineStore('assistant', () => {
         }
 
         console.log(`[AssistantStore] Job ${data.job_id} ${data.status}, triggering continuation`)
-
-        // Small delay to let the queue update
-        await new Promise(resolve => setTimeout(resolve, 500))
 
         // Send follow-up message to assistant (this will be a system-like message from the user perspective)
         // We mark it as a system continuation so the UI can style it differently if needed

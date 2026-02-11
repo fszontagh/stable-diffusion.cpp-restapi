@@ -6,6 +6,7 @@
 #include <optional>
 #include <chrono>
 #include <functional>
+#include <algorithm>
 
 #include <nlohmann/json.hpp>
 
@@ -15,6 +16,36 @@ namespace sdcpp {
 
 // Forward declaration
 class ToolExecutor;
+
+/**
+ * Model capabilities from Ollama /api/show endpoint
+ */
+struct ModelCapabilities {
+    std::vector<std::string> capabilities;  // ["completion", "vision"]
+    int context_length = 0;
+    std::string family;
+    std::string parameter_size;
+    std::string model_name;  // Model this info is for
+
+    bool has_vision() const {
+        return std::find(capabilities.begin(), capabilities.end(), "vision") != capabilities.end();
+    }
+
+    bool has_completion() const {
+        return std::find(capabilities.begin(), capabilities.end(), "completion") != capabilities.end();
+    }
+
+    nlohmann::json to_json() const {
+        return {
+            {"model", model_name},
+            {"capabilities", capabilities},
+            {"context_length", context_length},
+            {"family", family},
+            {"parameter_size", parameter_size},
+            {"has_vision", has_vision()}
+        };
+    }
+};
 
 /**
  * Default system prompt for the assistant
@@ -507,6 +538,31 @@ public:
      */
     bool update_settings(const nlohmann::json& settings);
 
+    /**
+     * Get model capabilities from Ollama /api/show endpoint
+     * @param model_name Model name to query (optional, uses current model if empty)
+     * @return ModelCapabilities struct with model info
+     */
+    ModelCapabilities get_model_info(const std::string& model_name = "");
+
+    /**
+     * Refresh cached model capabilities for current model
+     * Called automatically on model change
+     */
+    void refresh_model_capabilities();
+
+    /**
+     * Check if current model has vision capability
+     * @return true if model supports vision/image input
+     */
+    bool current_model_has_vision() const;
+
+    /**
+     * Get cached model capabilities
+     * @return Cached ModelCapabilities
+     */
+    const ModelCapabilities& get_current_model_capabilities() const;
+
 private:
     void load_history();
     void save_history();
@@ -564,6 +620,10 @@ private:
 
     // Tool executor for backend query tools (may be null)
     ToolExecutor* tool_executor_;
+
+    // Cached model capabilities (refreshed on model change)
+    mutable ModelCapabilities current_model_capabilities_;
+    mutable std::mutex capabilities_mutex_;
 };
 
 } // namespace sdcpp

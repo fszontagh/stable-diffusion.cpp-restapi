@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
 import { useAppStore } from '../stores/app'
-import { api } from '../api/client'
+import { api, type ModelCapabilitiesResponse } from '../api/client'
 import { useSettingsExport } from '../composables/useSettingsExport'
 import ThemeSelector from '../components/ThemeSelector.vue'
 import SettingField from '../components/settings/SettingField.vue'
@@ -80,6 +80,8 @@ const assistantDefaultPrompt = ref('')
 const assistantConnectionTesting = ref(false)
 const assistantConnectionStatus = ref<'unknown' | 'connected' | 'disconnected'>('unknown')
 const assistantAvailableModels = ref<string[]>([])
+const modelCapabilities = ref<ModelCapabilitiesResponse | null>(null)
+const loadingCapabilities = ref(false)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const importing = ref(false)
@@ -379,6 +381,10 @@ async function testAssistantConnection() {
     if (status.available_models) {
       assistantAvailableModels.value = status.available_models
     }
+    // Fetch model capabilities after successful connection
+    if (status.connected && assistantSettings.value.model) {
+      await fetchModelCapabilities(assistantSettings.value.model)
+    }
   } catch (e) {
     assistantConnectionStatus.value = 'disconnected'
     assistantAvailableModels.value = []
@@ -386,6 +392,35 @@ async function testAssistantConnection() {
     assistantConnectionTesting.value = false
   }
 }
+
+async function fetchModelCapabilities(modelName: string) {
+  if (!modelName) {
+    modelCapabilities.value = null
+    return
+  }
+
+  loadingCapabilities.value = true
+  try {
+    modelCapabilities.value = await api.getModelCapabilities(modelName)
+  } catch (e) {
+    console.error('[Settings] Failed to fetch model capabilities:', e)
+    modelCapabilities.value = null
+  } finally {
+    loadingCapabilities.value = false
+  }
+}
+
+// Watch for model changes to refresh capabilities
+watch(
+  () => assistantSettings.value.model,
+  async (newModel) => {
+    if (newModel && assistantConnectionStatus.value === 'connected') {
+      await fetchModelCapabilities(newModel)
+    } else {
+      modelCapabilities.value = null
+    }
+  }
+)
 
 function resetAssistantSystemPrompt() {
   assistantSettings.value.system_prompt = assistantDefaultPrompt.value
@@ -870,6 +905,44 @@ loadSettings()
                   />
                 </div>
 
+                <!-- Model Capabilities Display -->
+                <div v-if="assistantSettings.model && assistantConnectionStatus === 'connected'" class="model-capabilities">
+                  <div v-if="loadingCapabilities" class="capabilities-loading">
+                    <span class="loading-spinner"></span>
+                    Loading model info...
+                  </div>
+                  <div v-else-if="modelCapabilities" class="capabilities-content">
+                    <div class="capabilities-badges">
+                      <span
+                        v-for="cap in modelCapabilities.capabilities"
+                        :key="cap"
+                        class="capability-badge"
+                        :class="{
+                          'badge-vision': cap === 'vision',
+                          'badge-completion': cap === 'completion',
+                          'badge-tools': cap === 'tools'
+                        }"
+                      >
+                        {{ cap }}
+                      </span>
+                    </div>
+                    <div class="capabilities-info">
+                      <span v-if="modelCapabilities.context_length" class="info-item">
+                        <span class="info-label">Context:</span>
+                        {{ modelCapabilities.context_length.toLocaleString() }} tokens
+                      </span>
+                      <span v-if="modelCapabilities.family" class="info-item">
+                        <span class="info-label">Family:</span>
+                        {{ modelCapabilities.family }}
+                      </span>
+                      <span v-if="modelCapabilities.parameter_size" class="info-item">
+                        <span class="info-label">Size:</span>
+                        {{ modelCapabilities.parameter_size }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 <SettingField
                   v-model="assistantSettings.timeout_seconds"
                   label="Timeout"
@@ -1212,6 +1285,94 @@ loadSettings()
 .status-endpoint {
   color: var(--text-secondary);
   font-size: 0.8125rem;
+}
+
+/* Model Capabilities */
+.model-capabilities {
+  margin-top: 1rem;
+  padding: 0.875rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.capabilities-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.loading-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.capabilities-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.capabilities-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.capability-badge {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.capability-badge.badge-vision {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.capability-badge.badge-completion {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.capability-badge.badge-tools {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.capabilities-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.info-item {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.info-label {
+  color: var(--text-tertiary);
+  margin-right: 0.25rem;
 }
 
 /* Settings Actions */

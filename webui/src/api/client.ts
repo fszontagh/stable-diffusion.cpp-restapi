@@ -811,6 +811,13 @@ class ApiClient {
     return this.request('PUT', '/assistant/settings', settings)
   }
 
+  async getModelCapabilities(model?: string): Promise<ModelCapabilitiesResponse> {
+    const params = new URLSearchParams()
+    if (model) params.append('model', model)
+    const query = params.toString()
+    return this.request('GET', '/assistant/model-info' + (query ? '?' + query : ''))
+  }
+
   // Settings (user preferences)
   async getGenerationDefaults(mode?: 'txt2img' | 'img2img' | 'txt2vid'): Promise<GenerationDefaults | Partial<GenerationDefaults>> {
     if (mode) {
@@ -876,6 +883,11 @@ export interface AssistantMessage {
   toolCalls?: ToolCallInfo[]  // All tool calls made during the request
   hidden?: boolean            // Internal messages that shouldn't be shown in UI
   isStreaming?: boolean       // True while message is being streamed
+  generatedOutputs?: {        // Generated images/videos from jobs
+    jobId: string
+    type: string
+    outputs: string[]         // Full URL paths like /output/...
+  }
 }
 
 export interface AssistantContext {
@@ -988,6 +1000,15 @@ export interface AssistantSettings {
 export interface AssistantSettingsUpdateResponse {
   success: boolean
   settings: AssistantSettings
+}
+
+export interface ModelCapabilitiesResponse {
+  model: string
+  capabilities: string[]
+  context_length: number
+  family: string
+  parameter_size: string
+  has_vision: boolean
 }
 
 // Settings Types

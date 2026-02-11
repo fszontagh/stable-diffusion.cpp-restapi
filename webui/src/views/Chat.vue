@@ -6,6 +6,7 @@ import { useAppStore } from '../stores/app'
 import type { AssistantAction } from '../api/client'
 import { marked } from 'marked'
 import CollapsibleSection from '../components/CollapsibleSection.vue'
+import Lightbox from '../components/Lightbox.vue'
 
 // Configure marked for safe rendering
 marked.setOptions({
@@ -20,6 +21,21 @@ const router = useRouter()
 
 const inputMessage = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
+
+// Lightbox state
+const showLightbox = ref(false)
+const lightboxImages = ref<string[]>([])
+const lightboxIndex = ref(0)
+
+function openLightbox(images: string[], startIndex = 0) {
+  lightboxImages.value = images
+  lightboxIndex.value = startIndex
+  showLightbox.value = true
+}
+
+function closeLightbox() {
+  showLightbox.value = false
+}
 
 // Map routes to view names
 const viewMap: Record<string, string> = {
@@ -309,6 +325,24 @@ const visibleMessages = computed(() =>
               <span v-if="msg.isStreaming" class="streaming-cursor">&#9612;</span>
             </div>
 
+            <!-- Generated outputs display -->
+            <div v-if="msg.generatedOutputs?.outputs?.length" class="message-outputs">
+              <div class="outputs-header">
+                <span class="outputs-icon">&#128247;</span>
+                Generated {{ msg.generatedOutputs.outputs.length }} image{{ msg.generatedOutputs.outputs.length > 1 ? 's' : '' }}
+              </div>
+              <div class="outputs-thumbnails">
+                <div
+                  v-for="(output, idx) in msg.generatedOutputs.outputs"
+                  :key="idx"
+                  class="output-thumbnail"
+                  @click="openLightbox(msg.generatedOutputs!.outputs, idx)"
+                >
+                  <img :src="output" loading="lazy" :alt="`Generated image ${idx + 1}`" />
+                </div>
+              </div>
+            </div>
+
             <!-- Tool calls section (collapsible, default closed) -->
             <CollapsibleSection
               v-if="msg.role === 'assistant' && msg.toolCalls?.length"
@@ -381,6 +415,15 @@ const visibleMessages = computed(() =>
         <p class="input-hint">Press Enter to send, Shift+Enter for new line</p>
       </div>
     </template>
+
+    <!-- Lightbox for generated images -->
+    <Lightbox
+      :show="showLightbox"
+      :images="lightboxImages"
+      :current-index="lightboxIndex"
+      @close="closeLightbox"
+      @update:current-index="lightboxIndex = $event"
+    />
   </div>
 </template>
 
@@ -1026,5 +1069,53 @@ const visibleMessages = computed(() =>
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
+}
+
+/* Generated outputs */
+.message-outputs {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.outputs-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.outputs-icon {
+  font-size: 16px;
+}
+
+.outputs-thumbnails {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.output-thumbnail {
+  width: 80px;
+  height: 80px;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  background: var(--bg-tertiary);
+}
+
+.output-thumbnail:hover {
+  border-color: var(--accent-primary);
+  transform: scale(1.05);
+}
+
+.output-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 </style>

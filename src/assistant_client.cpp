@@ -1,6 +1,7 @@
 #include "assistant_client.hpp"
 #include "tool_executor.hpp"
 #include "utils.hpp"
+#include "queue_item_fields.hpp"
 
 #include <httplib.h>
 
@@ -409,18 +410,22 @@ nlohmann::json AssistantClient::build_tools() const {
         }}
     });
 
-    // search_jobs tool
+    // search_jobs tool - dynamic filtering on any queue item field
     tools.push_back({
         {"type", "function"},
         {"function", {
             {"name", "search_jobs"},
-            {"description", "Search for jobs by prompt text, status, or type"},
+            {"description", QueueItemFields::get_filter_keys_description()},
             {"parameters", {
                 {"type", "object"},
                 {"properties", {
-                    {"prompt", {{"type", "string"}, {"description", "Search for jobs containing this text in prompt"}}},
-                    {"status", {{"type", "string"}, {"enum", {"pending", "processing", "completed", "failed", "cancelled"}}, {"description", "Filter by status"}}},
-                    {"type", {{"type", "string"}, {"enum", {"txt2img", "img2img", "txt2vid", "upscale"}}, {"description", "Filter by job type"}}},
+                    {"status", {{"type", "string"}, {"enum", {"pending", "processing", "completed", "failed", "cancelled"}}, {"description", "Filter by job status. Use 'failed' for error jobs."}}},
+                    {"type", {{"type", "string"}, {"enum", {"txt2img", "img2img", "txt2vid", "upscale", "convert", "model_download", "model_hash"}}, {"description", "Filter by job type"}}},
+                    {"filters", {{"type", "object"}, {"description", "Additional key-value filters. Use dot notation for nested fields (e.g., 'params.prompt', 'model_settings.model_name'). String values use case-insensitive partial matching."}}},
+                    {"date_from", {{"type", "integer"}, {"description", "Filter jobs created after this Unix timestamp (milliseconds)"}}},
+                    {"date_to", {{"type", "integer"}, {"description", "Filter jobs created before this Unix timestamp (milliseconds)"}}},
+                    {"order", {{"type", "string"}, {"enum", {"ASC", "DESC"}}, {"description", "Sort order (default: DESC for newest first)"}}},
+                    {"order_by", {{"type", "string"}, {"description", "Field to sort by using dot notation (default: 'created_at')"}}},
                     {"limit", {{"type", "integer"}, {"description", "Maximum results to return (default 10)"}}}
                 }}
             }}
@@ -631,7 +636,7 @@ nlohmann::json AssistantClient::build_tools() const {
         {"type", "function"},
         {"function", {
             {"name", "list_jobs"},
-            {"description", "List jobs with optional ordering and pagination. Returns only job IDs with metadata about job status counts."},
+            {"description", "List jobs with pagination. Returns minimal job metadata (job_id, type, status, timestamps, error). Use get_job for full job details."},
             {"parameters", {
                 {"type", "object"},
                 {"properties", {
@@ -658,6 +663,27 @@ nlohmann::json AssistantClient::build_tools() const {
             }}
         }}
     });
+
+    // Conditionally add vision tool if the model supports vision
+    if (current_model_has_vision()) {
+        tools.push_back({
+            {"type", "function"},
+            {"function", {
+                {"name", "analyze_image"},
+                {"description", "Analyze a generated image using vision capabilities. Returns a description of what's in the image. Only available when using a vision-capable model."},
+                {"parameters", {
+                    {"type", "object"},
+                    {"required", nlohmann::json::array({"job_id"})},
+                    {"properties", {
+                        {"job_id", {{"type", "string"}, {"description", "Job ID of a completed generation with output images"}}},
+                        {"image_index", {{"type", "integer"}, {"description", "0-based index of the image to analyze (default: 0)"}}},
+                        {"prompt", {{"type", "string"}, {"description", "What to analyze or describe about the image (default: general description)"}}}
+                    }}
+                }}
+            }}
+        });
+        std::cout << "[AssistantClient] Vision tool (analyze_image) enabled for model: " << config_.model << std::endl;
+    }
 
     return tools;
 }
@@ -942,11 +968,26 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
                 tc_info.result = result.dump();
                 tc_info.executed_on_backend = true;
 
-                // Add tool result message (Ollama format)
-                messages.push_back({
-                    {"role", "tool"},
-                    {"content", result.dump()}
-                });
+                // Special handling for analyze_image - use Ollama vision format
+                if (tool_name == "analyze_image" && result.contains("image_data") && result["success"].get<bool>()) {
+                    // For vision models, add message with images array
+                    std::string analysis_prompt = result.value("prompt", "Describe what you see in this image.");
+                    std::string image_data = result["image_data"].get<std::string>();
+
+                    messages.push_back({
+                        {"role", "user"},
+                        {"content", analysis_prompt},
+                        {"images", nlohmann::json::array({image_data})}
+                    });
+
+                    std::cout << "[AssistantClient] Added vision message with image for analysis" << std::endl;
+                } else {
+                    // Add tool result message (Ollama format)
+                    messages.push_back({
+                        {"role", "tool"},
+                        {"content", result.dump()}
+                    });
+                }
                 executed_backend_tool = true;
             } else {
                 // Collect as UI action for frontend
@@ -1178,10 +1219,24 @@ bool AssistantClient::chat_stream(
                 // Emit tool_call event
                 callback("tool_call", tc_info.to_json());
 
-                messages.push_back({
-                    {"role", "tool"},
-                    {"content", result.dump()}
-                });
+                // Special handling for analyze_image - use Ollama vision format
+                if (tool_name == "analyze_image" && result.contains("image_data") && result["success"].get<bool>()) {
+                    std::string analysis_prompt = result.value("prompt", "Describe what you see in this image.");
+                    std::string image_data = result["image_data"].get<std::string>();
+
+                    messages.push_back({
+                        {"role", "user"},
+                        {"content", analysis_prompt},
+                        {"images", nlohmann::json::array({image_data})}
+                    });
+
+                    std::cout << "[AssistantClient] Stream: Added vision message with image" << std::endl;
+                } else {
+                    messages.push_back({
+                        {"role", "tool"},
+                        {"content", result.dump()}
+                    });
+                }
                 executed_backend_tool = true;
             } else {
                 tc_info.executed_on_backend = false;
@@ -1490,11 +1545,141 @@ bool AssistantClient::update_settings(const nlohmann::json& settings) {
             }
         }
 
+        // Refresh model capabilities when model changes
+        if (settings.contains("model") && settings["model"].is_string()) {
+            refresh_model_capabilities();
+        }
+
         return true;
     } catch (const std::exception& e) {
         std::cerr << "[AssistantClient] Failed to update settings: " << e.what() << std::endl;
         return false;
     }
+}
+
+ModelCapabilities AssistantClient::get_model_info(const std::string& model_name) {
+    ModelCapabilities caps;
+    std::string target_model = model_name.empty() ? config_.model : model_name;
+
+    if (target_model.empty()) {
+        std::cerr << "[AssistantClient] get_model_info: no model specified" << std::endl;
+        return caps;
+    }
+
+    caps.model_name = target_model;
+
+    // Parse endpoint URL
+    std::string host, path;
+    int port;
+    bool is_ssl;
+
+    if (!parse_url(config_.endpoint, host, port, path, is_ssl)) {
+        std::cerr << "[AssistantClient] get_model_info: invalid endpoint URL" << std::endl;
+        return caps;
+    }
+
+    // Create HTTP client
+    httplib::Client client(host, port);
+    client.set_connection_timeout(10);  // Short timeout for info endpoint
+    client.set_read_timeout(10);
+
+    // Prepare headers
+    httplib::Headers headers;
+    if (!config_.api_key.empty()) {
+        headers.emplace("Authorization", "Bearer " + config_.api_key);
+    }
+    headers.emplace("Content-Type", "application/json");
+
+    // POST to /api/show
+    nlohmann::json request_body = {{"name", target_model}};
+    auto res = client.Post("/api/show", headers, request_body.dump(), "application/json");
+
+    if (!res) {
+        std::cerr << "[AssistantClient] get_model_info: failed to connect" << std::endl;
+        return caps;
+    }
+
+    if (res->status != 200) {
+        std::cerr << "[AssistantClient] get_model_info: HTTP " << res->status << std::endl;
+        return caps;
+    }
+
+    try {
+        auto json = nlohmann::json::parse(res->body);
+
+        // Extract capabilities array
+        if (json.contains("capabilities") && json["capabilities"].is_array()) {
+            for (const auto& cap : json["capabilities"]) {
+                if (cap.is_string()) {
+                    caps.capabilities.push_back(cap.get<std::string>());
+                }
+            }
+        }
+
+        // Extract model_info - Ollama uses architecture-prefixed keys like "llama.context_length"
+        if (json.contains("model_info") && json["model_info"].is_object()) {
+            const auto& model_info = json["model_info"];
+
+            // Look for context_length with any architecture prefix
+            for (auto& [key, value] : model_info.items()) {
+                if (key.find(".context_length") != std::string::npos && value.is_number()) {
+                    caps.context_length = value.get<int>();
+                    break;
+                }
+            }
+        }
+
+        // Extract details
+        if (json.contains("details") && json["details"].is_object()) {
+            const auto& details = json["details"];
+            caps.family = details.value("family", "");
+            caps.parameter_size = details.value("parameter_size", "");
+        }
+
+        std::cout << "[AssistantClient] Model info for " << target_model
+                  << ": capabilities=[";
+        for (size_t i = 0; i < caps.capabilities.size(); ++i) {
+            std::cout << caps.capabilities[i];
+            if (i < caps.capabilities.size() - 1) std::cout << ",";
+        }
+        std::cout << "], context=" << caps.context_length
+                  << ", family=" << caps.family
+                  << ", params=" << caps.parameter_size << std::endl;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[AssistantClient] get_model_info: parse error: " << e.what() << std::endl;
+    }
+
+    return caps;
+}
+
+void AssistantClient::refresh_model_capabilities() {
+    std::lock_guard<std::mutex> lock(capabilities_mutex_);
+
+    if (config_.model.empty()) {
+        current_model_capabilities_ = ModelCapabilities{};
+        return;
+    }
+
+    // Get fresh capabilities (don't hold lock during network call)
+    {
+        // Release config mutex temporarily
+    }
+    ModelCapabilities caps = get_model_info(config_.model);
+
+    current_model_capabilities_ = caps;
+    std::cout << "[AssistantClient] Cached capabilities for model: " << config_.model
+              << " (vision=" << (caps.has_vision() ? "true" : "false") << ")" << std::endl;
+}
+
+bool AssistantClient::current_model_has_vision() const {
+    std::lock_guard<std::mutex> lock(capabilities_mutex_);
+    return current_model_capabilities_.has_vision();
+}
+
+const ModelCapabilities& AssistantClient::get_current_model_capabilities() const {
+    std::lock_guard<std::mutex> lock(capabilities_mutex_);
+    return current_model_capabilities_;
 }
 
 bool AssistantClient::save_to_config() {

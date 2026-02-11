@@ -46,6 +46,7 @@ RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queu
     // Create tool executor for backend query tool execution
     tool_executor_ = std::make_unique<ToolExecutor>(
         model_manager_, queue_manager_, architecture_manager_.get());
+    tool_executor_->set_output_dir(output_dir);
 
     // Create assistant client with tool executor
     assistant_client_ = std::make_unique<AssistantClient>(
@@ -184,6 +185,9 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     });
     server.Put("/assistant/settings", [this](const httplib::Request& req, httplib::Response& res) {
         handle_assistant_update_settings(req, res);
+    });
+    server.Get("/assistant/model-info", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_assistant_model_info(req, res);
     });
 #endif
 
@@ -2013,6 +2017,17 @@ void RequestHandlers::handle_assistant_update_settings(const httplib::Request& r
     } else {
         send_error(res, "Failed to update settings", 500);
     }
+}
+
+void RequestHandlers::handle_assistant_model_info(const httplib::Request& req, httplib::Response& res) {
+    // Optional: get model name from query param, otherwise uses current model
+    std::string model_name;
+    if (req.has_param("model")) {
+        model_name = req.get_param_value("model");
+    }
+
+    auto caps = assistant_client_->get_model_info(model_name);
+    send_json(res, caps.to_json());
 }
 #endif // SDCPP_ASSISTANT_ENABLED
 

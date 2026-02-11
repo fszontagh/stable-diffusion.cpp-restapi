@@ -57,6 +57,12 @@ public:
      */
     bool is_backend_tool(const std::string& tool_name) const;
 
+    /**
+     * Set the output directory for accessing generated images
+     * @param output_dir Path to output directory
+     */
+    void set_output_dir(const std::string& output_dir);
+
 private:
     // Tool implementations
     nlohmann::json execute_get_status();
@@ -65,10 +71,12 @@ private:
     nlohmann::json execute_get_job(const std::string& job_id);
     nlohmann::json execute_search_jobs(const nlohmann::json& params);
     nlohmann::json execute_list_jobs(const nlohmann::json& params);
+    nlohmann::json execute_analyze_image(const nlohmann::json& params);
 
     ModelManager& model_manager_;
     QueueManager& queue_manager_;
     ArchitectureManager* architecture_manager_;
+    std::string output_dir_;
 
     // Set of tools that execute on the backend
     static const std::set<std::string> BACKEND_TOOLS;
