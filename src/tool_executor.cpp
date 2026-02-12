@@ -327,6 +327,9 @@ nlohmann::json ToolExecutor::execute_search_jobs(const nlohmann::json& params) {
             return ascending ? less_than : !less_than;
         });
 
+    // Track total matching count before applying limit
+    size_t total_matching = matching_items.size();
+
     // Apply limit after sorting
     if (matching_items.size() > limit) {
         matching_items.resize(limit);
@@ -378,12 +381,13 @@ nlohmann::json ToolExecutor::execute_search_jobs(const nlohmann::json& params) {
         jobs.push_back(job_info);
     }
 
-    std::cout << "[ToolExecutor] search_jobs: found " << jobs.size() << " jobs" << std::endl;
+    std::cout << "[ToolExecutor] search_jobs: found " << total_matching
+              << " matching jobs, returning " << jobs.size() << std::endl;
 
     return {
         {"jobs", jobs},
-        {"total_count", all_jobs.total_count},
-        {"returned_count", matching_items.size()}
+        {"total_count", total_matching},      // Total jobs matching the filter
+        {"returned_count", matching_items.size()}  // Jobs returned (after limit)
     };
 }
 
