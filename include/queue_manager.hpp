@@ -87,6 +87,7 @@ struct QueueFilter {
     std::optional<std::string> search;      // Search in prompt/negative_prompt (case-insensitive)
     std::optional<GenerationType> type;     // Filter by generation type
     std::optional<std::string> architecture;  // Filter by model architecture (case-insensitive partial match)
+    std::optional<std::string> model;       // Filter by model name (case-insensitive partial match)
 
     // Pagination
     size_t limit = 20;                      // Max items per page (default 20)
