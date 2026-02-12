@@ -1297,20 +1297,30 @@ bool AssistantClient::chat_stream(
                     if (json.contains("message")) {
                         const auto& msg = json["message"];
 
-                        // Check for thinking content
-                        if (msg.contains("thinking") && !msg["thinking"].get<std::string>().empty()) {
+                        // Check for thinking content (ensure it's a non-empty string)
+                        if (msg.contains("thinking") && msg["thinking"].is_string()) {
                             std::string thinking = msg["thinking"].get<std::string>();
-                            accumulated_thinking += thinking;
-                            std::cout << "[AssistantClient] Stream: emitting thinking chunk (" << thinking.size() << " bytes)" << std::endl;
-                            callback("thinking", {{"content", thinking}});
+                            if (!thinking.empty()) {
+                                accumulated_thinking += thinking;
+                                std::cout << "[AssistantClient] Stream: emitting thinking chunk (" << thinking.size() << " bytes)" << std::endl;
+                                if (!callback("thinking", {{"content", thinking}})) {
+                                    std::cerr << "[AssistantClient] Stream: callback failed for thinking" << std::endl;
+                                    return false;
+                                }
+                            }
                         }
 
-                        // Check for regular content
-                        if (msg.contains("content") && !msg["content"].get<std::string>().empty()) {
+                        // Check for regular content (ensure it's a non-empty string)
+                        if (msg.contains("content") && msg["content"].is_string()) {
                             std::string content = msg["content"].get<std::string>();
-                            accumulated_content += content;
-                            std::cout << "[AssistantClient] Stream: emitting content chunk (" << content.size() << " bytes)" << std::endl;
-                            callback("content", {{"content", content}});
+                            if (!content.empty()) {
+                                accumulated_content += content;
+                                std::cout << "[AssistantClient] Stream: emitting content chunk (" << content.size() << " bytes)" << std::endl;
+                                if (!callback("content", {{"content", content}})) {
+                                    std::cerr << "[AssistantClient] Stream: callback failed for content" << std::endl;
+                                    return false;
+                                }
+                            }
                         }
                     }
 
@@ -1321,15 +1331,21 @@ bool AssistantClient::chat_stream(
                     }
                 } catch (const nlohmann::json::exception& e) {
                     // Skip malformed lines
-                    std::cerr << "[AssistantClient] Stream: JSON parse error: " << e.what() << std::endl;
+                    std::cerr << "[AssistantClient] Stream: JSON parse error on line: " << line << " - " << e.what() << std::endl;
                 }
             }
             return true;
         }
     );
 
-    if (!stream_res || stream_res->status != 200) {
-        callback("error", {{"error", "Stream request failed"}});
+    if (!stream_res) {
+        std::cerr << "[AssistantClient] Stream: request failed - no response" << std::endl;
+        callback("error", {{"error", "Stream request failed - no response from server"}});
+        success = false;
+    } else if (stream_res->status != 200) {
+        std::cerr << "[AssistantClient] Stream: request failed - status " << stream_res->status
+                  << ", body: " << stream_res->body.substr(0, 500) << std::endl;
+        callback("error", {{"error", "Stream request failed with status " + std::to_string(stream_res->status)}});
         success = false;
     }
 
