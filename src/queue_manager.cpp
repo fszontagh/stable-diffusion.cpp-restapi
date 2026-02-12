@@ -1,10 +1,14 @@
 #include "queue_manager.hpp"
+#include "queue_item_fields.hpp"
 #include "model_manager.hpp"
 #include "download_manager.hpp"
 #include "sd_wrapper.hpp"
 #include "websocket_server.hpp"
 #include "utils.hpp"
 #include "config.hpp"
+
+// Alias for shorter code
+using F = sdcpp::QueueItemFields;
 
 #include <iostream>
 #include <fstream>
@@ -58,31 +62,31 @@ GenerationType string_to_generation_type(const std::string& str) {
 
 nlohmann::json QueueItem::to_json() const {
     nlohmann::json j = {
-        {"job_id", job_id},
-        {"type", generation_type_to_string(type)},
-        {"status", queue_status_to_string(status)},
-        {"progress", progress},  // Uses NLOHMANN_DEFINE_TYPE_INTRUSIVE
-        {"created_at", utils::time_to_string(created_at)},
-        {"outputs", outputs}
+        {F::JOB_ID, job_id},
+        {F::TYPE, generation_type_to_string(type)},
+        {F::STATUS, queue_status_to_string(status)},
+        {F::PROGRESS, progress},  // Uses NLOHMANN_DEFINE_TYPE_INTRUSIVE
+        {F::CREATED_AT, utils::time_to_string(created_at)},
+        {F::OUTPUTS, outputs}
     };
 
     if (status == QueueStatus::Processing || status == QueueStatus::Completed) {
-        j["started_at"] = utils::time_to_string(started_at);
+        j[F::STARTED_AT] = utils::time_to_string(started_at);
     }
     if (status == QueueStatus::Completed || status == QueueStatus::Failed) {
-        j["completed_at"] = utils::time_to_string(completed_at);
+        j[F::COMPLETED_AT] = utils::time_to_string(completed_at);
     }
     if (status == QueueStatus::Failed && !error_message.empty()) {
-        j["error"] = error_message;
+        j[F::ERROR] = error_message;
     }
     if (!params.empty()) {
-        j["params"] = params;
+        j[F::PARAMS] = params;
     }
     if (!model_settings.empty()) {
-        j["model_settings"] = model_settings;
+        j[F::MODEL_SETTINGS] = model_settings;
     }
     if (!linked_job_id.empty()) {
-        j["linked_job_id"] = linked_job_id;
+        j[F::LINKED_JOB_ID] = linked_job_id;
     }
 
     return j;
@@ -90,33 +94,33 @@ nlohmann::json QueueItem::to_json() const {
 
 QueueItem QueueItem::from_json(const nlohmann::json& j) {
     QueueItem item;
-    item.job_id = j.value("job_id", "");
-    item.type = string_to_generation_type(j.value("type", "txt2img"));
-    item.status = string_to_queue_status(j.value("status", "pending"));
+    item.job_id = j.value(F::JOB_ID, "");
+    item.type = string_to_generation_type(j.value(F::TYPE, F::TYPE_TXT2IMG));
+    item.status = string_to_queue_status(j.value(F::STATUS, F::STATUS_PENDING));
 
-    if (j.contains("created_at")) {
-        item.created_at = utils::string_to_time(j["created_at"].get<std::string>());
+    if (j.contains(F::CREATED_AT)) {
+        item.created_at = utils::string_to_time(j[F::CREATED_AT].get<std::string>());
     }
-    if (j.contains("started_at")) {
-        item.started_at = utils::string_to_time(j["started_at"].get<std::string>());
+    if (j.contains(F::STARTED_AT)) {
+        item.started_at = utils::string_to_time(j[F::STARTED_AT].get<std::string>());
     }
-    if (j.contains("completed_at")) {
-        item.completed_at = utils::string_to_time(j["completed_at"].get<std::string>());
+    if (j.contains(F::COMPLETED_AT)) {
+        item.completed_at = utils::string_to_time(j[F::COMPLETED_AT].get<std::string>());
     }
-    if (j.contains("outputs")) {
-        item.outputs = j["outputs"].get<std::vector<std::string>>();
+    if (j.contains(F::OUTPUTS)) {
+        item.outputs = j[F::OUTPUTS].get<std::vector<std::string>>();
     }
-    if (j.contains("params")) {
-        item.params = j["params"];
+    if (j.contains(F::PARAMS)) {
+        item.params = j[F::PARAMS];
     }
-    if (j.contains("model_settings")) {
-        item.model_settings = j["model_settings"];
+    if (j.contains(F::MODEL_SETTINGS)) {
+        item.model_settings = j[F::MODEL_SETTINGS];
     }
-    if (j.contains("error")) {
-        item.error_message = j["error"].get<std::string>();
+    if (j.contains(F::ERROR)) {
+        item.error_message = j[F::ERROR].get<std::string>();
     }
-    if (j.contains("linked_job_id")) {
-        item.linked_job_id = j["linked_job_id"].get<std::string>();
+    if (j.contains(F::LINKED_JOB_ID)) {
+        item.linked_job_id = j[F::LINKED_JOB_ID].get<std::string>();
     }
 
     return item;
@@ -180,6 +184,18 @@ bool QueueFilter::matches(const QueueItem& item) const {
         }
     }
 
+    // Model name filter (search in model_settings.model_name)
+    if (model.has_value() && !model.value().empty()) {
+        std::string item_model;
+        if (item.model_settings.contains("model_name") &&
+            item.model_settings["model_name"].is_string()) {
+            item_model = item.model_settings["model_name"].get<std::string>();
+        }
+        if (!contains_insensitive(item_model, model.value())) {
+            return false;
+        }
+    }
+
     // Date-based filters
     auto item_timestamp = std::chrono::duration_cast<std::chrono::seconds>(
         item.created_at.time_since_epoch()
@@ -197,7 +213,7 @@ bool QueueFilter::matches(const QueueItem& item) const {
 }
 
 bool QueueFilter::is_empty() const {
-    return !status.has_value() && !search.has_value() && !type.has_value() && !architecture.has_value();
+    return !status.has_value() && !search.has_value() && !type.has_value() && !architecture.has_value() && !model.has_value();
 }
 
 QueueManager::QueueManager(
