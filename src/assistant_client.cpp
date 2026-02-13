@@ -1133,6 +1133,7 @@ bool AssistantClient::chat_stream(
     const int MAX_TOOL_ITERATIONS = 10;
     std::vector<AssistantAction> ui_actions;
     std::vector<ToolCallInfo> all_tool_calls;
+    std::string accumulated_thinking;  // Track thinking across all phases
     int iteration = 0;
 
     while (iteration < MAX_TOOL_ITERATIONS) {
@@ -1171,6 +1172,23 @@ bool AssistantClient::chat_stream(
         }
 
         const auto& message = response_json["message"];
+
+        // Extract thinking content from tool iteration (same as non-streaming chat)
+        if (message.contains("thinking") && message["thinking"].is_string()) {
+            std::string thinking = message["thinking"].get<std::string>();
+            if (!thinking.empty()) {
+                if (!accumulated_thinking.empty()) {
+                    accumulated_thinking += "\n\n";
+                }
+                accumulated_thinking += thinking;
+                std::cout << "[AssistantClient] Stream: tool phase thinking (" << thinking.size() << " bytes)" << std::endl;
+                // Emit thinking content so client receives it during tool execution
+                if (!callback("thinking", {{"content", thinking}})) {
+                    std::cerr << "[AssistantClient] Stream: callback failed for tool phase thinking" << std::endl;
+                    return false;
+                }
+            }
+        }
 
         // Check for tool_calls
         bool has_tool_calls = message.contains("tool_calls") &&
@@ -1273,7 +1291,7 @@ bool AssistantClient::chat_stream(
     };
 
     std::string accumulated_content;
-    std::string accumulated_thinking;
+    // accumulated_thinking already declared before tool loop - continues accumulating here
     bool success = true;
 
     // Use content receiver for streaming
