@@ -140,7 +140,7 @@ endif()
 FetchContent_Declare(
     stable-diffusion
     GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-    GIT_TAG        f0f641a
+    GIT_TAG        636d3cb
 )
 
 # First populate to get source directory
@@ -154,19 +154,31 @@ if(NOT stable-diffusion_POPULATED)
         message(STATUS "Applying sdcpp-restapi patches to stable-diffusion.cpp...")
 
         # Patch stable-diffusion.h - add function declaration
-        file(READ "${stable-diffusion_SOURCE_DIR}/stable-diffusion.h" SD_HEADER_CONTENT)
+        # Note: As of commit 28ef93c, header moved to include/stable-diffusion.h
+        if(EXISTS "${stable-diffusion_SOURCE_DIR}/include/stable-diffusion.h")
+            set(SD_HEADER_PATH "${stable-diffusion_SOURCE_DIR}/include/stable-diffusion.h")
+        else()
+            set(SD_HEADER_PATH "${stable-diffusion_SOURCE_DIR}/stable-diffusion.h")
+        endif()
+        file(READ "${SD_HEADER_PATH}" SD_HEADER_CONTENT)
         string(FIND "${SD_HEADER_CONTENT}" "sd_get_model_version_name" SD_HEADER_PATCHED)
         if(SD_HEADER_PATCHED EQUAL -1)
             string(REPLACE
                 "SD_API enum scheduler_t sd_get_default_scheduler(const sd_ctx_t* sd_ctx, enum sample_method_t sample_method);"
                 "SD_API enum scheduler_t sd_get_default_scheduler(const sd_ctx_t* sd_ctx, enum sample_method_t sample_method);\n\n// Get the model architecture/version name (e.g., \"SD 1.x\", \"SDXL\", \"Flux\", \"Z-Image\", etc.)\nSD_API const char* sd_get_model_version_name(const sd_ctx_t* sd_ctx);"
                 SD_HEADER_CONTENT "${SD_HEADER_CONTENT}")
-            file(WRITE "${stable-diffusion_SOURCE_DIR}/stable-diffusion.h" "${SD_HEADER_CONTENT}")
-            message(STATUS "  Patched stable-diffusion.h")
+            file(WRITE "${SD_HEADER_PATH}" "${SD_HEADER_CONTENT}")
+            message(STATUS "  Patched ${SD_HEADER_PATH}")
         endif()
 
         # Check if stable-diffusion.cpp already has the implementation (newer versions may include it)
-        file(READ "${stable-diffusion_SOURCE_DIR}/stable-diffusion.cpp" SD_CPP_CONTENT)
+        # Note: As of commit 28ef93c, source moved to src/stable-diffusion.cpp
+        if(EXISTS "${stable-diffusion_SOURCE_DIR}/src/stable-diffusion.cpp")
+            set(SD_CPP_PATH "${stable-diffusion_SOURCE_DIR}/src/stable-diffusion.cpp")
+        else()
+            set(SD_CPP_PATH "${stable-diffusion_SOURCE_DIR}/stable-diffusion.cpp")
+        endif()
+        file(READ "${SD_CPP_PATH}" SD_CPP_CONTENT)
         string(FIND "${SD_CPP_CONTENT}" "sd_get_model_version_name" SD_CPP_PATCHED)
         if(SD_CPP_PATCHED EQUAL -1)
             # Add implementation after sd_get_default_scheduler function
@@ -174,10 +186,10 @@ if(NOT stable-diffusion_POPULATED)
                 "    return DISCRETE_SCHEDULER;\n}"
                 "    return DISCRETE_SCHEDULER;\n}\n\nconst char* sd_get_model_version_name(const sd_ctx_t* sd_ctx) {\n    if (sd_ctx != nullptr && sd_ctx->sd != nullptr) {\n        if (sd_ctx->sd->version < VERSION_COUNT) {\n            return model_version_to_str[sd_ctx->sd->version];\n        }\n    }\n    return \"Unknown\";\n}"
                 SD_CPP_CONTENT "${SD_CPP_CONTENT}")
-            file(WRITE "${stable-diffusion_SOURCE_DIR}/stable-diffusion.cpp" "${SD_CPP_CONTENT}")
-            message(STATUS "  Patched stable-diffusion.cpp")
+            file(WRITE "${SD_CPP_PATH}" "${SD_CPP_CONTENT}")
+            message(STATUS "  Patched ${SD_CPP_PATH}")
         else()
-            message(STATUS "  stable-diffusion.cpp already has sd_get_model_version_name")
+            message(STATUS "  ${SD_CPP_PATH} already has sd_get_model_version_name")
         endif()
 
         file(WRITE "${SD_PATCH_MARKER}" "patched by sdcpp-restapi")
@@ -222,6 +234,8 @@ add_executable(sdcpp-restapi ${SDCPP_SOURCES})
 target_include_directories(sdcpp-restapi PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${stable-diffusion_SOURCE_DIR}
+    ${stable-diffusion_SOURCE_DIR}/include
+    ${stable-diffusion_SOURCE_DIR}/src
     ${stable-diffusion_SOURCE_DIR}/thirdparty
 )
 
