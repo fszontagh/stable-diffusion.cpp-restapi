@@ -962,7 +962,7 @@ async function handleSubmit() {
                 (rec: {{ recommended.cfgScale }})
               </span>
             </label>
-            <input v-model.number="cfgScale" type="range" class="form-range" min="1" max="20" step="0.5" />
+            <input v-model.number="cfgScale" type="range" class="form-range" min="0" max="20" step="0.1" />
           </div>
         </div>
 
