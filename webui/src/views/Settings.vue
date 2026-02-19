@@ -562,9 +562,9 @@ loadSettings()
                   v-model="genCfgScale"
                   label="CFG Scale"
                   description="Classifier-free guidance scale. Higher values follow prompt more closely."
-                  :min="1"
+                  :min="0"
                   :max="30"
-                  :step="0.5"
+                  :step="0.1"
                   :precision="1"
                 />
 
