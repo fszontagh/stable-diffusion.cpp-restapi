@@ -1018,10 +1018,33 @@ export interface GenerationDefaults {
   txt2vid: Partial<Txt2VidParams>
 }
 
+export interface LoraSettings {
+  defaultWeight: number
+  minWeight: number
+  maxWeight: number
+}
+
+export interface LoraEntry {
+  name: string
+  weight: number
+  isValid: boolean
+}
+
+export interface LoraListsPerMode {
+  positive: LoraEntry[]
+  negative: LoraEntry[]
+}
+
 export interface UIPreferences {
   desktop_notifications: boolean
   theme: string
   theme_custom: Record<string, string> | null
+  lora_settings?: LoraSettings
+  lora_lists?: {
+    txt2img?: LoraListsPerMode
+    img2img?: LoraListsPerMode
+    txt2vid?: LoraListsPerMode
+  }
 }
 
 export interface SettingsUpdateResponse<T> {

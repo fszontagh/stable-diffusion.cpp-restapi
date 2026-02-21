@@ -358,6 +358,12 @@ int main(int argc, char* argv[]) {
             ws_server = std::make_unique<sdcpp::WebSocketServer>(config.server.ws_port);
             sdcpp::set_websocket_server(ws_server.get());
             g_ws_server = ws_server.get();
+
+            // Set up status provider for WebSocket clients
+            sdcpp::set_status_provider([&model_manager]() {
+                return model_manager.get_loaded_models_info();
+            });
+
             ws_server->start();
         } else {
             std::cout << "WebSocket server disabled in config (ws_port: 0)" << std::endl;

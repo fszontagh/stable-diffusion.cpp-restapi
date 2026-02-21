@@ -13,7 +13,8 @@ import {
   type ModelLoadedData,
   type ModelUnloadedData,
   type UpscalerLoadedData,
-  type UpscalerUnloadedData
+  type UpscalerUnloadedData,
+  type ServerStatusData
 } from '../services/websocket'
 import { notificationService } from '../services/notifications'
 
@@ -477,6 +478,8 @@ export const useAppStore = defineStore('app', () => {
             clearInterval(pollInterval)
             pollInterval = null
           }
+          // Server sends server_status event on connection with current state
+          // No need for HTTP calls - state will be updated via WebSocket
         } else if (state === 'disconnected') {
           // WebSocket disconnected - start fallback polling
           if (!pollInterval) {
@@ -690,6 +693,75 @@ export const useAppStore = defineStore('app', () => {
           health.value.upscaler_name = null
         }
         showToast('Upscaler unloaded', 'info')
+      })
+    )
+
+    // Server status event - sent on connection and on request
+    wsUnsubscribers.push(
+      wsService.on<ServerStatusData>('server_status', (data) => {
+        // Update health state from server status
+        if (health.value) {
+          health.value.model_loaded = data.model_loaded
+          health.value.model_loading = data.model_loading
+          health.value.loading_model_name = data.loading_model_name
+          health.value.loading_step = data.loading_step
+          health.value.loading_total_steps = data.loading_total_steps
+          health.value.last_error = data.last_error
+          health.value.model_name = data.model_name
+          health.value.model_type = data.model_type
+          health.value.model_architecture = data.model_architecture
+          if (data.loaded_components) {
+            health.value.loaded_components = {
+              vae: data.loaded_components.vae ?? null,
+              clip_l: data.loaded_components.clip_l ?? null,
+              clip_g: data.loaded_components.clip_g ?? null,
+              t5xxl: data.loaded_components.t5xxl ?? null,
+              controlnet: data.loaded_components.controlnet ?? null,
+              llm: data.loaded_components.llm ?? null,
+              llm_vision: data.loaded_components.llm_vision ?? null
+            }
+          }
+          if (data.upscaler_loaded !== undefined) {
+            health.value.upscaler_loaded = data.upscaler_loaded
+          }
+          if (data.upscaler_name !== undefined) {
+            health.value.upscaler_name = data.upscaler_name
+          }
+        } else {
+          // Initialize health if not set - use server status data
+          health.value = {
+            status: 'ok',
+            model_loaded: data.model_loaded,
+            model_loading: data.model_loading,
+            loading_model_name: data.loading_model_name,
+            loading_step: data.loading_step,
+            loading_total_steps: data.loading_total_steps,
+            last_error: data.last_error,
+            model_name: data.model_name,
+            model_type: data.model_type,
+            model_architecture: data.model_architecture,
+            loaded_components: data.loaded_components ? {
+              vae: data.loaded_components.vae ?? null,
+              clip_l: data.loaded_components.clip_l ?? null,
+              clip_g: data.loaded_components.clip_g ?? null,
+              t5xxl: data.loaded_components.t5xxl ?? null,
+              controlnet: data.loaded_components.controlnet ?? null,
+              llm: data.loaded_components.llm ?? null,
+              llm_vision: data.loaded_components.llm_vision ?? null
+            } : {
+              vae: null,
+              clip_l: null,
+              clip_g: null,
+              t5xxl: null,
+              controlnet: null,
+              llm: null,
+              llm_vision: null
+            },
+            upscaler_loaded: data.upscaler_loaded ?? false,
+            upscaler_name: data.upscaler_name ?? null,
+            ws_port: null
+          }
+        }
       })
     )
   }

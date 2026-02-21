@@ -609,12 +609,22 @@ nlohmann::json AssistantClient::build_tools() const {
         }}
     });
 
+    // get_quantization_types tool
+    tools.push_back({
+        {"type", "function"},
+        {"function", {
+            {"name", "get_quantization_types"},
+            {"description", "Get the list of supported quantization types for model conversion. Returns all available types with their names and bit depths."},
+            {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}
+        }}
+    });
+
     // convert_model tool
     tools.push_back({
         {"type", "function"},
         {"function", {
             {"name", "convert_model"},
-            {"description", "Convert a model to GGUF format with specified quantization type. Common types: q8_0, q5_k, q4_k, f16, bf16 (full list from /options API)"},
+            {"description", "Convert a model to GGUF format with specified quantization type. Use get_quantization_types tool to see all available types."},
             {"parameters", {
                 {"type", "object"},
                 {"required", nlohmann::json::array({"output_type"})},
@@ -622,7 +632,7 @@ nlohmann::json AssistantClient::build_tools() const {
                     {"model_name", {{"type", "string"}, {"description", "Model name from available_models (relative path)"}}},
                     {"input_path", {{"type", "string"}, {"description", "Full absolute path to the model file"}}},
                     {"model_type", {{"type", "string"}, {"enum", {"checkpoint", "diffusion", "vae", "lora", "clip", "t5", "controlnet", "llm", "esrgan", "taesd"}}, {"description", "Type of model (default: checkpoint)"}}},
-                    {"output_type", {{"type", "string"}, {"description", "Quantization type (e.g., q8_0, q5_k, q4_k, f16, bf16)"}}},
+                    {"output_type", {{"type", "string"}, {"description", "Quantization type (use get_quantization_types for available options)"}}},
                     {"output_path", {{"type", "string"}, {"description", "Custom output path (default: auto-generated with .gguf extension)"}}},
                     {"vae_path", {{"type", "string"}, {"description", "Path to VAE to bake into the model"}}},
                     {"tensor_type_rules", {{"type", "string"}, {"description", "Custom tensor type rules"}}}
