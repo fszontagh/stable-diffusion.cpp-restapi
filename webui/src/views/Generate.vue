@@ -2,12 +2,13 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
 import { useAppStore } from '../stores/app'
-import { api, type GenerationParams, type Img2ImgParams, type Txt2VidParams } from '../api/client'
+import { api, type GenerationParams, type Img2ImgParams, type Txt2VidParams, type LoraEntry, type LoraSettings } from '../api/client'
 import ImageUploader from '../components/ImageUploader.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import Lightbox from '../components/Lightbox.vue'
 import LoadedModelPanel from '../components/LoadedModelPanel.vue'
 import HighlightedPrompt from '../components/HighlightedPrompt.vue'
+import LoraPanel from '../components/LoraPanel.vue'
 
 const store = useAppStore()
 
@@ -60,6 +61,130 @@ const vaeTileOverlap = ref(0.5)
 
 // Copy settings dropdown
 const showCopyMenu = ref(false)
+
+// LoRA state
+const positiveLoraList = ref<LoraEntry[]>([])
+const negativeLoraList = ref<LoraEntry[]>([])
+const loraSettings = ref<LoraSettings>({
+  defaultWeight: 1.0,
+  minWeight: -1.0,
+  maxWeight: 1.0
+})
+
+// LoRA prompt parsing
+const LORA_REGEX = /<lora:([^:>]+):([^>]+)>/g
+
+const availableLoras = computed(() => store.models?.loras || [])
+
+// Build a map of base names (without extension) to full names for matching
+const loraNameMap = computed(() => {
+  const map = new Map<string, string>()
+  for (const lora of availableLoras.value) {
+    // Add full name
+    map.set(lora.name, lora.name)
+    // Add name without extension (e.g., "add_detail.safetensors" -> "add_detail")
+    const baseName = lora.name.replace(/\.(safetensors|gguf|pt|pth|ckpt)$/i, '')
+    if (!map.has(baseName)) {
+      map.set(baseName, lora.name)
+    }
+  }
+  return map
+})
+
+// Check if a LoRA name is valid (matches full name or base name without extension)
+function isValidLoraName(name: string): boolean {
+  return loraNameMap.value.has(name)
+}
+
+// Get the canonical (full) name for a LoRA
+function getCanonicalLoraName(name: string): string {
+  return loraNameMap.value.get(name) || name
+}
+
+// Invalid LoRAs in prompts (for warning display)
+const invalidLorasInPositivePrompt = computed(() => {
+  const matches = prompt.value.matchAll(LORA_REGEX)
+  const invalid: string[] = []
+  for (const match of matches) {
+    if (!isValidLoraName(match[1])) {
+      invalid.push(match[1])
+    }
+  }
+  return invalid
+})
+
+const invalidLorasInNegativePrompt = computed(() => {
+  const matches = negativePrompt.value.matchAll(LORA_REGEX)
+  const invalid: string[] = []
+  for (const match of matches) {
+    if (!isValidLoraName(match[1])) {
+      invalid.push(match[1])
+    }
+  }
+  return invalid
+})
+
+// Parse LoRAs from prompt and add to list
+function parseLorasFromPrompt(promptText: string, currentList: LoraEntry[]): { cleanedPrompt: string; newLoras: LoraEntry[] } {
+  const existingNames = new Set(currentList.map(l => l.name))
+  const newLoras: LoraEntry[] = []
+
+  const cleanedPrompt = promptText.replace(LORA_REGEX, (match, name, weight) => {
+    if (isValidLoraName(name)) {
+      const canonicalName = getCanonicalLoraName(name)
+      if (!existingNames.has(canonicalName)) {
+        const weightNum = parseFloat(weight)
+        newLoras.push({
+          name: canonicalName,
+          weight: isNaN(weightNum) ? loraSettings.value.defaultWeight : weightNum,
+          isValid: true
+        })
+        existingNames.add(canonicalName) // Prevent duplicates in same parse
+      }
+      return '' // Remove from prompt
+    }
+    return match // Keep invalid LoRAs in prompt
+  })
+
+  return { cleanedPrompt: cleanedPrompt.replace(/\s+/g, ' ').trim(), newLoras }
+}
+
+// Debounced prompt parsing
+const debouncedParsePositivePrompt = useDebounceFn(() => {
+  if (!prompt.value) return
+  const { cleanedPrompt, newLoras } = parseLorasFromPrompt(prompt.value, positiveLoraList.value)
+  if (newLoras.length > 0) {
+    prompt.value = cleanedPrompt
+    positiveLoraList.value = [...positiveLoraList.value, ...newLoras]
+  }
+}, 300)
+
+const debouncedParseNegativePrompt = useDebounceFn(() => {
+  if (!negativePrompt.value) return
+  const { cleanedPrompt, newLoras } = parseLorasFromPrompt(negativePrompt.value, negativeLoraList.value)
+  if (newLoras.length > 0) {
+    negativePrompt.value = cleanedPrompt
+    negativeLoraList.value = [...negativeLoraList.value, ...newLoras]
+  }
+}, 300)
+
+// Watch prompts for LoRA tags
+watch(prompt, () => {
+  debouncedParsePositivePrompt()
+})
+
+watch(negativePrompt, () => {
+  debouncedParseNegativePrompt()
+})
+
+// Build final prompt with LoRAs
+function buildPromptWithLoras(basePrompt: string, loras: LoraEntry[]): string {
+  const validLoras = loras.filter(l => l.isValid)
+  if (validLoras.length === 0) return basePrompt
+
+  const loraStrings = validLoras.map(l => `<lora:${l.name}:${l.weight}>`)
+  return `${basePrompt} ${loraStrings.join(' ')}`
+}
 
 // Lightbox for previews
 const showLightbox = ref(false)
@@ -227,14 +352,57 @@ watch(mode, async (newMode, oldMode) => {
   if (oldMode) {
     // Save settings for old mode before switching
     await saveSettings()
+    await saveLoraSettings()
   }
   // Load settings for new mode
   await loadSettingsForMode(newMode)
+  loadLoraSettingsForMode(newMode)
 })
 
 // Debounced save for settings (500ms delay)
 const debouncedSaveSettings = useDebounceFn(() => {
   saveSettings()
+}, 500)
+
+// LoRA settings persistence
+async function saveLoraSettings() {
+  try {
+    const currentPrefs = store.uiPreferences || {} as any
+    const loraLists = (currentPrefs as any).lora_lists || {}
+
+    await api.updateUIPreferences({
+      ...currentPrefs,
+      lora_settings: loraSettings.value,
+      lora_lists: {
+        ...loraLists,
+        [mode.value]: {
+          positive: positiveLoraList.value,
+          negative: negativeLoraList.value
+        }
+      }
+    })
+  } catch (e) {
+    console.error('Failed to save LoRA settings:', e)
+  }
+}
+
+function loadLoraSettingsForMode(targetMode: 'txt2img' | 'img2img' | 'txt2vid') {
+  const prefs = store.uiPreferences
+  if (prefs?.lora_settings) {
+    loraSettings.value = { ...loraSettings.value, ...prefs.lora_settings }
+  }
+  if (prefs?.lora_lists?.[targetMode]) {
+    const lists = prefs.lora_lists[targetMode]
+    positiveLoraList.value = lists?.positive || []
+    negativeLoraList.value = lists?.negative || []
+  } else {
+    positiveLoraList.value = []
+    negativeLoraList.value = []
+  }
+}
+
+const debouncedSaveLoraSettings = useDebounceFn(() => {
+  saveLoraSettings()
 }, 500)
 
 // Watch for generation parameter changes with debounce
@@ -244,6 +412,9 @@ watch([
   fps, flowShift, slgScale, easycache, easycacheThreshold, vaeTiling,
   vaeTileSizeX, vaeTileSizeY, vaeTileOverlap
 ], debouncedSaveSettings)
+
+// Watch for LoRA list and settings changes
+watch([positiveLoraList, negativeLoraList, loraSettings], debouncedSaveLoraSettings, { deep: true })
 
 // Close copy menu when clicking outside
 function handleClickOutside(event: MouseEvent) {
@@ -594,6 +765,8 @@ onMounted(async () => {
     }
     // Load settings for current mode
     await loadSettingsForMode(mode.value)
+    // Load LoRA settings
+    loadLoraSettingsForMode(mode.value)
   }
 })
 
@@ -612,6 +785,10 @@ function loadJobParams(type: string, params: Record<string, unknown>) {
   if (type === 'txt2img' || type === 'img2img' || type === 'txt2vid') {
     mode.value = type
   }
+
+  // Clear LoRA lists - the prompts will contain LoRA tags that will be auto-parsed
+  positiveLoraList.value = []
+  negativeLoraList.value = []
 
   // Common params
   if (params.prompt !== undefined) prompt.value = params.prompt as string
@@ -698,9 +875,13 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
+    // Build prompts with LoRAs appended
+    const finalPrompt = buildPromptWithLoras(prompt.value, positiveLoraList.value)
+    const finalNegativePrompt = buildPromptWithLoras(negativePrompt.value, negativeLoraList.value)
+
     const baseParams: GenerationParams = {
-      prompt: prompt.value,
-      negative_prompt: negativePrompt.value,
+      prompt: finalPrompt,
+      negative_prompt: finalNegativePrompt,
       width: width.value,
       height: height.value,
       steps: steps.value,
@@ -833,7 +1014,12 @@ async function handleSubmit() {
             placeholder="A beautiful landscape with mountains and a lake..."
             :rows="3"
           />
-          <div class="form-hint">Use &lt;lora:name:weight&gt; to apply LoRA models. Embeddings and duplicates are highlighted.</div>
+          <div class="form-hint">
+            LoRAs typed as &lt;lora:name:weight&gt; are auto-detected and moved to the LoRA panel.
+            <span v-if="invalidLorasInPositivePrompt.length > 0" class="lora-warning-hint">
+              &#9888; Unknown LoRAs: {{ invalidLorasInPositivePrompt.join(', ') }}
+            </span>
+          </div>
         </div>
 
         <div class="form-group" data-setting="negative-prompt" :class="{ 'setting-highlighted': highlightedSetting === 'negative-prompt' }">
@@ -843,8 +1029,23 @@ async function handleSubmit() {
             placeholder="blurry, low quality, bad anatomy..."
             :rows="2"
           />
+          <div v-if="invalidLorasInNegativePrompt.length > 0" class="form-hint lora-warning-hint">
+            &#9888; Unknown LoRAs: {{ invalidLorasInNegativePrompt.join(', ') }}
+          </div>
         </div>
       </div>
+
+      <!-- LoRA Panel -->
+      <LoraPanel
+        v-if="availableLoras.length > 0"
+        :positive-list="positiveLoraList"
+        :negative-list="negativeLoraList"
+        :available-loras="availableLoras"
+        :settings="loraSettings"
+        @update:positive-list="positiveLoraList = $event"
+        @update:negative-list="negativeLoraList = $event"
+        @update:settings="loraSettings = $event"
+      />
 
       <!-- img2img Input -->
       <div v-if="mode === 'img2img'" class="card">
@@ -1515,5 +1716,12 @@ async function handleSubmit() {
   100% {
     opacity: 0;
   }
+}
+
+/* LoRA warning styles */
+.lora-warning-hint {
+  color: var(--warning-color, #f0ad4e);
+  display: block;
+  margin-top: 4px;
 }
 </style>

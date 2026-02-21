@@ -1012,8 +1012,11 @@ async function sendImageToUpscale(outputPath: string) {
             </div>
 
             <!-- Error for failed jobs -->
-            <div v-else-if="job.status === 'failed' && job.error" class="job-error">
-              {{ truncateText(job.error, 100) }}
+            <div v-else-if="job.status === 'failed' && job.error" class="job-error" :title="job.error">
+              <span class="error-text">{{ truncateText(job.error, 100) }}</span>
+              <button v-if="job.error.length > 100" class="error-expand-btn" @click.stop="selectedJob = job; showDetailsModal = true">
+                View Full
+              </button>
             </div>
 
             <!-- Pending indicator -->
@@ -1205,8 +1208,11 @@ async function sendImageToUpscale(outputPath: string) {
                     +{{ job.outputs.length - 4 }}
                   </button>
                 </div>
-                <div v-else-if="job.status === 'failed' && job.error" class="job-error">
-                  {{ truncateText(job.error, 100) }}
+                <div v-else-if="job.status === 'failed' && job.error" class="job-error" :title="job.error">
+                  <span class="error-text">{{ truncateText(job.error, 100) }}</span>
+                  <button v-if="job.error.length > 100" class="error-expand-btn" @click.stop="selectedJob = job; showDetailsModal = true">
+                    View Full
+                  </button>
                 </div>
                 <div v-else-if="job.status === 'pending'" class="job-pending-indicator">
                   <span class="pending-icon">&#9203;</span>
@@ -1998,6 +2004,31 @@ async function sendImageToUpscale(outputPath: string) {
   color: var(--accent-error);
   max-width: 200px;
   text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.job-error .error-text {
+  word-break: break-word;
+}
+
+.error-expand-btn {
+  background: var(--accent-error);
+  color: #fff;
+  border: none;
+  padding: 4px 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.error-expand-btn:hover {
+  background: var(--accent-error-hover, #e05080);
+  transform: scale(1.05);
 }
 
 /* Pending Indicator */

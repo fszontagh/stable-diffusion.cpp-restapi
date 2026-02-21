@@ -77,6 +77,29 @@ export interface UpscalerUnloadedData {
   model_name: string
 }
 
+export interface ServerStatusData {
+  model_loaded: boolean
+  model_loading: boolean
+  model_name: string | null
+  model_type: string | null
+  model_architecture: string | null
+  loading_model_name: string | null
+  loading_step: number | null
+  loading_total_steps: number | null
+  last_error: string | null
+  loaded_components?: {
+    vae?: string | null
+    clip_l?: string | null
+    clip_g?: string | null
+    t5xxl?: string | null
+    controlnet?: string | null
+    llm?: string | null
+    llm_vision?: string | null
+  }
+  upscaler_loaded?: boolean
+  upscaler_name?: string | null
+}
+
 // WebSocket message structure
 export interface WSMessage<T = unknown> {
   event: WSEventType

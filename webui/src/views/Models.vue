@@ -527,7 +527,7 @@ onMounted(() => {
             {{ model.is_loaded ? 'Loaded' : 'Load' }}
           </button>
           <button
-            v-if="model.type === 'checkpoint' || model.type === 'diffusion' || model.type === 'vae' || model.type === 'lora' || model.type === 'clip' || model.type === 't5'"
+            v-if="model.type === 'checkpoint' || model.type === 'diffusion' || model.type === 'vae' || model.type === 'lora' || model.type === 'clip' || model.type === 't5' || model.type === 'llm'"
             class="btn btn-secondary btn-sm"
             @click="openConvertModal(model)"
             title="Convert to GGUF with quantization"

@@ -25,6 +25,7 @@ class ArchitectureManager;
  * - get_job: Details of a specific job
  * - search_jobs: Search jobs with filters
  * - list_jobs: List jobs with pagination
+ * - get_quantization_types: Available quantization types for model conversion
  *
  * UI/action tools are passed to the frontend for execution:
  * - navigate, highlight_setting, set_setting, ask_user, etc.
@@ -72,6 +73,7 @@ private:
     nlohmann::json execute_search_jobs(const nlohmann::json& params);
     nlohmann::json execute_list_jobs(const nlohmann::json& params);
     nlohmann::json execute_analyze_image(const nlohmann::json& params);
+    nlohmann::json execute_get_quantization_types();
 
     ModelManager& model_manager_;
     QueueManager& queue_manager_;

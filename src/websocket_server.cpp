@@ -13,6 +13,7 @@ namespace sdcpp {
 
 // Global WebSocket server instance
 static WebSocketServer* g_websocket_server = nullptr;
+static StatusProviderCallback g_status_provider = nullptr;
 
 WebSocketServer* get_websocket_server() {
     return g_websocket_server;
@@ -20,6 +21,17 @@ WebSocketServer* get_websocket_server() {
 
 void set_websocket_server(WebSocketServer* server) {
     g_websocket_server = server;
+}
+
+void set_status_provider(StatusProviderCallback callback) {
+    g_status_provider = std::move(callback);
+}
+
+nlohmann::json get_server_status() {
+    if (g_status_provider) {
+        return g_status_provider();
+    }
+    return nlohmann::json::object();
 }
 
 // Per-socket data structure
@@ -142,18 +154,33 @@ void WebSocketServer::server_thread() {
 
         // Connection opened
         .open = [this](auto* ws) {
-            std::lock_guard<std::mutex> lock(impl_->clients_mutex);
-            auto* data = ws->getUserData();
-            data->id = impl_->next_client_id++;
-            impl_->clients.insert(ws);
-            client_count_.store(impl_->clients.size());
-            std::cout << "[WebSocket] Client connected (id=" << data->id
+            size_t client_id;
+            {
+                std::lock_guard<std::mutex> lock(impl_->clients_mutex);
+                auto* data = ws->getUserData();
+                data->id = impl_->next_client_id++;
+                client_id = data->id;
+                impl_->clients.insert(ws);
+                client_count_.store(impl_->clients.size());
+            }
+            std::cout << "[WebSocket] Client connected (id=" << client_id
                       << ", total=" << client_count_.load() << ")" << std::endl;
+
+            // Send current server status to new client
+            auto status = get_server_status();
+            if (!status.empty()) {
+                nlohmann::json response = {
+                    {"event", "server_status"},
+                    {"timestamp", format_timestamp(std::chrono::system_clock::now())},
+                    {"data", status}
+                };
+                ws->send(response.dump(), uWS::OpCode::TEXT);
+            }
         },
 
         // Message received
-        .message = [this](auto* ws, std::string_view message, uWS::OpCode opCode) {
-            // Handle incoming messages (ping, subscribe, etc.)
+        .message = [](auto* ws, std::string_view message, uWS::OpCode opCode) {
+            // Handle incoming messages (ping, get_status, etc.)
             if (opCode == uWS::OpCode::TEXT) {
                 try {
                     auto j = nlohmann::json::parse(message);
@@ -164,6 +191,15 @@ void WebSocketServer::server_thread() {
                         nlohmann::json response = {
                             {"event", "pong"},
                             {"timestamp", format_timestamp(std::chrono::system_clock::now())}
+                        };
+                        ws->send(response.dump(), uWS::OpCode::TEXT);
+                    } else if (type == "get_status") {
+                        // Respond with current server status
+                        auto status = get_server_status();
+                        nlohmann::json response = {
+                            {"event", "server_status"},
+                            {"timestamp", format_timestamp(std::chrono::system_clock::now())},
+                            {"data", status}
                         };
                         ws->send(response.dump(), uWS::OpCode::TEXT);
                     }

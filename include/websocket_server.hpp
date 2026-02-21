@@ -163,6 +163,12 @@ private:
 };
 
 /**
+ * Status provider callback type
+ * Returns JSON with current server status (model loaded state, etc.)
+ */
+using StatusProviderCallback = std::function<nlohmann::json()>;
+
+/**
  * Global WebSocket server instance accessor
  * Used by other components to broadcast events
  */
@@ -173,5 +179,17 @@ WebSocketServer* get_websocket_server();
  * Called during server initialization
  */
 void set_websocket_server(WebSocketServer* server);
+
+/**
+ * Set the status provider callback
+ * Called to get current server status for new client connections
+ */
+void set_status_provider(StatusProviderCallback callback);
+
+/**
+ * Get the current server status using the registered provider
+ * Returns empty JSON if no provider is set
+ */
+nlohmann::json get_server_status();
 
 } // namespace sdcpp

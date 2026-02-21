@@ -27,7 +27,8 @@ const std::set<std::string> ToolExecutor::BACKEND_TOOLS = {
     "get_job",
     "search_jobs",
     "list_jobs",
-    "analyze_image"
+    "analyze_image",
+    "get_quantization_types"
 };
 
 ToolExecutor::ToolExecutor(ModelManager& model_manager,
@@ -65,6 +66,8 @@ nlohmann::json ToolExecutor::execute(const std::string& tool_name,
             return execute_list_jobs(parameters);
         } else if (tool_name == "analyze_image") {
             return execute_analyze_image(parameters);
+        } else if (tool_name == "get_quantization_types") {
+            return execute_get_quantization_types();
         } else {
             return {{"error", "Unknown backend tool: " + tool_name}};
         }
@@ -607,6 +610,45 @@ nlohmann::json ToolExecutor::execute_analyze_image(const nlohmann::json& params)
         {"prompt", prompt},
         {"image_data", base64_data},  // Base64 encoded JPEG
         {"image_format", "jpeg"}
+    };
+}
+
+nlohmann::json ToolExecutor::execute_get_quantization_types() {
+    // Return available quantization types supported by stable-diffusion.cpp
+    // This list matches the sd_type_t enum from stable-diffusion.h
+    nlohmann::json types = nlohmann::json::array({
+        {{"id", "f32"}, {"name", "F32 (32-bit float)"}, {"bits", 32}},
+        {{"id", "f16"}, {"name", "F16 (16-bit float)"}, {"bits", 16}},
+        {{"id", "bf16"}, {"name", "BF16 (Brain float 16)"}, {"bits", 16}},
+        {{"id", "q8_0"}, {"name", "Q8_0 (8-bit)"}, {"bits", 8}},
+        {{"id", "q8_1"}, {"name", "Q8_1 (8-bit)"}, {"bits", 8}},
+        {{"id", "q8_k"}, {"name", "Q8_K (8-bit K-quant)"}, {"bits", 8}},
+        {{"id", "q6_k"}, {"name", "Q6_K (6-bit K-quant)"}, {"bits", 6}},
+        {{"id", "q5_0"}, {"name", "Q5_0 (5-bit)"}, {"bits", 5}},
+        {{"id", "q5_1"}, {"name", "Q5_1 (5-bit)"}, {"bits", 5}},
+        {{"id", "q5_k"}, {"name", "Q5_K (5-bit K-quant)"}, {"bits", 5}},
+        {{"id", "q4_0"}, {"name", "Q4_0 (4-bit)"}, {"bits", 4}},
+        {{"id", "q4_1"}, {"name", "Q4_1 (4-bit)"}, {"bits", 4}},
+        {{"id", "q4_k"}, {"name", "Q4_K (4-bit K-quant)"}, {"bits", 4}},
+        {{"id", "q3_k"}, {"name", "Q3_K (3-bit K-quant)"}, {"bits", 3}},
+        {{"id", "q2_k"}, {"name", "Q2_K (2-bit K-quant)"}, {"bits", 2}},
+        {{"id", "iq4_nl"}, {"name", "IQ4_NL (4-bit importance)"}, {"bits", 4}},
+        {{"id", "iq4_xs"}, {"name", "IQ4_XS (4-bit importance)"}, {"bits", 4}},
+        {{"id", "iq3_xxs"}, {"name", "IQ3_XXS (3-bit importance)"}, {"bits", 3}},
+        {{"id", "iq3_s"}, {"name", "IQ3_S (3-bit importance)"}, {"bits", 3}},
+        {{"id", "iq2_xxs"}, {"name", "IQ2_XXS (2-bit importance)"}, {"bits", 2}},
+        {{"id", "iq2_xs"}, {"name", "IQ2_XS (2-bit importance)"}, {"bits", 2}},
+        {{"id", "iq2_s"}, {"name", "IQ2_S (2-bit importance)"}, {"bits", 2}},
+        {{"id", "iq1_s"}, {"name", "IQ1_S (1-bit importance)"}, {"bits", 1}},
+        {{"id", "iq1_m"}, {"name", "IQ1_M (1-bit importance)"}, {"bits", 1}},
+        {{"id", "tq1_0"}, {"name", "TQ1_0 (ternary 1-bit)"}, {"bits", 1}},
+        {{"id", "tq2_0"}, {"name", "TQ2_0 (ternary 2-bit)"}, {"bits", 2}}
+    });
+
+    return {
+        {"quantization_types", types},
+        {"recommended", nlohmann::json::array({"q8_0", "q5_k", "q4_k", "f16"})},
+        {"notes", "Lower bits = smaller file & faster inference, but potentially lower quality. K-quants (e.g., q4_k) often provide better quality than non-K variants at the same bit depth."}
     };
 }
 
