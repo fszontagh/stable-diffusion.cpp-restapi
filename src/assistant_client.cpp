@@ -980,7 +980,14 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
 
                 // Special handling for analyze_image - use Ollama vision format
                 if (tool_name == "analyze_image" && result.contains("image_data") && result["success"].get<bool>()) {
-                    // For vision models, add message with images array
+                    // First, add tool result to satisfy the tool call (required by Ollama)
+                    messages.push_back({
+                        {"role", "tool"},
+                        {"tool_name", tool_name},
+                        {"content", "Image retrieved successfully. Sending for visual analysis."}
+                    });
+
+                    // Then add user message with image for vision model analysis
                     std::string analysis_prompt = result.value("prompt", "Describe what you see in this image.");
                     std::string image_data = result["image_data"].get<std::string>();
 
@@ -990,7 +997,7 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
                         {"images", nlohmann::json::array({image_data})}
                     });
 
-                    std::cout << "[AssistantClient] Added vision message with image for analysis" << std::endl;
+                    std::cout << "[AssistantClient] Added tool result and vision message with image for analysis" << std::endl;
                 } else {
                     // Add tool result message (Ollama format with tool_name)
                     messages.push_back({
@@ -1250,6 +1257,14 @@ bool AssistantClient::chat_stream(
 
                 // Special handling for analyze_image - use Ollama vision format
                 if (tool_name == "analyze_image" && result.contains("image_data") && result["success"].get<bool>()) {
+                    // First, add tool result to satisfy the tool call (required by Ollama)
+                    messages.push_back({
+                        {"role", "tool"},
+                        {"tool_name", tool_name},
+                        {"content", "Image retrieved successfully. Sending for visual analysis."}
+                    });
+
+                    // Then add user message with image for vision model analysis
                     std::string analysis_prompt = result.value("prompt", "Describe what you see in this image.");
                     std::string image_data = result["image_data"].get<std::string>();
 
@@ -1259,7 +1274,7 @@ bool AssistantClient::chat_stream(
                         {"images", nlohmann::json::array({image_data})}
                     });
 
-                    std::cout << "[AssistantClient] Stream: Added vision message with image" << std::endl;
+                    std::cout << "[AssistantClient] Stream: Added tool result and vision message with image" << std::endl;
                 } else {
                     // Add tool result message (Ollama format with tool_name)
                     messages.push_back({
