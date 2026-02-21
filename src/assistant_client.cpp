@@ -992,9 +992,10 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
 
                     std::cout << "[AssistantClient] Added vision message with image for analysis" << std::endl;
                 } else {
-                    // Add tool result message (Ollama format)
+                    // Add tool result message (Ollama format with tool_name)
                     messages.push_back({
                         {"role", "tool"},
+                        {"tool_name", tool_name},
                         {"content", result.dump()}
                     });
                 }
@@ -1260,8 +1261,10 @@ bool AssistantClient::chat_stream(
 
                     std::cout << "[AssistantClient] Stream: Added vision message with image" << std::endl;
                 } else {
+                    // Add tool result message (Ollama format with tool_name)
                     messages.push_back({
                         {"role", "tool"},
+                        {"tool_name", tool_name},
                         {"content", result.dump()}
                     });
                 }
