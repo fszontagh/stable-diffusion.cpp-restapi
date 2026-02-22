@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <vector>
 
 namespace sdcpp {
 
@@ -19,7 +20,43 @@ nlohmann::json ArchitecturePreset::to_json() const {
 }
 
 ArchitectureManager::ArchitectureManager(const std::string& data_dir) {
-    config_path_ = data_dir + "/model_architectures.json";
+    // Try multiple locations for model_architectures.json
+    std::vector<std::string> search_paths;
+
+    // Primary: provided data directory (same as config.json)
+    search_paths.push_back(data_dir + "/model_architectures.json");
+
+    // Fallback: data/ subdirectory of current working directory
+    search_paths.push_back("data/model_architectures.json");
+
+    // Fallback: data/ subdirectory relative to executable
+    // Get executable path via /proc/self/exe on Linux
+    std::error_code ec;
+    auto exe_path = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (!ec) {
+        auto exe_dir = exe_path.parent_path();
+        search_paths.push_back((exe_dir / "data" / "model_architectures.json").string());
+        search_paths.push_back((exe_dir.parent_path() / "data" / "model_architectures.json").string());
+    }
+
+    // Find the first existing path
+    for (const auto& path : search_paths) {
+        if (std::filesystem::exists(path)) {
+            config_path_ = std::filesystem::canonical(path).string();
+            std::cout << "[ArchitectureManager] Found config at: " << config_path_ << std::endl;
+            break;
+        }
+    }
+
+    // If none found, use the primary path (will show error in load_from_file)
+    if (config_path_.empty()) {
+        config_path_ = search_paths[0];
+        std::cerr << "[ArchitectureManager] Could not find model_architectures.json in any of these locations:" << std::endl;
+        for (const auto& path : search_paths) {
+            std::cerr << "  - " << path << std::endl;
+        }
+    }
+
     load_from_file();
     start_file_watcher();
 }

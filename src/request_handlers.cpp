@@ -47,6 +47,7 @@ RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queu
     tool_executor_ = std::make_unique<ToolExecutor>(
         model_manager_, queue_manager_, architecture_manager_.get());
     tool_executor_->set_output_dir(output_dir);
+    tool_executor_->set_settings_manager(settings_manager_.get());
 
     // Create assistant client with tool executor
     assistant_client_ = std::make_unique<AssistantClient>(
