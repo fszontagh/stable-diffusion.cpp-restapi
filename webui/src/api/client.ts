@@ -1103,16 +1103,16 @@ export interface HuggingFaceModelInfo {
 }
 
 export interface ModelPathsConfig {
-  models: string
+  checkpoints: string
+  diffusion_models: string
   vae: string
-  loras: string
+  lora: string
   clip: string
   t5: string
   embeddings: string
   controlnet: string
   llm: string
   esrgan: string
-  diffusion: string
   taesd: string
 }
 
