@@ -1701,17 +1701,23 @@ export const useAssistantStore = defineStore('assistant', () => {
             }
 
             let finalInputPath = inputPath
-            if (!finalInputPath && modelName) {
+
+            // Resolve relative paths (either from model_name or a relative input_path)
+            const needsPathResolution = !finalInputPath || !finalInputPath.startsWith('/')
+            const nameToResolve = finalInputPath || modelName
+
+            if (needsPathResolution && nameToResolve) {
               // Get model paths config to build full path
               try {
                 const pathsConfig = await api.getModelPaths()
 
                 // Map model type to path config key
-                const typeToPathKey: Record<string, keyof typeof pathsConfig> = {
-                  'checkpoint': 'models',
-                  'diffusion': 'diffusion',
+                // Note: API returns 'checkpoints', 'diffusion_models', 'lora' but interface expects 'models', 'diffusion', 'loras'
+                const typeToPathKey: Record<string, string> = {
+                  'checkpoint': 'checkpoints',
+                  'diffusion': 'diffusion_models',
                   'vae': 'vae',
-                  'lora': 'loras',
+                  'lora': 'lora',
                   'clip': 'clip',
                   't5': 't5',
                   'controlnet': 'controlnet',
@@ -1720,14 +1726,15 @@ export const useAssistantStore = defineStore('assistant', () => {
                   'taesd': 'taesd'
                 }
 
-                const basePath = pathsConfig[typeToPathKey[modelType] || 'models']
+                const pathKey = typeToPathKey[modelType] || 'checkpoints'
+                const basePath = (pathsConfig as unknown as Record<string, string>)[pathKey]
                 if (!basePath) {
-                  errors.push(`Unknown model_type: ${modelType}`)
+                  errors.push(`Unknown model_type: ${modelType}. Could not find path for '${pathKey}'`)
                   break
                 }
 
                 // Build full path
-                finalInputPath = `${basePath}/${modelName}`
+                finalInputPath = `${basePath}/${nameToResolve}`
               } catch (e) {
                 throw new Error(`Failed to get model paths: ${e instanceof Error ? e.message : 'Unknown error'}`)
               }
