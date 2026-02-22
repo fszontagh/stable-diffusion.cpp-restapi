@@ -2,6 +2,7 @@
 #include "model_manager.hpp"
 #include "queue_manager.hpp"
 #include "architecture_manager.hpp"
+#include "settings_manager.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -28,7 +29,8 @@ const std::set<std::string> ToolExecutor::BACKEND_TOOLS = {
     "search_jobs",
     "list_jobs",
     "analyze_image",
-    "get_quantization_types"
+    "get_quantization_types",
+    "get_settings"
 };
 
 ToolExecutor::ToolExecutor(ModelManager& model_manager,
@@ -68,6 +70,8 @@ nlohmann::json ToolExecutor::execute(const std::string& tool_name,
             return execute_analyze_image(parameters);
         } else if (tool_name == "get_quantization_types") {
             return execute_get_quantization_types();
+        } else if (tool_name == "get_settings") {
+            return execute_get_settings(parameters);
         } else {
             return {{"error", "Unknown backend tool: " + tool_name}};
         }
@@ -135,7 +139,19 @@ nlohmann::json ToolExecutor::execute_get_architectures() {
     nlohmann::json archs = architecture_manager_->to_json();
     std::cout << "[ToolExecutor] get_architectures: returned "
               << archs.size() << " presets" << std::endl;
-    return archs;
+
+    if (archs.empty()) {
+        return {
+            {"architectures", nlohmann::json::object()},
+            {"count", 0},
+            {"warning", "No architecture presets loaded. The model_architectures.json file may be missing or invalid."}
+        };
+    }
+
+    return {
+        {"architectures", archs},
+        {"count", archs.size()}
+    };
 }
 
 nlohmann::json ToolExecutor::execute_get_job(const std::string& job_id) {
@@ -650,6 +666,34 @@ nlohmann::json ToolExecutor::execute_get_quantization_types() {
         {"recommended", nlohmann::json::array({"q8_0", "q5_k", "q4_k", "f16"})},
         {"notes", "Lower bits = smaller file & faster inference, but potentially lower quality. K-quants (e.g., q4_k) often provide better quality than non-K variants at the same bit depth."}
     };
+}
+
+void ToolExecutor::set_settings_manager(SettingsManager* settings_manager) {
+    settings_manager_ = settings_manager;
+}
+
+nlohmann::json ToolExecutor::execute_get_settings(const nlohmann::json& params) {
+    if (!settings_manager_) {
+        return {{"error", "Settings manager not available"}};
+    }
+
+    std::string mode = params.value("mode", "");
+
+    nlohmann::json result;
+
+    if (mode.empty()) {
+        // Return all modes
+        result["txt2img"] = settings_manager_->get_generation_preferences("txt2img");
+        result["img2img"] = settings_manager_->get_generation_preferences("img2img");
+        result["txt2vid"] = settings_manager_->get_generation_preferences("txt2vid");
+    } else {
+        // Return specific mode
+        result[mode] = settings_manager_->get_generation_preferences(mode);
+    }
+
+    std::cout << "[ToolExecutor] get_settings: mode=" << (mode.empty() ? "all" : mode) << std::endl;
+
+    return result;
 }
 
 } // namespace sdcpp

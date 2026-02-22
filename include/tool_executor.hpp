@@ -10,6 +10,7 @@ namespace sdcpp {
 class ModelManager;
 class QueueManager;
 class ArchitectureManager;
+class SettingsManager;
 
 /**
  * ToolExecutor - Executes LLM assistant query tools on the backend
@@ -26,6 +27,7 @@ class ArchitectureManager;
  * - search_jobs: Search jobs with filters
  * - list_jobs: List jobs with pagination
  * - get_quantization_types: Available quantization types for model conversion
+ * - get_settings: Current generation settings (prompt, dimensions, steps, etc.)
  *
  * UI/action tools are passed to the frontend for execution:
  * - navigate, highlight_setting, set_setting, ask_user, etc.
@@ -64,6 +66,12 @@ public:
      */
     void set_output_dir(const std::string& output_dir);
 
+    /**
+     * Set the settings manager for accessing generation preferences
+     * @param settings_manager Pointer to settings manager
+     */
+    void set_settings_manager(SettingsManager* settings_manager);
+
 private:
     // Tool implementations
     nlohmann::json execute_get_status();
@@ -74,10 +82,12 @@ private:
     nlohmann::json execute_list_jobs(const nlohmann::json& params);
     nlohmann::json execute_analyze_image(const nlohmann::json& params);
     nlohmann::json execute_get_quantization_types();
+    nlohmann::json execute_get_settings(const nlohmann::json& params);
 
     ModelManager& model_manager_;
     QueueManager& queue_manager_;
     ArchitectureManager* architecture_manager_;
+    SettingsManager* settings_manager_ = nullptr;
     std::string output_dir_;
 
     // Set of tools that execute on the backend
