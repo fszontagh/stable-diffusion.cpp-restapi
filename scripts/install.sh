@@ -597,6 +597,16 @@ do_install() {
         cp -r "${WEBUI_SOURCE}/"* "${WEBUI_DEST}/"
     fi
 
+    # Copy data files (model_architectures.json, etc.)
+    DATA_SOURCE="${SOURCE_DIR}/data"
+    if [[ -d "${DATA_SOURCE}" ]]; then
+        print_info "Installing data files..."
+        # Copy model_architectures.json to config directory
+        if [[ -f "${DATA_SOURCE}/model_architectures.json" ]]; then
+            cp "${DATA_SOURCE}/model_architectures.json" "${CONFIG_DIR}/"
+        fi
+    fi
+
     # Create/update config file
     print_info "Creating configuration..."
 
