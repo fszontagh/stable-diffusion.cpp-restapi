@@ -104,23 +104,37 @@ nlohmann::json ToolExecutor::execute_get_status() {
 
     nlohmann::json recent_jobs = nlohmann::json::array();
     for (const auto& item : recent.items) {
+        // Extract prompt safely (handle null values)
+        std::string prompt;
+        if (item.params.contains("prompt") && item.params["prompt"].is_string()) {
+            prompt = item.params["prompt"].get<std::string>();
+        }
+
         nlohmann::json job_entry = {
             {"job_id", item.job_id},
             {"type", generation_type_to_string(item.type)},
             {"status", queue_status_to_string(item.status)},
-            {"prompt", item.params.value("prompt", "")}
+            {"prompt", prompt}
         };
+
         // Include model info so LLM knows which model was used for each job
+        // Handle null values safely
         if (!item.model_settings.empty()) {
-            job_entry["model_name"] = item.model_settings.value("model_name", "");
-            job_entry["model_architecture"] = item.model_settings.value("model_architecture", "");
+            if (item.model_settings.contains("model_name") &&
+                item.model_settings["model_name"].is_string()) {
+                job_entry["model_name"] = item.model_settings["model_name"].get<std::string>();
+            }
+            if (item.model_settings.contains("model_architecture") &&
+                item.model_settings["model_architecture"].is_string()) {
+                job_entry["model_architecture"] = item.model_settings["model_architecture"].get<std::string>();
+            }
         }
         recent_jobs.push_back(job_entry);
     }
     result["recent_jobs"] = recent_jobs;
 
     std::cout << "[ToolExecutor] get_status: model_loaded="
-              << result["model_info"].value("loaded", false) << std::endl;
+              << result["model_info"].value("model_loaded", false) << std::endl;
 
     return result;
 }
