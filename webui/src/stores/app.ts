@@ -11,6 +11,7 @@ import {
   type JobCancelledData,
   type ModelLoadingProgressData,
   type ModelLoadedData,
+  type ModelLoadFailedData,
   type ModelUnloadedData,
   type UpscalerLoadedData,
   type UpscalerUnloadedData,
@@ -658,6 +659,21 @@ export const useAppStore = defineStore('app', () => {
         const shortName = data.model_name.split('/').pop() ?? data.model_name
         showToast(`Model loaded: ${shortName}`, 'success')
         notificationService.notifyModelLoaded(data.model_name)
+        updateDocumentTitle()
+      })
+    )
+
+    wsUnsubscribers.push(
+      wsService.on<ModelLoadFailedData>('model_load_failed', (data) => {
+        if (health.value) {
+          health.value.model_loading = false
+          health.value.loading_step = null
+          health.value.loading_total_steps = null
+          health.value.last_error = data.error
+        }
+        const shortName = data.model_name.split('/').pop() ?? data.model_name
+        showToast(`Model load failed: ${shortName}`, 'error')
+        addRecentError(data.error, 'model_load')
         updateDocumentTitle()
       })
     )

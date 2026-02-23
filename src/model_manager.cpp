@@ -573,6 +573,15 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         }
         last_load_error_ = error_msg;
         clear_loading();
+
+        // Broadcast model load failure via WebSocket
+        if (auto* ws = get_websocket_server()) {
+            ws->broadcast(WSEventType::ModelLoadFailed, {
+                {"model_name", params.model_name},
+                {"error", error_msg}
+            });
+        }
+
         throw std::runtime_error(error_msg);
     }
     
@@ -779,6 +788,15 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         loaded_llm_.clear();
         loaded_llm_vision_.clear();
         clear_loading();
+
+        // Broadcast model load failure via WebSocket
+        if (auto* ws = get_websocket_server()) {
+            ws->broadcast(WSEventType::ModelLoadFailed, {
+                {"model_name", params.model_name},
+                {"error", error_msg}
+            });
+        }
+
         throw std::runtime_error(error_msg);
     }
     
