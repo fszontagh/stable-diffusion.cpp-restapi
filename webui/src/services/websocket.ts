@@ -46,7 +46,7 @@ export interface JobPreviewData {
   width: number
   height: number
   is_noisy: boolean
-  image: string  // Base64-encoded JPEG data URL (data:image/jpeg;base64,...)
+  preview_url: string  // URL to fetch preview image (e.g., /jobs/{id}/preview)
 }
 
 export interface JobCancelledData {
