@@ -124,6 +124,11 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         handle_delete_jobs(req, res);
     });
 
+    // Job preview endpoint - serves in-memory preview JPEG
+    server.Get(R"(/jobs/([a-f0-9\-]+)/preview)", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_get_job_preview(req, res);
+    });
+
     // Thumbnail endpoint - must be before file browser
     server.Get(R"(/thumb/(.*))", [this](const httplib::Request& req, httplib::Response& res) {
         handle_thumbnail(req, res);
@@ -797,14 +802,34 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
 
 void RequestHandlers::handle_get_job(const httplib::Request& req, httplib::Response& res) {
     std::string job_id = req.matches[1];
-    
+
     auto job = queue_manager_.get_job(job_id);
     if (!job) {
         send_error(res, "Job not found", 404);
         return;
     }
-    
+
     send_json(res, job->to_json());
+}
+
+void RequestHandlers::handle_get_job_preview(const httplib::Request& req, httplib::Response& res) {
+    std::string job_id = req.matches[1];
+
+    auto preview = queue_manager_.get_preview(job_id);
+    if (!preview) {
+        send_error(res, "No preview available", 404);
+        return;
+    }
+
+    // Set headers for preview image
+    res.set_header("Cache-Control", "no-cache");
+    res.set_header("X-Preview-Width", std::to_string(preview->width));
+    res.set_header("X-Preview-Height", std::to_string(preview->height));
+    res.set_header("X-Preview-Step", std::to_string(preview->step));
+
+    // Serve JPEG directly from memory buffer
+    res.set_content(reinterpret_cast<const char*>(preview->jpeg_data.data()),
+                    preview->jpeg_data.size(), "image/jpeg");
 }
 
 void RequestHandlers::handle_cancel_job(const httplib::Request& req, httplib::Response& res) {

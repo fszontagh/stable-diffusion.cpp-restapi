@@ -265,35 +265,18 @@ void SDWrapper::internal_preview_callback(int step, int frame_count, sd_image_t*
         return;
     }
 
-    int src_w = static_cast<int>(frame.width);
-    int src_h = static_cast<int>(frame.height);
+    int width = static_cast<int>(frame.width);
+    int height = static_cast<int>(frame.height);
     int channels = static_cast<int>(frame.channel);
 
-    // Calculate target size maintaining aspect ratio
-    int dst_w = src_w;
-    int dst_h = src_h;
-    int max_dim = preview_max_size_;
+    // Skip server-side resize - client will resize as needed (CSS/canvas)
+    // This eliminates O(n*m) CPU work per preview
 
-    if (src_w > max_dim || src_h > max_dim) {
-        float scale = static_cast<float>(max_dim) / std::max(src_w, src_h);
-        dst_w = static_cast<int>(src_w * scale);
-        dst_h = static_cast<int>(src_h * scale);
-    }
-
-    // Resize if needed
-    std::vector<uint8_t> resized_data;
-    const uint8_t* src_data = frame.data;
-
-    if (dst_w != src_w || dst_h != src_h) {
-        resized_data = resize_image_bilinear(frame.data, src_w, src_h, channels, dst_w, dst_h);
-        src_data = resized_data.data();
-    }
-
-    // Encode as JPEG
-    std::vector<uint8_t> jpeg_data = encode_jpeg_memory(src_data, dst_w, dst_h, channels, preview_quality_);
+    // Encode as JPEG directly from source frame
+    std::vector<uint8_t> jpeg_data = encode_jpeg_memory(frame.data, width, height, channels, preview_quality_);
 
     if (!jpeg_data.empty()) {
-        preview_callback_(step, frame_count, jpeg_data, dst_w, dst_h, is_noisy);
+        preview_callback_(step, frame_count, jpeg_data, width, height, is_noisy);
     }
 }
 

@@ -72,6 +72,9 @@ private:
     void handle_cancel_job(const httplib::Request& req, httplib::Response& res);
     void handle_delete_jobs(const httplib::Request& req, httplib::Response& res);
 
+    // Job preview endpoint (serves in-memory preview JPEG)
+    void handle_get_job_preview(const httplib::Request& req, httplib::Response& res);
+
     // Health endpoint
     void handle_health(const httplib::Request& req, httplib::Response& res);
 

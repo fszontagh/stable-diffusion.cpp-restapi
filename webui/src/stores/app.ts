@@ -597,13 +597,32 @@ export const useAppStore = defineStore('app', () => {
       })
     )
 
-    // Handle live preview images
+    // Handle live preview images - fetch via HTTP
     wsUnsubscribers.push(
-      wsService.on<JobPreviewData>('job_preview', (data) => {
-        currentPreview.value = {
-          jobId: data.job_id,
-          image: data.image,
-          step: data.step
+      wsService.on<JobPreviewData>('job_preview', async (data) => {
+        try {
+          // Fetch preview image from server
+          const response = await fetch(data.preview_url)
+          if (!response.ok) {
+            console.warn(`[Preview] Failed to fetch: ${response.status}`)
+            return
+          }
+
+          const blob = await response.blob()
+          const imageUrl = URL.createObjectURL(blob)
+
+          // Revoke previous blob URL to prevent memory leak
+          if (currentPreview.value?.image?.startsWith('blob:')) {
+            URL.revokeObjectURL(currentPreview.value.image)
+          }
+
+          currentPreview.value = {
+            jobId: data.job_id,
+            image: imageUrl,
+            step: data.step
+          }
+        } catch (e) {
+          console.error('[Preview] Fetch error:', e)
         }
 
         // Reset preview cleanup timer - clear stale preview after no updates
@@ -611,6 +630,10 @@ export const useAppStore = defineStore('app', () => {
           clearTimeout(previewCleanupTimer)
         }
         previewCleanupTimer = setTimeout(() => {
+          // Revoke blob URL on cleanup
+          if (currentPreview.value?.image?.startsWith('blob:')) {
+            URL.revokeObjectURL(currentPreview.value.image)
+          }
           currentPreview.value = null
           previewCleanupTimer = null
         }, PREVIEW_CLEANUP_DELAY)

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <queue>
 #include <mutex>
 #include <condition_variable>
@@ -289,6 +290,31 @@ public:
     };
     PreviewSettings get_preview_settings() const;
 
+    /**
+     * In-memory preview buffer for HTTP serving
+     */
+    struct PreviewBuffer {
+        std::vector<uint8_t> jpeg_data;
+        int width = 0;
+        int height = 0;
+        int step = 0;
+        int frame_count = 0;
+        bool is_noisy = false;
+    };
+
+    /**
+     * Get current preview data for a job (for HTTP endpoint)
+     * @param job_id Job UUID
+     * @return Optional preview buffer if available
+     */
+    std::optional<PreviewBuffer> get_preview(const std::string& job_id) const;
+
+    /**
+     * Clear preview buffer for a job (call after job completes)
+     * @param job_id Job UUID
+     */
+    void clear_preview_buffer(const std::string& job_id);
+
 private:
     void worker_thread();
     void save_state();
@@ -334,12 +360,18 @@ private:
     mutable std::mutex progress_mutex_;
     std::string current_job_id_;
     ProgressInfo current_progress_;
+    std::chrono::steady_clock::time_point last_progress_broadcast_;
+    static constexpr std::chrono::milliseconds PROGRESS_THROTTLE_MS{50};
 
     // Preview settings and state
     mutable std::mutex preview_mutex_;
     PreviewSettings preview_settings_;
     std::chrono::steady_clock::time_point last_preview_broadcast_;
     static constexpr std::chrono::milliseconds PREVIEW_THROTTLE_MS{200};
+
+    // In-memory preview buffer storage (job_id -> buffer)
+    mutable std::mutex preview_buffer_mutex_;
+    std::unordered_map<std::string, PreviewBuffer> preview_buffers_;
 
     // Preview callback for broadcasting
     void update_preview(int step, int frame_count, const std::vector<uint8_t>& jpeg_data,

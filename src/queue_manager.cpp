@@ -805,12 +805,13 @@ void QueueManager::worker_thread() {
             }
         }
 
-        // Step 5: Clear progress tracking
+        // Step 5: Clear progress tracking and preview buffer
         {
             std::lock_guard<std::mutex> plock(progress_mutex_);
             current_job_id_.clear();
         }
-        
+        clear_preview_buffer(job_id);
+
         save_state();
     }
 }
@@ -884,16 +885,25 @@ std::vector<std::string> QueueManager::process_job_unlocked(
 
 void QueueManager::update_progress(int step, int total_steps) {
     std::string job_id;
+    bool should_broadcast = false;
+
     {
         std::lock_guard<std::mutex> lock(progress_mutex_);
-        // Store raw values from sd.cpp callback
+        // Always update internal state (for polling queries)
         current_progress_.step = step;
         current_progress_.total_steps = total_steps;
-        job_id = current_job_id_;
+
+        // Throttle broadcasts to reduce callback overhead
+        auto now = std::chrono::steady_clock::now();
+        if (now - last_progress_broadcast_ >= PROGRESS_THROTTLE_MS) {
+            last_progress_broadcast_ = now;
+            should_broadcast = true;
+            job_id = current_job_id_;
+        }
     }
 
-    // Broadcast progress via WebSocket (rate-limited by WebSocketServer)
-    if (!job_id.empty()) {
+    // Broadcast progress via WebSocket only if not throttled
+    if (should_broadcast && !job_id.empty()) {
         if (auto* ws = get_websocket_server()) {
             ws->broadcast(WSEventType::JobProgress, {
                 {"job_id", job_id},
@@ -917,9 +927,29 @@ void QueueManager::update_preview(int step, int frame_count, const std::vector<u
     bool should_broadcast = false;
 
     {
-        std::lock_guard<std::mutex> lock(preview_mutex_);
+        std::lock_guard<std::mutex> lock(progress_mutex_);
+        job_id = current_job_id_;
+    }
 
-        // Rate limit preview broadcasts
+    if (job_id.empty() || jpeg_data.empty()) {
+        return;
+    }
+
+    // Always store preview in buffer (for HTTP endpoint access)
+    {
+        std::lock_guard<std::mutex> lock(preview_buffer_mutex_);
+        auto& buffer = preview_buffers_[job_id];
+        buffer.jpeg_data = jpeg_data;
+        buffer.width = width;
+        buffer.height = height;
+        buffer.step = step;
+        buffer.frame_count = frame_count;
+        buffer.is_noisy = is_noisy;
+    }
+
+    // Rate limit WebSocket notifications
+    {
+        std::lock_guard<std::mutex> lock(preview_mutex_);
         auto now = std::chrono::steady_clock::now();
         if (now - last_preview_broadcast_ >= PREVIEW_THROTTLE_MS) {
             last_preview_broadcast_ = now;
@@ -927,20 +957,9 @@ void QueueManager::update_preview(int step, int frame_count, const std::vector<u
         }
     }
 
-    if (!should_broadcast) {
-        return;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(progress_mutex_);
-        job_id = current_job_id_;
-    }
-
-    if (!job_id.empty() && !jpeg_data.empty()) {
+    // Broadcast URL notification only (client fetches via HTTP)
+    if (should_broadcast) {
         if (auto* ws = get_websocket_server()) {
-            // Base64 encode the JPEG data
-            std::string base64_image = utils::base64_encode(jpeg_data);
-
             ws->broadcast(WSEventType::JobPreview, {
                 {"job_id", job_id},
                 {"step", step},
@@ -948,10 +967,24 @@ void QueueManager::update_preview(int step, int frame_count, const std::vector<u
                 {"width", width},
                 {"height", height},
                 {"is_noisy", is_noisy},
-                {"image", "data:image/jpeg;base64," + base64_image}
+                {"preview_url", "/jobs/" + job_id + "/preview"}
             });
         }
     }
+}
+
+std::optional<QueueManager::PreviewBuffer> QueueManager::get_preview(const std::string& job_id) const {
+    std::lock_guard<std::mutex> lock(preview_buffer_mutex_);
+    auto it = preview_buffers_.find(job_id);
+    if (it == preview_buffers_.end() || it->second.jpeg_data.empty()) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
+void QueueManager::clear_preview_buffer(const std::string& job_id) {
+    std::lock_guard<std::mutex> lock(preview_buffer_mutex_);
+    preview_buffers_.erase(job_id);
 }
 
 void QueueManager::set_preview_settings(PreviewMode mode, int interval, int max_size, int quality) {
