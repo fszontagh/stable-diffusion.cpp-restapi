@@ -11,6 +11,7 @@ export type WSEventType =
   | 'job_cancelled'
   | 'model_loading_progress'
   | 'model_loaded'
+  | 'model_load_failed'
   | 'model_unloaded'
   | 'upscaler_loaded'
   | 'upscaler_unloaded'
@@ -62,6 +63,11 @@ export interface ModelLoadedData {
   model_name: string
   model_type: string
   model_architecture: string
+}
+
+export interface ModelLoadFailedData {
+  model_name: string
+  error: string
 }
 
 export interface ModelUnloadedData {

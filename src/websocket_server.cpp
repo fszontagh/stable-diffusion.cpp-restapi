@@ -334,6 +334,7 @@ std::string WebSocketServer::event_type_to_string(WSEventType type) {
         case WSEventType::JobCancelled:        return "job_cancelled";
         case WSEventType::ModelLoadingProgress: return "model_loading_progress";
         case WSEventType::ModelLoaded:         return "model_loaded";
+        case WSEventType::ModelLoadFailed:     return "model_load_failed";
         case WSEventType::ModelUnloaded:       return "model_unloaded";
         case WSEventType::UpscalerLoaded:      return "upscaler_loaded";
         case WSEventType::UpscalerUnloaded:    return "upscaler_unloaded";

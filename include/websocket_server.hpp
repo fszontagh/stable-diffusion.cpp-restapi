@@ -26,6 +26,7 @@ enum class WSEventType {
     // Model lifecycle events
     ModelLoadingProgress, // Model loading progress
     ModelLoaded,        // Model finished loading
+    ModelLoadFailed,    // Model failed to load
     ModelUnloaded,      // Model was unloaded
 
     // Upscaler events
