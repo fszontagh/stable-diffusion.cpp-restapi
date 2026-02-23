@@ -711,6 +711,20 @@ onMounted(() => {
             TAE Preview Only
             <span class="checkbox-hint">(use TAESD for previews, VAE for final output)</span>
           </label>
+          <div class="form-group mt-3">
+            <label class="form-label">Weight Type</label>
+            <select v-model="loadParams.options!.weight_type" class="form-select">
+              <option value="">Auto (use model's native precision)</option>
+              <option value="f32">f32 (32-bit float)</option>
+              <option value="f16">f16 (16-bit float)</option>
+              <option value="q8_0">q8_0 (8-bit quantized)</option>
+              <option value="q5_0">q5_0 (5-bit quantized)</option>
+              <option value="q4_0">q4_0 (4-bit quantized)</option>
+            </select>
+            <div class="form-hint">
+              Runtime weight precision. Auto uses the model file's quantization. Lower = less VRAM, may affect quality.
+            </div>
+          </div>
         </div>
       </details>
 
