@@ -534,6 +534,26 @@ void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Respo
         std::string input_path = body["input_path"].get<std::string>();
         std::string output_type = body["output_type"].get<std::string>();
 
+        // Check if the model is an LLM - LLM conversion is not supported by sd.cpp
+        // LLM re-quantization requires llama.cpp's llama-quantize tool instead
+        auto paths_config = model_manager_.get_paths_config();
+        if (paths_config.contains("llm") && !paths_config["llm"].is_null()) {
+            std::string llm_base_path = paths_config["llm"].get<std::string>();
+            if (!llm_base_path.empty()) {
+                fs::path input_fs(input_path);
+                fs::path llm_fs(llm_base_path);
+                // Check if input path is under LLM directory
+                auto input_canonical = fs::weakly_canonical(input_fs);
+                auto llm_canonical = fs::weakly_canonical(llm_fs);
+                std::string input_str = input_canonical.string();
+                std::string llm_str = llm_canonical.string();
+                if (input_str.find(llm_str) == 0) {
+                    send_error(res, "LLM model conversion is not supported. The sd.cpp convert function only works with Stable Diffusion models. To re-quantize LLM models, use llama.cpp's llama-quantize tool instead.", 400);
+                    return;
+                }
+            }
+        }
+
         // Generate output path if not provided
         // Default naming: modelname.quanttype.gguf
         std::string output_path;
