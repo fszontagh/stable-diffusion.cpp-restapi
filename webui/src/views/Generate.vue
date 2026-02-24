@@ -771,6 +771,8 @@ onMounted(async () => {
       sessionStorage.removeItem('reloadJobParams')
       // Save these as the current settings for this mode
       saveSettings()
+      // Note: Don't restore from localStorage when reloading job params
+      // The job params contain the full prompt with LoRA tags that will be auto-parsed
     } catch (e) {
       console.error('Failed to load job params:', e)
     }
@@ -784,16 +786,16 @@ onMounted(async () => {
     await loadSettingsForMode(mode.value)
     // Load LoRA settings
     loadLoraSettingsForMode(mode.value)
-  }
 
-  // Restore prompts from localStorage (persists across navigation)
-  const savedPrompt = localStorage.getItem(PROMPT_STORAGE_KEY)
-  const savedNegativePrompt = localStorage.getItem(NEGATIVE_PROMPT_STORAGE_KEY)
-  if (savedPrompt !== null) {
-    prompt.value = savedPrompt
-  }
-  if (savedNegativePrompt !== null) {
-    negativePrompt.value = savedNegativePrompt
+    // Restore prompts from localStorage (only when NOT reloading job params)
+    const savedPrompt = localStorage.getItem(PROMPT_STORAGE_KEY)
+    const savedNegativePrompt = localStorage.getItem(NEGATIVE_PROMPT_STORAGE_KEY)
+    if (savedPrompt !== null) {
+      prompt.value = savedPrompt
+    }
+    if (savedNegativePrompt !== null) {
+      negativePrompt.value = savedNegativePrompt
+    }
   }
 })
 
