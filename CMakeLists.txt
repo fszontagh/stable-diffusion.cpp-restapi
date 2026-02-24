@@ -31,6 +31,7 @@ option(SDCPP_WEBUI "Build and include Web UI (requires Node.js/npm)" ON)
 option(SDCPP_WEBSOCKET "Build WebSocket server for real-time updates" ON)
 option(FORCE_WEBSOCKET "Force WebSocket even if WebUI is disabled" OFF)
 option(SDCPP_ASSISTANT "Build LLM Assistant feature" ON)
+set(SDCPP_LOCAL_SOURCE "" CACHE PATH "Path to local stable-diffusion.cpp source (for development/testing)")
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
@@ -116,7 +117,7 @@ if(SDCPP_WEBSOCKET)
 endif()
 
 #
-# stable-diffusion.cpp via FetchContent
+# stable-diffusion.cpp via FetchContent or local source
 #
 # Pass backend options to sd.cpp
 set(SD_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -137,15 +138,28 @@ if(SD_OPENCL)
     set(SD_OPENCL ON CACHE BOOL "" FORCE)
 endif()
 
-FetchContent_Declare(
-    stable-diffusion
-    GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-    GIT_TAG        636d3cb
-)
+# Check if using local source or fetching from GitHub
+if(SDCPP_LOCAL_SOURCE)
+    message(STATUS "Using local stable-diffusion.cpp source: ${SDCPP_LOCAL_SOURCE}")
+    if(NOT EXISTS "${SDCPP_LOCAL_SOURCE}/CMakeLists.txt")
+        message(FATAL_ERROR "SDCPP_LOCAL_SOURCE does not contain a valid stable-diffusion.cpp source: ${SDCPP_LOCAL_SOURCE}")
+    endif()
+    set(stable-diffusion_SOURCE_DIR "${SDCPP_LOCAL_SOURCE}")
+    set(stable-diffusion_BINARY_DIR "${CMAKE_BINARY_DIR}/_deps/stable-diffusion-build")
+    set(SDCPP_USING_LOCAL_SOURCE TRUE)
+    # Add the local source subdirectory directly (no patching needed for local dev)
+    add_subdirectory(${stable-diffusion_SOURCE_DIR} ${stable-diffusion_BINARY_DIR})
+else()
+    FetchContent_Declare(
+        stable-diffusion
+        GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
+        GIT_TAG        636d3cb
+    )
+    # First populate to get source directory
+    FetchContent_GetProperties(stable-diffusion)
+endif()
 
-# First populate to get source directory
-FetchContent_GetProperties(stable-diffusion)
-if(NOT stable-diffusion_POPULATED)
+if(NOT SDCPP_USING_LOCAL_SOURCE AND NOT stable-diffusion_POPULATED)
     FetchContent_Populate(stable-diffusion)
 
     # Apply sd_get_model_version_name patch directly
