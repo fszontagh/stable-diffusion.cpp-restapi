@@ -193,7 +193,12 @@ public:
      * Get name of currently loaded model
      */
     std::string get_loaded_model_name() const;
-    
+
+    /**
+     * Get architecture of currently loaded model
+     */
+    std::string get_loaded_model_architecture() const;
+
     /**
      * Get info about all currently loaded models as JSON
      */

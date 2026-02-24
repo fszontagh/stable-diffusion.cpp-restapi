@@ -821,10 +821,18 @@ std::vector<std::string> QueueManager::process_job_unlocked(
     const nlohmann::json& params,
     const std::string& job_id
 ) {
-    // Set up progress callback
+    // Get expected diffusion steps from params (for phase detection in progress callback)
+    int expected_steps = 0;
+    if (type == GenerationType::Text2Image || type == GenerationType::Image2Image) {
+        expected_steps = params.value("steps", 20);
+    } else if (type == GenerationType::Text2Video) {
+        expected_steps = params.value("steps", 30);
+    }
+
+    // Set up progress callback with expected steps for phase detection
     SDWrapper::set_progress_callback([this](int step, int total) {
         update_progress(step, total);
-    });
+    }, expected_steps);
 
     // Set up preview callback with current settings
     PreviewSettings preview_settings;

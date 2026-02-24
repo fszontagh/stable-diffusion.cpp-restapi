@@ -61,6 +61,14 @@ public:
     const ArchitecturePreset* get(const std::string& name) const;
 
     /**
+     * Get default steps for an architecture
+     * @param arch_name Architecture ID or alias
+     * @param fallback Default value if architecture not found
+     * @return Default steps for the architecture
+     */
+    int get_default_steps(const std::string& arch_name, int fallback = 20) const;
+
+    /**
      * Get all presets as JSON for API response
      */
     nlohmann::json to_json() const;

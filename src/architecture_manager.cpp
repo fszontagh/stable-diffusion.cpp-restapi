@@ -221,6 +221,14 @@ const ArchitecturePreset* ArchitectureManager::get(const std::string& name) cons
     return nullptr;
 }
 
+int ArchitectureManager::get_default_steps(const std::string& arch_name, int fallback) const {
+    const auto* preset = get(arch_name);
+    if (preset && preset->generationDefaults.contains("steps")) {
+        return preset->generationDefaults["steps"].get<int>();
+    }
+    return fallback;
+}
+
 nlohmann::json ArchitectureManager::to_json() const {
     std::lock_guard<std::mutex> lock(mutex_);
     nlohmann::json result = nlohmann::json::object();
