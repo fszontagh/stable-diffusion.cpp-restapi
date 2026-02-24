@@ -13,6 +13,41 @@ export interface OptionsResponse {
   quantization_types: QuantizationType[]
 }
 
+export interface LoadOptions {
+  n_threads?: number
+  keep_clip_on_cpu?: boolean
+  keep_vae_on_cpu?: boolean
+  keep_controlnet_on_cpu?: boolean
+  flash_attn?: boolean
+  offload_to_cpu?: boolean
+  enable_mmap?: boolean
+  vae_decode_only?: boolean
+  vae_conv_direct?: boolean
+  diffusion_conv_direct?: boolean
+  tae_preview_only?: boolean
+  free_params_immediately?: boolean
+  flow_shift?: number
+  weight_type?: string
+  tensor_type_rules?: string
+  rng_type?: string
+  sampler_rng_type?: string
+  prediction?: string
+  lora_apply_mode?: string
+  vae_tiling?: boolean
+  vae_tile_size_x?: number
+  vae_tile_size_y?: number
+  vae_tile_overlap?: number
+  chroma_use_dit_mask?: boolean
+  chroma_use_t5_mask?: boolean
+  chroma_t5_mask_pad?: number
+  offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive'
+  offload_cond_stage?: boolean
+  offload_diffusion?: boolean
+  reload_cond_stage?: boolean
+  log_offload_events?: boolean
+  min_offload_size_mb?: number
+}
+
 export interface HealthResponse {
   status: string
   model_loaded: boolean
@@ -33,6 +68,7 @@ export interface HealthResponse {
     llm: string | null
     llm_vision: string | null
   }
+  load_options?: LoadOptions
   upscaler_loaded: boolean
   upscaler_name: string | null
   ws_port: number | null
@@ -109,6 +145,13 @@ export interface LoadModelParams {
     chroma_use_dit_mask?: boolean
     chroma_use_t5_mask?: boolean
     chroma_t5_mask_pad?: number
+    // Dynamic tensor offloading options
+    offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive'
+    offload_cond_stage?: boolean
+    offload_diffusion?: boolean
+    reload_cond_stage?: boolean
+    log_offload_events?: boolean
+    min_offload_size_mb?: number
   }
 }
 
@@ -231,6 +274,7 @@ export interface JobModelSettings {
     keep_controlnet_on_cpu?: boolean
     flash_attn?: boolean
     offload_to_cpu?: boolean
+    enable_mmap?: boolean
     vae_decode_only?: boolean
     vae_conv_direct?: boolean
     diffusion_conv_direct?: boolean
@@ -250,6 +294,13 @@ export interface JobModelSettings {
     chroma_use_dit_mask?: boolean
     chroma_use_t5_mask?: boolean
     chroma_t5_mask_pad?: number
+    // Dynamic VRAM offloading settings
+    offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive'
+    offload_cond_stage?: boolean
+    offload_diffusion?: boolean
+    reload_cond_stage?: boolean
+    log_offload_events?: boolean
+    min_offload_size_mb?: number
   }
   upscaler_loaded: boolean
   upscaler_name: string | null

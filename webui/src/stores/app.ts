@@ -189,6 +189,7 @@ export const useAppStore = defineStore('app', () => {
   const modelType = computed(() => health.value?.model_type ?? null)
   const modelArchitecture = computed(() => health.value?.model_architecture ?? null)
   const loadedComponents = computed(() => health.value?.loaded_components ?? null)
+  const loadOptions = computed(() => health.value?.load_options ?? null)
   const upscalerLoaded = computed(() => health.value?.upscaler_loaded ?? false)
   const upscalerName = computed(() => health.value?.upscaler_name ?? null)
 
@@ -221,7 +222,8 @@ export const useAppStore = defineStore('app', () => {
 
       // If WebSocket is disconnected but server is back, try to reconnect
       // This handles the case where server restarted after being down
-      if (wsState.value === 'disconnected' && newHealth.ws_port) {
+      // Skip during initial loading - WebSocket setup handles that explicitly
+      if (!isInitialLoading.value && wsState.value === 'disconnected' && newHealth.ws_port) {
         console.log('[AppStore] Server is back online, triggering WebSocket reconnect')
         wsService.connect(newHealth.ws_port)
       }
@@ -484,6 +486,10 @@ export const useAppStore = defineStore('app', () => {
     // Clear any existing handlers
     wsUnsubscribers.forEach(unsub => unsub())
     wsUnsubscribers = []
+
+    // Sync current state immediately (in case WebSocket is already connecting)
+    wsState.value = wsService.getState()
+    wsConnected.value = wsState.value === 'connected'
 
     // Track WebSocket state changes
     wsUnsubscribers.push(
@@ -945,6 +951,7 @@ export const useAppStore = defineStore('app', () => {
     modelType,
     modelArchitecture,
     loadedComponents,
+    loadOptions,
     upscalerLoaded,
     upscalerName,
     queueStats,

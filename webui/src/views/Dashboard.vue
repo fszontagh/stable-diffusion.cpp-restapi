@@ -6,6 +6,7 @@ import { ref } from 'vue'
 const store = useAppStore()
 const unloading = ref(false)
 const unloadingUpscaler = ref(false)
+const showAllSettings = ref(false)
 
 async function handleUnloadModel() {
   unloading.value = true
@@ -37,6 +38,58 @@ function formatComponentValue(value: string | null): string {
   if (!value) return 'Not loaded'
   return value
 }
+
+function formatOptionLabel(key: string): string {
+  // Convert snake_case to readable labels
+  const labels: Record<string, string> = {
+    n_threads: 'Threads',
+    keep_clip_on_cpu: 'CLIP on CPU',
+    keep_vae_on_cpu: 'VAE on CPU',
+    keep_controlnet_on_cpu: 'ControlNet on CPU',
+    flash_attn: 'Flash Attention',
+    offload_to_cpu: 'Offload to CPU',
+    enable_mmap: 'Memory Mapping',
+    vae_decode_only: 'VAE Decode Only',
+    vae_conv_direct: 'VAE Conv Direct',
+    diffusion_conv_direct: 'Diffusion Conv Direct',
+    tae_preview_only: 'TAE Preview Only',
+    free_params_immediately: 'Free Params Immediately',
+    flow_shift: 'Flow Shift',
+    weight_type: 'Weight Type',
+    tensor_type_rules: 'Tensor Type Rules',
+    rng_type: 'RNG Type',
+    sampler_rng_type: 'Sampler RNG',
+    prediction: 'Prediction',
+    lora_apply_mode: 'LoRA Apply Mode',
+    vae_tiling: 'VAE Tiling',
+    vae_tile_size_x: 'VAE Tile X',
+    vae_tile_size_y: 'VAE Tile Y',
+    vae_tile_overlap: 'VAE Tile Overlap',
+    chroma_use_dit_mask: 'Chroma DiT Mask',
+    chroma_use_t5_mask: 'Chroma T5 Mask',
+    chroma_t5_mask_pad: 'Chroma T5 Mask Pad',
+    offload_mode: 'Dynamic VRAM Mode',
+    offload_cond_stage: 'Offload Cond Stage',
+    offload_diffusion: 'Offload Diffusion',
+    reload_cond_stage: 'Reload Cond Stage',
+    log_offload_events: 'Log Offload Events',
+    min_offload_size_mb: 'Min Offload Size (MB)'
+  }
+  return labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+}
+
+function formatOptionValue(value: unknown): string {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (typeof value === 'number') return value === -1 ? 'Auto' : String(value)
+  return String(value)
+}
+
+// Important settings to show prominently
+const importantSettings = [
+  'weight_type', 'flash_attn', 'keep_clip_on_cpu', 'keep_vae_on_cpu',
+  'vae_tiling', 'offload_mode', 'lora_apply_mode'
+]
 </script>
 
 <template>
@@ -164,6 +217,49 @@ function formatComponentValue(value: string | null): string {
             {{ formatComponentValue(store.loadedComponents.llm) }}
           </span>
         </div>
+      </div>
+    </div>
+
+    <!-- Load Settings Card -->
+    <div class="card" v-if="store.modelLoaded && store.loadOptions">
+      <div class="card-header">
+        <h2 class="card-title">Load Settings</h2>
+        <button
+          class="btn btn-ghost btn-sm"
+          @click="showAllSettings = !showAllSettings"
+        >
+          {{ showAllSettings ? 'Show Less' : 'Show All' }}
+        </button>
+      </div>
+
+      <!-- Important settings always visible -->
+      <div class="settings-grid">
+        <template v-for="key in importantSettings" :key="key">
+          <div v-if="store.loadOptions[key as keyof typeof store.loadOptions] !== undefined" class="setting-item important">
+            <span class="setting-label">{{ formatOptionLabel(key) }}</span>
+            <span class="setting-value" :class="{
+              'text-success': store.loadOptions[key as keyof typeof store.loadOptions] === true,
+              'text-muted': store.loadOptions[key as keyof typeof store.loadOptions] === false
+            }">
+              {{ formatOptionValue(store.loadOptions[key as keyof typeof store.loadOptions]) }}
+            </span>
+          </div>
+        </template>
+      </div>
+
+      <!-- All other settings (expandable) -->
+      <div v-if="showAllSettings" class="settings-grid all-settings">
+        <template v-for="(value, key) in store.loadOptions" :key="key">
+          <div v-if="!importantSettings.includes(key as string)" class="setting-item">
+            <span class="setting-label">{{ formatOptionLabel(key as string) }}</span>
+            <span class="setting-value" :class="{
+              'text-success': value === true,
+              'text-muted': value === false
+            }">
+              {{ formatOptionValue(value) }}
+            </span>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -333,5 +429,55 @@ function formatComponentValue(value: string | null): string {
   white-space: pre-wrap;
   word-break: break-word;
   margin: 8px 0;
+}
+
+/* Settings grid */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.settings-grid.all-settings {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+  gap: 8px;
+}
+
+.setting-item.important {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.setting-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.setting-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: right;
+  word-break: break-all;
+}
+
+.setting-value.text-success {
+  color: var(--accent-success);
+}
+
+.setting-value.text-muted {
+  color: var(--text-muted);
 }
 </style>

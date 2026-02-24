@@ -35,6 +35,7 @@ NC='\033[0m' # No Color
 INSTALL_SERVICE=true
 UNINSTALL=false
 UPDATE_WEBUI_ONLY=false
+SET_PERMISSIONS=true
 SERVICE_USER="${SUDO_USER:-$(whoami)}"
 
 # Configuration values (will be set from existing config or prompts)
@@ -93,6 +94,7 @@ Options:
     --output-dir DIR    Directory for generated images
     --models-dir DIR    Directory for model files
     --no-service        Don't install systemd service
+    --no-permissions    Skip setting file ownership (chown operations)
     --help              Show this help message
 
 If a config file already exists at ${CONFIG_FILE},
@@ -103,6 +105,7 @@ Examples:
     sudo $0 --user sdcpp                       # Install as 'sdcpp' user
     sudo $0 --port 9000                        # Use port 9000
     sudo $0 --update-webui                     # Update only Web UI files
+    sudo $0 --no-permissions                   # Skip permission changes
     sudo $0 --uninstall                        # Remove installation
 
 EOF
@@ -274,6 +277,10 @@ while [[ $# -gt 0 ]]; do
             INSTALL_SERVICE=false
             shift
             ;;
+        --no-permissions)
+            SET_PERMISSIONS=false
+            shift
+            ;;
         --help|-h)
             show_help
             exit 0
@@ -370,9 +377,13 @@ do_update_webui() {
     mkdir -p "${WEBUI_DEST}"
     cp -r "${WEBUI_SOURCE}/"* "${WEBUI_DEST}/"
 
-    # Restore ownership
-    print_info "Setting permissions..."
-    chown -R "${WEBUI_OWNER}" "${WEBUI_DEST}"
+    # Restore ownership (optional)
+    if [[ "${SET_PERMISSIONS}" == true ]]; then
+        print_info "Setting permissions..."
+        chown -R "${WEBUI_OWNER}" "${WEBUI_DEST}"
+    else
+        print_info "Skipping permission changes (--no-permissions)"
+    fi
 
     echo
     print_info "Web UI update complete!"
@@ -756,23 +767,27 @@ CONFIGEOF
     mkdir -p "${MODELS_DIR}"/{checkpoints,diffusion_models,vae,loras,clip,t5xxl,embeddings,controlnet,esrgan,Text-encoder,taesd}
     mkdir -p "${OUTPUT_DIR}"
 
-    # Set ownership
-    print_info "Setting permissions..."
-    chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
-    chown -R "${SERVICE_USER}:${SERVICE_USER}" "${CONFIG_DIR}"
+    # Set ownership (optional)
+    if [[ "${SET_PERMISSIONS}" == true ]]; then
+        print_info "Setting permissions..."
+        chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
+        chown -R "${SERVICE_USER}:${SERVICE_USER}" "${CONFIG_DIR}"
 
-    # Set ownership on custom directories if different from install dir
-    if [[ "${MODELS_DIR}" != "${INSTALL_DIR}/models" ]]; then
-        if [[ -d "${MODELS_DIR}" ]]; then
-            print_info "Setting permissions on models directory..."
-            chown -R "${SERVICE_USER}:${SERVICE_USER}" "${MODELS_DIR}"
+        # Set ownership on custom directories if different from install dir
+        if [[ "${MODELS_DIR}" != "${INSTALL_DIR}/models" ]]; then
+            if [[ -d "${MODELS_DIR}" ]]; then
+                print_info "Setting permissions on models directory..."
+                chown -R "${SERVICE_USER}:${SERVICE_USER}" "${MODELS_DIR}"
+            fi
         fi
-    fi
-    if [[ "${OUTPUT_DIR}" != "${INSTALL_DIR}/output" ]]; then
-        if [[ -d "${OUTPUT_DIR}" ]]; then
-            print_info "Setting permissions on output directory..."
-            chown -R "${SERVICE_USER}:${SERVICE_USER}" "${OUTPUT_DIR}"
+        if [[ "${OUTPUT_DIR}" != "${INSTALL_DIR}/output" ]]; then
+            if [[ -d "${OUTPUT_DIR}" ]]; then
+                print_info "Setting permissions on output directory..."
+                chown -R "${SERVICE_USER}:${SERVICE_USER}" "${OUTPUT_DIR}"
+            fi
         fi
+    else
+        print_info "Skipping permission changes (--no-permissions)"
     fi
 
     # Install systemd service
