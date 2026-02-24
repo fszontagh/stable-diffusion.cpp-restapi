@@ -130,6 +130,7 @@ export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'rec
 class WebSocketService {
   private ws: WebSocket | null = null
   private url: string = ''
+  private wsPort: number | null = null  // Store port for reconnection
   private reconnectAttempts = 0
   private maxReconnectAttempts = 10
   private reconnectDelay = 1000
@@ -145,10 +146,15 @@ class WebSocketService {
 
   /**
    * Connect to WebSocket server
-   * @param wsPort WebSocket port from server's /health endpoint. If not provided or undefined, won't connect.
+   * @param wsPort WebSocket port from server's /health endpoint. If not provided, uses stored port from previous connection.
    */
   connect(wsPort?: number): void {
-    if (wsPort === undefined || wsPort === null) {
+    // Store port for reconnection, or use stored port if not provided
+    if (wsPort !== undefined && wsPort !== null) {
+      this.wsPort = wsPort
+    }
+
+    if (this.wsPort === null) {
       console.log('[WebSocket] No WebSocket port provided, server may have WebSocket disabled')
       return
     }
@@ -158,10 +164,10 @@ class WebSocketService {
       return
     }
 
-    // Build WebSocket URL using port from server
+    // Build WebSocket URL using stored port
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.hostname
-    this.url = `${protocol}//${host}:${wsPort}`
+    this.url = `${protocol}//${host}:${this.wsPort}`
 
     this.updateState('connecting')
     console.log(`[WebSocket] Connecting to ${this.url}...`)
