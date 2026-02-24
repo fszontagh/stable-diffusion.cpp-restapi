@@ -102,9 +102,19 @@ void WebSocketServer::stop() {
     // client close runs before the loop exits
     if (impl_->loop) {
         impl_->loop->defer([this]() {
-            // Close all client connections from within the event loop
+            // Build shutdown message
+            nlohmann::json message = {
+                {"event", "server_shutdown"},
+                {"timestamp", format_timestamp(std::chrono::system_clock::now())},
+                {"data", {{"reason", "Server is shutting down"}}}
+            };
+            std::string msg_str = message.dump();
+
+            // Send shutdown notification and close all client connections
             std::lock_guard<std::mutex> lock(impl_->clients_mutex);
             for (auto* ws : impl_->clients) {
+                // Send shutdown message before closing
+                ws->send(msg_str, uWS::OpCode::TEXT);
                 ws->close();
             }
         });
@@ -339,6 +349,7 @@ std::string WebSocketServer::event_type_to_string(WSEventType type) {
         case WSEventType::UpscalerLoaded:      return "upscaler_loaded";
         case WSEventType::UpscalerUnloaded:    return "upscaler_unloaded";
         case WSEventType::ServerStatus:        return "server_status";
+        case WSEventType::ServerShutdown:      return "server_shutdown";
         default:                               return "unknown";
     }
 }

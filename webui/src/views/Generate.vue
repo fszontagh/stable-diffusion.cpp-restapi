@@ -21,6 +21,10 @@ const submitting = ref(false)
 const cooldown = ref(false)
 let cooldownTimer: ReturnType<typeof setTimeout> | null = null
 
+// Prompt persistence keys
+const PROMPT_STORAGE_KEY = 'generateSettings_prompt'
+const NEGATIVE_PROMPT_STORAGE_KEY = 'generateSettings_negativePrompt'
+
 // Common params
 const prompt = ref('')
 const negativePrompt = ref('')
@@ -176,6 +180,19 @@ watch(prompt, () => {
 watch(negativePrompt, () => {
   debouncedParseNegativePrompt()
 })
+
+// Debounced prompt persistence to localStorage
+const debouncedSavePrompt = useDebounceFn(() => {
+  localStorage.setItem(PROMPT_STORAGE_KEY, prompt.value)
+}, 500)
+
+const debouncedSaveNegativePrompt = useDebounceFn(() => {
+  localStorage.setItem(NEGATIVE_PROMPT_STORAGE_KEY, negativePrompt.value)
+}, 500)
+
+// Watch prompts for localStorage persistence
+watch(prompt, debouncedSavePrompt)
+watch(negativePrompt, debouncedSaveNegativePrompt)
 
 // Build final prompt with LoRAs
 function buildPromptWithLoras(basePrompt: string, loras: LoraEntry[]): string {
@@ -768,6 +785,16 @@ onMounted(async () => {
     // Load LoRA settings
     loadLoraSettingsForMode(mode.value)
   }
+
+  // Restore prompts from localStorage (persists across navigation)
+  const savedPrompt = localStorage.getItem(PROMPT_STORAGE_KEY)
+  const savedNegativePrompt = localStorage.getItem(NEGATIVE_PROMPT_STORAGE_KEY)
+  if (savedPrompt !== null) {
+    prompt.value = savedPrompt
+  }
+  if (savedNegativePrompt !== null) {
+    negativePrompt.value = savedNegativePrompt
+  }
 })
 
 onBeforeUnmount(() => {
@@ -778,6 +805,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('assistant-set-image', handleAssistantSetImage)
   if (cooldownTimer) clearTimeout(cooldownTimer)
   if (highlightTimeout) clearTimeout(highlightTimeout)
+
+  // Save prompts to localStorage for persistence across navigation
+  localStorage.setItem(PROMPT_STORAGE_KEY, prompt.value)
+  localStorage.setItem(NEGATIVE_PROMPT_STORAGE_KEY, negativePrompt.value)
 })
 
 function loadJobParams(type: string, params: Record<string, unknown>) {

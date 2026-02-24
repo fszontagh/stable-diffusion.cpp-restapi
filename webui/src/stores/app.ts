@@ -15,7 +15,8 @@ import {
   type ModelUnloadedData,
   type UpscalerLoadedData,
   type UpscalerUnloadedData,
-  type ServerStatusData
+  type ServerStatusData,
+  type ServerShutdownData
 } from '../services/websocket'
 import { notificationService } from '../services/notifications'
 
@@ -498,6 +499,11 @@ export const useAppStore = defineStore('app', () => {
           // Server sends server_status event on connection with current state
           // No need for HTTP calls - state will be updated via WebSocket
         } else if (state === 'disconnected') {
+          // WebSocket disconnected - clear health state if max reconnect attempts reached
+          // This prevents showing stale "model loaded" state when server is down
+          if (health.value) {
+            health.value = null
+          }
           // WebSocket disconnected - start fallback polling
           if (!pollInterval) {
             pollInterval = setInterval(() => {
@@ -748,6 +754,16 @@ export const useAppStore = defineStore('app', () => {
           health.value.upscaler_name = null
         }
         showToast('Upscaler unloaded', 'info')
+      })
+    )
+
+    // Server shutdown event - clear health and show notification
+    wsUnsubscribers.push(
+      wsService.on<ServerShutdownData>('server_shutdown', (data) => {
+        // Clear health state to reflect server is down
+        health.value = null
+        showToast(`Server shutdown: ${data.reason}`, 'warning')
+        updateDocumentTitle()
       })
     )
 
