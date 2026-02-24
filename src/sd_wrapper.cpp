@@ -211,14 +211,17 @@ std::string build_error_message(const std::string& base_message) {
 } // anonymous namespace
 
 ProgressCallback SDWrapper::progress_callback_ = nullptr;
+int SDWrapper::expected_diffusion_steps_ = 0;
 
-void SDWrapper::set_progress_callback(ProgressCallback callback) {
+void SDWrapper::set_progress_callback(ProgressCallback callback, int expected_steps) {
     progress_callback_ = callback;
+    expected_diffusion_steps_ = expected_steps;
     sd_set_progress_callback(internal_progress_callback, nullptr);
 }
 
 void SDWrapper::clear_progress_callback() {
     progress_callback_ = nullptr;
+    expected_diffusion_steps_ = 0;
     sd_set_progress_callback(nullptr, nullptr);
 }
 
@@ -332,30 +335,47 @@ std::vector<uint8_t> SDWrapper::encode_jpeg_memory(const uint8_t* data, int widt
 }
 
 void SDWrapper::internal_progress_callback(int step, int steps, float time, void* /*data*/) {
-    // Update progress tracking first (lightweight operation)
-    if (progress_callback_) {
+    // Determine which phase this callback is from
+    // - Diffusion phase: steps matches expected_diffusion_steps_
+    // - VAE/other phase: steps differs from expected
+    bool is_diffusion_phase = (expected_diffusion_steps_ > 0 && steps == expected_diffusion_steps_);
+    bool is_other_phase = (steps > 0 && steps != expected_diffusion_steps_);
+
+    // Only report diffusion progress to the UI callback
+    // This prevents VAE tiling steps from confusing the UI
+    if (progress_callback_ && is_diffusion_phase) {
         progress_callback_(step, steps);
     }
 
     // Console output: only on first step, last step, or every 5th step to reduce I/O overhead
     if (step == 0 || step == steps || (step % 5 == 0)) {
+        // Skip non-diffusion operations with very few steps (typically internal operations)
+        // This filters out CLIP encoding, embeddings loading, and other quick operations
+        if (!is_diffusion_phase && steps <= 3) {
+            return;  // Skip logging very short operations
+        }
+
         // Check if stderr is a TTY (terminal) - use \r for in-place updates only in terminals
         // When running as a service (journald), \r appears as binary blob data
         static bool is_tty = isatty(STDERR_FILENO);
 
+        // Determine phase label for logging
+        const char* phase_label = is_diffusion_phase ? "Diffusion" :
+                                  is_other_phase ? "VAE" : "Processing";
+
         if (is_tty) {
             // Terminal: use carriage return for in-place update
-            fprintf(stderr, "\r[SDWrapper] Step %d/%d (%.1f%%) - %.2fs",
-                    step, steps, (steps > 0 ? (100.0f * step / steps) : 0.0f), time);
+            fprintf(stderr, "\r[SDWrapper] %s %d/%d (%.1f%%) - %.2fs",
+                    phase_label, step, steps, (steps > 0 ? (100.0f * step / steps) : 0.0f), time);
             if (step == steps) {
                 fprintf(stderr, "\n");
             }
         } else {
             // Service/journald: use newlines, less verbose output
             if (step == 0) {
-                fprintf(stderr, "[SDWrapper] Starting generation (%d steps)\n", steps);
+                fprintf(stderr, "[SDWrapper] %s starting (%d steps)\n", phase_label, steps);
             } else if (step == steps) {
-                fprintf(stderr, "[SDWrapper] Completed in %.2fs\n", time);
+                fprintf(stderr, "[SDWrapper] %s completed in %.2fs\n", phase_label, time);
             }
             // Skip intermediate progress for non-TTY to avoid log spam
         }

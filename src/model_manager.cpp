@@ -926,6 +926,11 @@ std::string ModelManager::get_loaded_model_name() const {
     return loaded_model_name_;
 }
 
+std::string ModelManager::get_loaded_model_architecture() const {
+    std::lock_guard<std::mutex> lock(context_mutex_);
+    return loaded_model_architecture_;
+}
+
 std::string ModelManager::compute_model_hash(const std::string& name, ModelType type) {
     std::lock_guard<std::mutex> lock(registry_mutex_);
     

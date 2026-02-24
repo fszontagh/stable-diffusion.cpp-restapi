@@ -294,9 +294,10 @@ public:
     /**
      * Set global progress callback
      * @param callback Progress callback function
+     * @param expected_steps Expected diffusion steps (used to identify phases in logging)
      */
-    static void set_progress_callback(ProgressCallback callback);
-    
+    static void set_progress_callback(ProgressCallback callback, int expected_steps = 0);
+
     /**
      * Clear progress callback
      */
@@ -495,6 +496,7 @@ public:
 
 private:
     static ProgressCallback progress_callback_;
+    static int expected_diffusion_steps_;  // Track expected steps to identify phases
     static void internal_progress_callback(int step, int steps, float time, void* data);
 
     // Preview callback support
