@@ -1218,6 +1218,9 @@ std::vector<std::string> QueueManager::process_convert_unlocked(
 
     std::cout << "[QueueManager] Conversion complete: " << output_path << std::endl;
 
+    // Rescan models to pick up the new converted file
+    model_manager_.scan_models();
+
     // Return the output path as the result
     return { output_path };
 }
