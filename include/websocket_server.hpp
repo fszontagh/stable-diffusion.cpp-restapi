@@ -34,7 +34,8 @@ enum class WSEventType {
     UpscalerUnloaded,   // Upscaler was unloaded
 
     // Server status
-    ServerStatus        // Periodic server status update / heartbeat
+    ServerStatus,       // Periodic server status update / heartbeat
+    ServerShutdown      // Server is shutting down
 };
 
 /**

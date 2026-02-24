@@ -16,6 +16,7 @@ export type WSEventType =
   | 'upscaler_loaded'
   | 'upscaler_unloaded'
   | 'server_status'
+  | 'server_shutdown'
   | 'pong'
 
 // Event data interfaces
@@ -104,6 +105,10 @@ export interface ServerStatusData {
   }
   upscaler_loaded?: boolean
   upscaler_name?: string | null
+}
+
+export interface ServerShutdownData {
+  reason: string
 }
 
 // WebSocket message structure
