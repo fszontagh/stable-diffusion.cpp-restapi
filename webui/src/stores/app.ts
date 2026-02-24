@@ -218,6 +218,13 @@ export const useAppStore = defineStore('app', () => {
       error.value = null
       // Update document title with model loading progress
       updateDocumentTitle()
+
+      // If WebSocket is disconnected but server is back, try to reconnect
+      // This handles the case where server restarted after being down
+      if (wsState.value === 'disconnected' && newHealth.ws_port) {
+        console.log('[AppStore] Server is back online, triggering WebSocket reconnect')
+        wsService.connect(newHealth.ws_port)
+      }
     } catch (e) {
       connected.value = false
       error.value = e instanceof Error ? e.message : 'Connection failed'
