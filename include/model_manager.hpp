@@ -104,6 +104,14 @@ struct ModelLoadParams {
     std::string weight_type;                    // Weight type (f32, f16, q8_0, q4_0, etc.)
     std::string tensor_type_rules;              // Per-tensor weight rules (e.g., "^vae\.=f16")
 
+    // Dynamic tensor offloading options
+    std::string offload_mode = "none";          // none, cond_only, cond_diffusion, aggressive
+    bool offload_cond_stage = true;             // Offload LLM/CLIP after conditioning
+    bool offload_diffusion = false;             // Offload diffusion after sampling
+    bool reload_cond_stage = true;              // Reload LLM/CLIP after generation
+    bool log_offload_events = true;             // Log offload/reload events
+    size_t min_offload_size_mb = 0;             // Minimum component size to offload (MB)
+
     // RNG options
     std::string rng_type = "cuda";              // std_default, cuda, cpu
     std::string sampler_rng_type = "";          // Empty = use rng_type

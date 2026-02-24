@@ -53,6 +53,10 @@ interface ModelPreset {
     flow_shift?: number
     weight_type?: string
     chroma_use_dit_mask?: boolean
+    offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive'
+    offload_cond_stage?: boolean
+    offload_diffusion?: boolean
+    reload_cond_stage?: boolean
   }
   generationDefaults?: {
     cfg_scale?: number
@@ -163,13 +167,16 @@ const modelPresets: ModelPreset[] = [
   {
     id: 'zimage',
     name: 'Z-Image Turbo',
-    description: 'Requires VAE (ae.gguf) and LLM (Qwen3 4B). Fast generation.',
+    description: 'Requires VAE (ae.gguf) and LLM (Qwen3 4B). Fast generation. Uses VRAM offloading for LLM.',
     requiredComponents: { vae: true, llm: true },
     options: {
       flash_attn: true,
       vae_decode_only: true,
       vae_conv_direct: true,
-      weight_type: 'q5_0'
+      weight_type: 'q5_0',
+      offload_mode: 'cond_only',
+      offload_cond_stage: true,
+      reload_cond_stage: true
     },
     generationDefaults: {
       cfg_scale: 1.0,
@@ -261,7 +268,12 @@ const loadParams = ref<LoadModelParams>({
     offload_to_cpu: false,
     enable_mmap: true,
     vae_decode_only: true,
-    tae_preview_only: false
+    tae_preview_only: false,
+    // Dynamic tensor offloading (disabled by default)
+    offload_mode: 'none',
+    offload_cond_stage: true,
+    offload_diffusion: false,
+    reload_cond_stage: true
   }
 })
 
@@ -375,7 +387,12 @@ function openLoadModal(model: ModelInfo) {
     flash_attn: true,
     offload_to_cpu: false,
     vae_decode_only: true,
-    tae_preview_only: false
+    tae_preview_only: false,
+    // Dynamic tensor offloading (disabled by default)
+    offload_mode: 'none',
+    offload_cond_stage: true,
+    offload_diffusion: false,
+    reload_cond_stage: true
   }
   showLoadModal.value = true
 }
@@ -736,6 +753,35 @@ onMounted(() => {
             <div class="form-hint">
               Runtime weight precision. Auto uses the model file's quantization. Lower = less VRAM, may affect quality.
             </div>
+          </div>
+
+          <!-- Dynamic Tensor Offloading -->
+          <div class="form-group mt-3">
+            <label class="form-label">Dynamic VRAM Offloading</label>
+            <select v-model="loadParams.options!.offload_mode" class="form-select">
+              <option value="none">Disabled (keep all on GPU)</option>
+              <option value="cond_only">After Conditioning (offload LLM/CLIP)</option>
+              <option value="cond_diffusion">After Cond + Diffusion</option>
+              <option value="aggressive">Aggressive (offload each component)</option>
+            </select>
+            <div class="form-hint">
+              Temporarily move model components to CPU during generation to free VRAM for VAE decode.
+              Adds ~250-500ms overhead per generation but enables running larger models.
+            </div>
+          </div>
+          <div v-if="loadParams.options!.offload_mode !== 'none'" class="offload-options mt-2">
+            <label class="form-checkbox">
+              <input v-model="loadParams.options!.offload_cond_stage" type="checkbox" />
+              Offload LLM/CLIP after conditioning
+            </label>
+            <label class="form-checkbox" v-if="loadParams.options!.offload_mode === 'aggressive' || loadParams.options!.offload_mode === 'cond_diffusion'">
+              <input v-model="loadParams.options!.offload_diffusion" type="checkbox" />
+              Offload diffusion model after sampling
+            </label>
+            <label class="form-checkbox">
+              <input v-model="loadParams.options!.reload_cond_stage" type="checkbox" />
+              Reload components after generation (for next generation)
+            </label>
           </div>
         </div>
       </details>

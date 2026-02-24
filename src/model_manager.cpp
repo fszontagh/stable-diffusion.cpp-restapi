@@ -49,6 +49,13 @@ static lora_apply_mode_t string_to_lora_apply_mode(const std::string& str) {
     return LORA_APPLY_AUTO;  // default
 }
 
+static sd_offload_mode_t string_to_offload_mode(const std::string& str) {
+    if (str == "cond_only") return SD_OFFLOAD_COND_ONLY;
+    if (str == "cond_diffusion") return SD_OFFLOAD_COND_DIFFUSION;
+    if (str == "aggressive") return SD_OFFLOAD_AGGRESSIVE;
+    return SD_OFFLOAD_NONE;  // default
+}
+
 std::string model_type_to_string(ModelType type) {
     switch (type) {
         case ModelType::Checkpoint: return "checkpoint";
@@ -226,6 +233,14 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.chroma_use_dit_mask = opts.value("chroma_use_dit_mask", true);
         params.chroma_use_t5_mask = opts.value("chroma_use_t5_mask", false);
         params.chroma_t5_mask_pad = opts.value("chroma_t5_mask_pad", 1);
+
+        // Dynamic tensor offloading options
+        params.offload_mode = opts.value("offload_mode", "none");
+        params.offload_cond_stage = opts.value("offload_cond_stage", true);
+        params.offload_diffusion = opts.value("offload_diffusion", false);
+        params.reload_cond_stage = opts.value("reload_cond_stage", true);
+        params.log_offload_events = opts.value("log_offload_events", true);
+        params.min_offload_size_mb = opts.value("min_offload_size_mb", 0);
     }
 
     return params;
@@ -743,7 +758,15 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.chroma_use_dit_mask = params.chroma_use_dit_mask;
     ctx_params.chroma_use_t5_mask = params.chroma_use_t5_mask;
     ctx_params.chroma_t5_mask_pad = params.chroma_t5_mask_pad;
-    
+
+    // Dynamic tensor offloading options
+    ctx_params.offload_config.mode = string_to_offload_mode(params.offload_mode);
+    ctx_params.offload_config.offload_cond_stage = params.offload_cond_stage;
+    ctx_params.offload_config.offload_diffusion = params.offload_diffusion;
+    ctx_params.offload_config.reload_cond_stage = params.reload_cond_stage;
+    ctx_params.offload_config.log_offload_events = params.log_offload_events;
+    ctx_params.offload_config.min_offload_size = params.min_offload_size_mb * 1024 * 1024;  // Convert MB to bytes
+
     std::cout << "[ModelManager] Loading model: " << params.model_name << std::endl;
     std::cout << "[ModelManager] Using " << ctx_params.n_threads << " threads" << std::endl;
     std::cout << "[ModelManager] Options: "
@@ -760,6 +783,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
               << ", flow_shift=" << (std::isinf(ctx_params.flow_shift) ? "auto" : std::to_string(ctx_params.flow_shift))
               << ", rng=" << params.rng_type
               << ", lora_mode=" << params.lora_apply_mode
+              << ", offload_mode=" << params.offload_mode
               << std::endl;
 
     // Set up progress callback for model loading
@@ -854,6 +878,14 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["chroma_use_dit_mask"] = params.chroma_use_dit_mask;
     loaded_options_["chroma_use_t5_mask"] = params.chroma_use_t5_mask;
     loaded_options_["chroma_t5_mask_pad"] = params.chroma_t5_mask_pad;
+
+    // Dynamic tensor offloading options
+    loaded_options_["offload_mode"] = params.offload_mode;
+    loaded_options_["offload_cond_stage"] = params.offload_cond_stage;
+    loaded_options_["offload_diffusion"] = params.offload_diffusion;
+    loaded_options_["reload_cond_stage"] = params.reload_cond_stage;
+    loaded_options_["log_offload_events"] = params.log_offload_events;
+    loaded_options_["min_offload_size_mb"] = params.min_offload_size_mb;
 
     // Set atomic flag for lock-free checks
     model_loaded_ = true;
