@@ -276,6 +276,22 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  async function refreshModels() {
+    loading.value = true
+    try {
+      // Use POST /models/refresh which rescans directories and bypasses cache
+      const result = await api.refreshModels()
+      models.value = result.models
+      error.value = null
+      showToast('Model list refreshed', 'success')
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to refresh models'
+      showToast('Failed to refresh models', 'error')
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function fetchQueue(filters?: QueueFilters) {
     try {
       // If filters are explicitly passed, update the stored filters
@@ -916,6 +932,7 @@ export const useAppStore = defineStore('app', () => {
     // Actions
     fetchHealth,
     fetchModels,
+    refreshModels,
     fetchQueue,
     fetchOptions,
     setQueueFilters,
