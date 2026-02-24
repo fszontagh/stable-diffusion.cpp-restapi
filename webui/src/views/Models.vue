@@ -345,14 +345,27 @@ function openLoadModal(model: ModelInfo) {
   loadParams.value.model_name = model.name
   loadParams.value.model_type = model.type === 'diffusion' ? 'diffusion' : 'checkpoint'
   selectedPreset.value = ''
-  // Reset components
-  loadParams.value.vae = ''
-  loadParams.value.clip_l = ''
-  loadParams.value.clip_g = ''
-  loadParams.value.t5xxl = ''
-  loadParams.value.controlnet = ''
-  loadParams.value.llm = ''
-  loadParams.value.taesd = ''
+
+  // If model is already loaded, pre-populate with current components
+  if (model.is_loaded && store.loadedComponents) {
+    loadParams.value.vae = store.loadedComponents.vae || ''
+    loadParams.value.clip_l = store.loadedComponents.clip_l || ''
+    loadParams.value.clip_g = store.loadedComponents.clip_g || ''
+    loadParams.value.t5xxl = store.loadedComponents.t5xxl || ''
+    loadParams.value.controlnet = store.loadedComponents.controlnet || ''
+    loadParams.value.llm = store.loadedComponents.llm || ''
+    loadParams.value.taesd = ''  // TAESD not stored in health
+  } else {
+    // Reset components for new load
+    loadParams.value.vae = ''
+    loadParams.value.clip_l = ''
+    loadParams.value.clip_g = ''
+    loadParams.value.t5xxl = ''
+    loadParams.value.controlnet = ''
+    loadParams.value.llm = ''
+    loadParams.value.taesd = ''
+  }
+
   // Reset options to defaults
   loadParams.value.options = {
     n_threads: -1,
@@ -386,7 +399,7 @@ async function handleLoadModel() {
     params.options = loadParams.value.options
 
     await api.loadModel(params)
-    store.showToast('Model loaded successfully', 'success')
+    store.showToast(selectedModel.value?.is_loaded ? 'Model components updated' : 'Model loaded successfully', 'success')
     showLoadModal.value = false
     store.fetchHealth()
   } catch (e) {
@@ -490,7 +503,7 @@ onMounted(() => {
             </option>
           </select>
         </div>
-        <button class="btn btn-secondary" @click="store.fetchModels()">
+        <button class="btn btn-secondary" @click="store.refreshModels()" :disabled="store.loading">
           &#8635; Refresh
         </button>
       </div>
@@ -520,11 +533,10 @@ onMounted(() => {
         <div class="model-actions">
           <button
             v-if="model.type === 'checkpoint' || model.type === 'diffusion'"
-            class="btn btn-primary btn-sm"
+            :class="['btn', 'btn-sm', model.is_loaded ? 'btn-secondary' : 'btn-primary']"
             @click="openLoadModal(model)"
-            :disabled="model.is_loaded"
           >
-            {{ model.is_loaded ? 'Loaded' : 'Load' }}
+            {{ model.is_loaded ? 'Edit' : 'Load' }}
           </button>
           <button
             v-if="model.type === 'checkpoint' || model.type === 'diffusion' || model.type === 'vae' || model.type === 'lora' || model.type === 'clip' || model.type === 't5' || model.type === 'llm'"
@@ -545,7 +557,7 @@ onMounted(() => {
     </div>
 
     <!-- Load Model Modal -->
-    <Modal :show="showLoadModal" title="Load Model" @close="showLoadModal = false">
+    <Modal :show="showLoadModal" :title="selectedModel?.is_loaded ? 'Edit Model Components' : 'Load Model'" @close="showLoadModal = false">
       <div class="form-group">
         <label class="form-label">Model</label>
         <input :value="loadParams.model_name" class="form-input" disabled />
@@ -732,7 +744,7 @@ onMounted(() => {
         <button class="btn btn-secondary" @click="showLoadModal = false">Cancel</button>
         <button class="btn btn-primary" @click="handleLoadModel" :disabled="loading">
           <span v-if="loading" class="spinner"></span>
-          {{ loading ? 'Loading...' : 'Load Model' }}
+          {{ loading ? 'Applying...' : (selectedModel?.is_loaded ? 'Apply Changes' : 'Load Model') }}
         </button>
       </template>
     </Modal>
