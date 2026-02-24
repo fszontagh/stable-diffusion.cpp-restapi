@@ -624,14 +624,14 @@ nlohmann::json AssistantClient::build_tools() const {
         {"type", "function"},
         {"function", {
             {"name", "convert_model"},
-            {"description", "Convert a model to GGUF format with specified quantization type. Use get_quantization_types tool to see all available types."},
+            {"description", "Convert a Stable Diffusion model to GGUF format with specified quantization type. IMPORTANT: This tool only works with Stable Diffusion models (checkpoints, diffusion, VAE, LoRA, CLIP, T5, ControlNet, ESRGAN, TAESD). LLM models CANNOT be converted with this tool - LLM re-quantization requires llama.cpp's llama-quantize tool which is not available here. If the user asks to convert an LLM model, explain this limitation."},
             {"parameters", {
                 {"type", "object"},
                 {"required", nlohmann::json::array({"output_type"})},
                 {"properties", {
                     {"model_name", {{"type", "string"}, {"description", "Model name from available_models (relative path)"}}},
                     {"input_path", {{"type", "string"}, {"description", "Full absolute path to the model file"}}},
-                    {"model_type", {{"type", "string"}, {"enum", {"checkpoint", "diffusion", "vae", "lora", "clip", "t5", "controlnet", "llm", "esrgan", "taesd"}}, {"description", "Type of model (default: checkpoint)"}}},
+                    {"model_type", {{"type", "string"}, {"enum", {"checkpoint", "diffusion", "vae", "lora", "clip", "t5", "controlnet", "esrgan", "taesd"}}, {"description", "Type of model (default: checkpoint). Note: 'llm' is NOT supported for conversion."}}},
                     {"output_type", {{"type", "string"}, {"description", "Quantization type (use get_quantization_types for available options)"}}},
                     {"output_path", {{"type", "string"}, {"description", "Custom output path (default: auto-generated with .gguf extension)"}}},
                     {"vae_path", {{"type", "string"}, {"description", "Path to VAE to bake into the model"}}},
