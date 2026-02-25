@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api, type HealthResponse, type ModelsResponse, type QueueResponse, type OptionsResponse, type Job, type QueueFilters, type GenerationDefaults, type UIPreferences } from '../api/client'
+import { api, type HealthResponse, type ModelsResponse, type QueueResponse, type OptionsResponse, type Job, type QueueFilters, type GenerationDefaults, type UIPreferences, type ArchitecturesResponse, type OptionDescriptionsResponse } from '../api/client'
 import {
   wsService,
   type ConnectionState,
@@ -31,6 +31,8 @@ export const useAppStore = defineStore('app', () => {
   const models = ref<ModelsResponse | null>(null)
   const queue = ref<QueueResponse | null>(null)
   const options = ref<OptionsResponse | null>(null)
+  const architectures = ref<ArchitecturesResponse | null>(null)
+  const optionDescriptions = ref<OptionDescriptionsResponse | null>(null)
   const connected = ref(false)
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -448,6 +450,26 @@ export const useAppStore = defineStore('app', () => {
       options.value = await api.getOptions()
     } catch (e) {
       console.error('Failed to fetch options:', e)
+    }
+  }
+
+  async function fetchArchitectures() {
+    try {
+      architectures.value = await api.getArchitectures()
+      return architectures.value
+    } catch (e) {
+      console.error('Failed to fetch architectures:', e)
+      throw e
+    }
+  }
+
+  async function fetchOptionDescriptions() {
+    try {
+      optionDescriptions.value = await api.getOptionDescriptions()
+      return optionDescriptions.value
+    } catch (e) {
+      console.error('Failed to fetch option descriptions:', e)
+      throw e
     }
   }
 
@@ -923,6 +945,8 @@ export const useAppStore = defineStore('app', () => {
     models,
     queue,
     options,
+    architectures,
+    optionDescriptions,
     connected,
     loading,
     error,
@@ -965,6 +989,8 @@ export const useAppStore = defineStore('app', () => {
     refreshModels,
     fetchQueue,
     fetchOptions,
+    fetchArchitectures,
+    fetchOptionDescriptions,
     setQueueFilters,
     showToast,
     removeToast,

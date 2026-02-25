@@ -106,6 +106,8 @@ private:
 
     // Architecture endpoints
     void handle_get_architectures(const httplib::Request& req, httplib::Response& res);
+    void handle_detect_architecture(const httplib::Request& req, httplib::Response& res);
+    void handle_get_option_descriptions(const httplib::Request& req, httplib::Response& res);
 
     // Download endpoints
     void handle_download_model(const httplib::Request& req, httplib::Response& res);

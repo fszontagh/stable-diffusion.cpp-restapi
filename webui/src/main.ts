@@ -14,10 +14,14 @@ import Chat from './views/Chat.vue'
 import Downloads from './views/Downloads.vue'
 import Settings from './views/Settings.vue'
 
+// Lazy loaded views
+const ModelLoad = () => import('./views/ModelLoad.vue')
+
 const routes = [
   { path: '/', redirect: '/dashboard' },
   { path: '/dashboard', name: 'Dashboard', component: Dashboard },
   { path: '/models', name: 'Models', component: Models },
+  { path: '/models/load/:modelName', name: 'ModelLoad', component: ModelLoad, props: true },
   { path: '/downloads', name: 'Downloads', component: Downloads },
   { path: '/generate', name: 'Generate', component: Generate },
   { path: '/upscale', name: 'Upscale', component: Upscale },
