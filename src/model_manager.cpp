@@ -56,6 +56,11 @@ static sd_offload_mode_t string_to_offload_mode(const std::string& str) {
     return SD_OFFLOAD_NONE;  // default
 }
 
+static sd_vram_estimation_t string_to_vram_estimation(const std::string& str) {
+    if (str == "formula") return SD_VRAM_EST_FORMULA;
+    return SD_VRAM_EST_DRYRUN;  // default - accurate graph-based estimation
+}
+
 std::string model_type_to_string(ModelType type) {
     switch (type) {
         case ModelType::Checkpoint: return "checkpoint";
@@ -236,6 +241,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
 
         // Dynamic tensor offloading options
         params.offload_mode = opts.value("offload_mode", "none");
+        params.vram_estimation = opts.value("vram_estimation", "dryrun");
         params.offload_cond_stage = opts.value("offload_cond_stage", true);
         params.offload_diffusion = opts.value("offload_diffusion", false);
         params.reload_cond_stage = opts.value("reload_cond_stage", true);
@@ -604,6 +610,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     
     // Unload current model if any
     if (context_ != nullptr) {
+        // Free all GPU resources before unloading to prevent memory leaks
+        sd_free_gpu_resources(context_);
         free_sd_ctx(context_);
         context_ = nullptr;
         loaded_model_name_.clear();
@@ -761,6 +769,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
 
     // Dynamic tensor offloading options
     ctx_params.offload_config.mode = string_to_offload_mode(params.offload_mode);
+    ctx_params.offload_config.vram_estimation = string_to_vram_estimation(params.vram_estimation);
     ctx_params.offload_config.offload_cond_stage = params.offload_cond_stage;
     ctx_params.offload_config.offload_diffusion = params.offload_diffusion;
     ctx_params.offload_config.reload_cond_stage = params.reload_cond_stage;
@@ -881,6 +890,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
 
     // Dynamic tensor offloading options
     loaded_options_["offload_mode"] = params.offload_mode;
+    loaded_options_["vram_estimation"] = params.vram_estimation;
     loaded_options_["offload_cond_stage"] = params.offload_cond_stage;
     loaded_options_["offload_diffusion"] = params.offload_diffusion;
     loaded_options_["reload_cond_stage"] = params.reload_cond_stage;

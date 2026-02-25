@@ -106,6 +106,7 @@ struct ModelLoadParams {
 
     // Dynamic tensor offloading options
     std::string offload_mode = "none";          // none, cond_only, cond_diffusion, aggressive
+    std::string vram_estimation = "dryrun";     // dryrun (accurate), formula (fast)
     bool offload_cond_stage = true;             // Offload LLM/CLIP after conditioning
     bool offload_diffusion = false;             // Offload diffusion after sampling
     bool reload_cond_stage = true;              // Reload LLM/CLIP after generation
