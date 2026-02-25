@@ -57,6 +57,7 @@ interface ModelPreset {
     offload_cond_stage?: boolean
     offload_diffusion?: boolean
     reload_cond_stage?: boolean
+    reload_diffusion?: boolean
   }
   generationDefaults?: {
     cfg_scale?: number
@@ -176,7 +177,8 @@ const modelPresets: ModelPreset[] = [
       weight_type: 'q5_0',
       offload_mode: 'cond_only',
       offload_cond_stage: true,
-      reload_cond_stage: true
+      reload_cond_stage: true,
+      reload_diffusion: true
     },
     generationDefaults: {
       cfg_scale: 1.0,
@@ -274,7 +276,8 @@ const loadParams = ref<LoadModelParams>({
     vram_estimation: 'dryrun',
     offload_cond_stage: true,
     offload_diffusion: false,
-    reload_cond_stage: true
+    reload_cond_stage: true,
+    reload_diffusion: true
   }
 })
 
@@ -394,7 +397,8 @@ function openLoadModal(model: ModelInfo) {
     vram_estimation: 'dryrun',
     offload_cond_stage: true,
     offload_diffusion: false,
-    reload_cond_stage: true
+    reload_cond_stage: true,
+    reload_diffusion: true
   }
   showLoadModal.value = true
 }
@@ -792,7 +796,11 @@ onMounted(() => {
             </label>
             <label class="form-checkbox">
               <input v-model="loadParams.options!.reload_cond_stage" type="checkbox" />
-              Reload components after generation (for next generation)
+              Reload LLM/CLIP after generation
+            </label>
+            <label class="form-checkbox">
+              <input v-model="loadParams.options!.reload_diffusion" type="checkbox" />
+              Reload diffusion model after generation
             </label>
           </div>
         </div>

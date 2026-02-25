@@ -110,6 +110,7 @@ struct ModelLoadParams {
     bool offload_cond_stage = true;             // Offload LLM/CLIP after conditioning
     bool offload_diffusion = false;             // Offload diffusion after sampling
     bool reload_cond_stage = true;              // Reload LLM/CLIP after generation
+    bool reload_diffusion = true;               // Reload diffusion after generation
     bool log_offload_events = true;             // Log offload/reload events
     size_t min_offload_size_mb = 0;             // Minimum component size to offload (MB)
 

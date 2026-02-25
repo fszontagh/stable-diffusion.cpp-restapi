@@ -45,6 +45,7 @@ export interface LoadOptions {
   offload_cond_stage?: boolean
   offload_diffusion?: boolean
   reload_cond_stage?: boolean
+  reload_diffusion?: boolean
   log_offload_events?: boolean
   min_offload_size_mb?: number
 }
@@ -152,6 +153,7 @@ export interface LoadModelParams {
     offload_cond_stage?: boolean
     offload_diffusion?: boolean
     reload_cond_stage?: boolean
+  reload_diffusion?: boolean
     log_offload_events?: boolean
     min_offload_size_mb?: number
   }
@@ -302,6 +304,7 @@ export interface JobModelSettings {
     offload_cond_stage?: boolean
     offload_diffusion?: boolean
     reload_cond_stage?: boolean
+  reload_diffusion?: boolean
     log_offload_events?: boolean
     min_offload_size_mb?: number
   }
