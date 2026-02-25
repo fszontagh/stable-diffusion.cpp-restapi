@@ -381,7 +381,7 @@
     },
     "Z-Image": {
       "name": "Z-Image Turbo",
-      "description": "Requires VAE (ae.gguf) and LLM (Qwen3 4B recommended). Very fast generation with high quality.",
+      "description": "Requires VAE (ae.gguf) and LLM (Qwen3 4B recommended). Very fast generation with high quality. Uses VRAM offloading for 12GB GPUs.",
       "aliases": ["ZImage", "Z Image"],
       "requiredComponents": {
         "vae": "ae.gguf (Flux VAE)",
@@ -391,7 +391,11 @@
       "loadOptions": {
         "flash_attn": true,
         "vae_decode_only": true,
-        "vae_conv_direct": true
+        "vae_conv_direct": true,
+        "offload_mode": "cond_only",
+        "offload_cond_stage": true,
+        "reload_cond_stage": true,
+        "reload_diffusion": true
       },
       "generationDefaults": {
         "cfg_scale": 1.0,

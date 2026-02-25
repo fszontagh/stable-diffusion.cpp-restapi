@@ -245,6 +245,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.offload_cond_stage = opts.value("offload_cond_stage", true);
         params.offload_diffusion = opts.value("offload_diffusion", false);
         params.reload_cond_stage = opts.value("reload_cond_stage", true);
+        params.reload_diffusion = opts.value("reload_diffusion", true);
         params.log_offload_events = opts.value("log_offload_events", true);
         params.min_offload_size_mb = opts.value("min_offload_size_mb", 0);
     }
@@ -773,6 +774,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.offload_config.offload_cond_stage = params.offload_cond_stage;
     ctx_params.offload_config.offload_diffusion = params.offload_diffusion;
     ctx_params.offload_config.reload_cond_stage = params.reload_cond_stage;
+    ctx_params.offload_config.reload_diffusion = params.reload_diffusion;
     ctx_params.offload_config.log_offload_events = params.log_offload_events;
     ctx_params.offload_config.min_offload_size = params.min_offload_size_mb * 1024 * 1024;  // Convert MB to bytes
 
@@ -894,6 +896,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["offload_cond_stage"] = params.offload_cond_stage;
     loaded_options_["offload_diffusion"] = params.offload_diffusion;
     loaded_options_["reload_cond_stage"] = params.reload_cond_stage;
+    loaded_options_["reload_diffusion"] = params.reload_diffusion;
     loaded_options_["log_offload_events"] = params.log_offload_events;
     loaded_options_["min_offload_size_mb"] = params.min_offload_size_mb;
 
