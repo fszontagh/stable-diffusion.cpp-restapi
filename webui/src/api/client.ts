@@ -41,6 +41,7 @@ export interface LoadOptions {
   chroma_use_t5_mask?: boolean
   chroma_t5_mask_pad?: number
   offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive'
+  vram_estimation?: 'dryrun' | 'formula'
   offload_cond_stage?: boolean
   offload_diffusion?: boolean
   reload_cond_stage?: boolean
@@ -147,6 +148,7 @@ export interface LoadModelParams {
     chroma_t5_mask_pad?: number
     // Dynamic tensor offloading options
     offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive'
+    vram_estimation?: 'dryrun' | 'formula'
     offload_cond_stage?: boolean
     offload_diffusion?: boolean
     reload_cond_stage?: boolean
@@ -296,6 +298,7 @@ export interface JobModelSettings {
     chroma_t5_mask_pad?: number
     // Dynamic VRAM offloading settings
     offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive'
+    vram_estimation?: 'dryrun' | 'formula'
     offload_cond_stage?: boolean
     offload_diffusion?: boolean
     reload_cond_stage?: boolean

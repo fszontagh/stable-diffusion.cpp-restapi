@@ -271,6 +271,7 @@ const loadParams = ref<LoadModelParams>({
     tae_preview_only: false,
     // Dynamic tensor offloading (disabled by default)
     offload_mode: 'none',
+    vram_estimation: 'dryrun',
     offload_cond_stage: true,
     offload_diffusion: false,
     reload_cond_stage: true
@@ -390,6 +391,7 @@ function openLoadModal(model: ModelInfo) {
     tae_preview_only: false,
     // Dynamic tensor offloading (disabled by default)
     offload_mode: 'none',
+    vram_estimation: 'dryrun',
     offload_cond_stage: true,
     offload_diffusion: false,
     reload_cond_stage: true
@@ -770,6 +772,16 @@ onMounted(() => {
             </div>
           </div>
           <div v-if="loadParams.options!.offload_mode !== 'none'" class="offload-options mt-2">
+            <div class="form-group">
+              <label class="form-label">VRAM Estimation Method</label>
+              <select v-model="loadParams.options!.vram_estimation" class="form-select">
+                <option value="dryrun">Dry-run (Accurate, default)</option>
+                <option value="formula">Formula (Faster, approximate)</option>
+              </select>
+              <div class="form-hint">
+                How to estimate VRAM needed before VAE decode. Dry-run builds a test graph for exact size; formula uses a quick approximation.
+              </div>
+            </div>
             <label class="form-checkbox">
               <input v-model="loadParams.options!.offload_cond_stage" type="checkbox" />
               Offload LLM/CLIP after conditioning
