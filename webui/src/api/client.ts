@@ -661,6 +661,22 @@ class ApiClient {
     return this.request('GET', '/models/paths')
   }
 
+  // Architectures
+  async getArchitectures(): Promise<ArchitecturesResponse> {
+    // Cache architectures for 5 minutes (rarely change), with retry
+    return this.request<ArchitecturesResponse>('GET', '/architectures', undefined, 300000, { maxRetries: 3 })
+  }
+
+  async detectArchitecture(modelName: string): Promise<ArchitectureDetectResponse> {
+    const params = new URLSearchParams({ model: modelName })
+    return this.request<ArchitectureDetectResponse>('GET', `/architectures/detect?${params}`)
+  }
+
+  async getOptionDescriptions(): Promise<OptionDescriptionsResponse> {
+    // Cache option descriptions for 10 minutes (static content)
+    return this.request<OptionDescriptionsResponse>('GET', '/options/descriptions', undefined, 600000, { maxRetries: 3 })
+  }
+
   // Generation
   async txt2img(params: GenerationParams): Promise<JobSubmitResponse> {
     return this.request('POST', '/txt2img', params)
@@ -1171,6 +1187,47 @@ export interface ModelPathsConfig {
   llm: string
   esrgan: string
   taesd: string
+}
+
+// Architecture Types
+export interface ArchitecturePreset {
+  id: string
+  name: string
+  description: string
+  aliases: string[]
+  requiredComponents: Record<string, string>
+  optionalComponents: Record<string, string>
+  loadOptions: Record<string, unknown>
+  generationDefaults: Record<string, unknown>
+}
+
+export interface ArchitecturesResponse {
+  architectures: Record<string, ArchitecturePreset>
+  current_architecture: string | null
+  current_preset: ArchitecturePreset | null
+}
+
+export interface ArchitectureDetectResponse {
+  detected: boolean
+  architecture: ArchitecturePreset | null
+}
+
+// Option Descriptions Types
+export interface OptionDescription {
+  label: string
+  description: string
+  type: 'boolean' | 'number' | 'select' | 'string'
+  default?: unknown
+  values?: Record<string, string>
+  recommended?: string
+}
+
+export interface OptionDescriptionsResponse {
+  options: Record<string, OptionDescription>
+  categories?: Record<string, {
+    label: string
+    options: string[]
+  }>
 }
 
 export const api = new ApiClient()

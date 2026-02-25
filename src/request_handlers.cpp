@@ -224,6 +224,12 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     server.Get("/architectures", [this](const httplib::Request& req, httplib::Response& res) {
         handle_get_architectures(req, res);
     });
+    server.Get("/architectures/detect", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_detect_architecture(req, res);
+    });
+    server.Get("/options/descriptions", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_get_option_descriptions(req, res);
+    });
 
     // Model download routes
     server.Post("/models/download", [this](const httplib::Request& req, httplib::Response& res) {
@@ -2101,6 +2107,65 @@ void RequestHandlers::handle_get_architectures(const httplib::Request& /*req*/, 
     };
 
     send_json(res, response);
+}
+
+void RequestHandlers::handle_detect_architecture(const httplib::Request& req, httplib::Response& res) {
+    auto model = req.get_param_value("model");
+    if (model.empty()) {
+        send_error(res, "Missing 'model' query parameter", 400);
+        return;
+    }
+
+    const auto* preset = architecture_manager_->get(model);
+    if (preset) {
+        send_json(res, {
+            {"detected", true},
+            {"architecture", preset->to_json()}
+        });
+    } else {
+        send_json(res, {
+            {"detected", false},
+            {"architecture", nullptr}
+        });
+    }
+}
+
+void RequestHandlers::handle_get_option_descriptions(const httplib::Request& /*req*/, httplib::Response& res) {
+    // Load option descriptions from JSON file
+    std::string desc_path = "data/load_options.json";
+
+    // Try multiple locations
+    std::vector<std::string> search_paths = {
+        desc_path,
+        "../data/load_options.json"
+    };
+
+    // Also try relative to executable
+    std::error_code ec;
+    auto exe_path = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (!ec) {
+        auto exe_dir = exe_path.parent_path();
+        search_paths.push_back((exe_dir / "data" / "load_options.json").string());
+        search_paths.push_back((exe_dir.parent_path() / "data" / "load_options.json").string());
+    }
+
+    for (const auto& path : search_paths) {
+        if (std::filesystem::exists(path)) {
+            try {
+                std::ifstream file(path);
+                if (file.is_open()) {
+                    nlohmann::json options = nlohmann::json::parse(file);
+                    send_json(res, options);
+                    return;
+                }
+            } catch (const std::exception& e) {
+                // Continue to next path
+            }
+        }
+    }
+
+    // Return empty if file not found
+    send_json(res, {{"options", nlohmann::json::object()}});
 }
 
 // ==================== Download Handlers ====================
