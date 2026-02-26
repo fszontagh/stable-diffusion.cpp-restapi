@@ -153,7 +153,7 @@ const hasProgress = computed(() => {
   position: relative;
   height: var(--header-height);
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -173,10 +173,6 @@ const hasProgress = computed(() => {
   );
   transition: width 0.3s ease;
   pointer-events: none;
-}
-
-.status-bar.has-progress {
-  border-bottom-color: var(--accent-primary);
 }
 
 .status-bar.has-progress::after {
@@ -296,7 +292,6 @@ const hasProgress = computed(() => {
   height: 32px;
   padding: 0;
   background: transparent;
-  border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   color: var(--text-muted);
   cursor: pointer;
@@ -306,12 +301,10 @@ const hasProgress = computed(() => {
 .notification-toggle:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
-  border-color: var(--text-muted);
 }
 
 .notification-toggle.enabled {
   color: var(--accent-primary);
-  border-color: var(--accent-primary);
 }
 
 .notification-toggle.enabled:hover {
@@ -357,7 +350,6 @@ const hasProgress = computed(() => {
   height: 24px;
   padding: 0;
   background: transparent;
-  border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   color: var(--text-muted);
   cursor: pointer;
@@ -368,7 +360,6 @@ const hasProgress = computed(() => {
 .reconnect-btn:hover {
   background: var(--bg-tertiary);
   color: var(--accent-primary);
-  border-color: var(--accent-primary);
 }
 
 .queue-indicator {
