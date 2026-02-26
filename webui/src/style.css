@@ -709,7 +709,6 @@ a:focus-visible {
 
 .modal-content {
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
   max-width: 600px;
   width: 100%;
@@ -723,7 +722,6 @@ a:focus-visible {
   align-items: center;
   justify-content: space-between;
   padding: 20px;
-  border-bottom: 1px solid var(--border-color);
 }
 
 .modal-title {
@@ -760,7 +758,6 @@ a:focus-visible {
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 20px;
-  border-top: 1px solid var(--border-color);
 }
 
 /* Toast notifications */
