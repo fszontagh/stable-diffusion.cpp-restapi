@@ -73,15 +73,24 @@ FetchContent_Declare(
 set(HTTPLIB_COMPILE OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(httplib)
 
-# nlohmann/json (JSON library)
-FetchContent_Declare(
-    json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG        v3.12.0
-    GIT_SHALLOW    TRUE
-)
-set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(json)
+# nlohmann/json (single header download - much faster than cloning repo)
+set(JSON_HEADER_DIR "${CMAKE_BINARY_DIR}/_deps/json-header")
+set(JSON_HEADER_FILE "${JSON_HEADER_DIR}/nlohmann/json.hpp")
+if(NOT EXISTS "${JSON_HEADER_FILE}")
+    message(STATUS "Downloading nlohmann/json single header...")
+    file(MAKE_DIRECTORY "${JSON_HEADER_DIR}/nlohmann")
+    file(DOWNLOAD
+        "https://github.com/nlohmann/json/releases/download/v3.12.0/json.hpp"
+        "${JSON_HEADER_FILE}"
+        STATUS JSON_DOWNLOAD_STATUS
+    )
+    list(GET JSON_DOWNLOAD_STATUS 0 JSON_DOWNLOAD_ERROR)
+    if(JSON_DOWNLOAD_ERROR)
+        message(FATAL_ERROR "Failed to download nlohmann/json: ${JSON_DOWNLOAD_STATUS}")
+    endif()
+endif()
+add_library(nlohmann_json INTERFACE)
+target_include_directories(nlohmann_json INTERFACE "${JSON_HEADER_DIR}")
 
 # uSockets and uWebSockets (only if WebSocket enabled)
 if(SDCPP_WEBSOCKET)
@@ -270,7 +279,7 @@ endif()
 target_link_libraries(sdcpp-restapi PRIVATE
     stable-diffusion
     httplib::httplib
-    nlohmann_json::nlohmann_json
+    nlohmann_json
     Threads::Threads
     OpenSSL::Crypto
 )
