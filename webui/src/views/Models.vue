@@ -15,6 +15,7 @@ const convertModel = ref<ModelInfo | null>(null)
 const converting = ref(false)
 const convertParams = ref<ConvertParams>({
   input_path: '',
+  model_type: '',
   output_type: 'q8_0',
   output_path: ''
 })
@@ -107,10 +108,9 @@ function generateOutputPath(inputPath: string, quantType: string): string {
 
 function openConvertModal(model: ModelInfo) {
   convertModel.value = model
-  // Build full path from model info
-  // Note: The API returns model paths relative to model dirs, but we need full path
-  // For now we use model name which may contain subdirectories
+  // Pass model name and type - backend resolves to full path
   convertParams.value.input_path = model.name
+  convertParams.value.model_type = model.type
   convertParams.value.output_type = 'q8_0'
   convertParams.value.output_path = generateOutputPath(model.name, 'q8_0')
   showConvertModal.value = true

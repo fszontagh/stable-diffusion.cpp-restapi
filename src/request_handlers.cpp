@@ -540,6 +540,21 @@ void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Respo
         std::string input_path = body["input_path"].get<std::string>();
         std::string output_type = body["output_type"].get<std::string>();
 
+        // If model_type is provided, resolve the model name to full path
+        if (body.contains("model_type") && !body["model_type"].get<std::string>().empty()) {
+            std::string model_type_str = body["model_type"].get<std::string>();
+            ModelType model_type = string_to_model_type(model_type_str);
+
+            auto model_info = model_manager_.get_model(input_path, model_type);
+            if (!model_info) {
+                send_error(res, "Model not found: '" + input_path + "' of type '" + model_type_str + "'", 404);
+                return;
+            }
+            input_path = model_info->full_path;
+            // Update body with resolved path for queue job
+            body["input_path"] = input_path;
+        }
+
         // Check if the model is an LLM - LLM conversion is not supported by sd.cpp
         // LLM re-quantization requires llama.cpp's llama-quantize tool instead
         auto paths_config = model_manager_.get_paths_config();
