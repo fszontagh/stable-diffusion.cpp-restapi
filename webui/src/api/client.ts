@@ -243,6 +243,7 @@ export interface LoadUpscalerParams {
 export interface ConvertParams {
   input_path: string
   output_type: string
+  model_type?: string
   output_path?: string
   vae_path?: string
   tensor_type_rules?: string

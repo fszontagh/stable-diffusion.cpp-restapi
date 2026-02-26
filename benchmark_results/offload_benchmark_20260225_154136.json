@@ -1,0 +1,82 @@
+{"benchmark_start": "2026-02-25T15:41:36+01:00", "tests": [
+{
+            "test_name": "no_offload_q8",
+            "offload_mode": "none",
+            "weight_type": "q8_0",
+            "reload_cond_stage": true,
+            "reload_diffusion": true,
+            "status": "load_failed",
+            "error": "Model loaded successfully"
+        }
+,
+{
+            "test_name": "cond_only_q8_reload_both",
+            "offload_mode": "cond_only",
+            "weight_type": "q8_0",
+            "reload_cond_stage": true,
+            "reload_diffusion": true,
+            "status": "load_failed",
+            "error": "Model loaded successfully"
+        }
+,
+{
+            "test_name": "cond_only_q8_no_reload",
+            "offload_mode": "cond_only",
+            "weight_type": "q8_0",
+            "reload_cond_stage": false,
+            "reload_diffusion": false,
+            "status": "load_failed",
+            "error": "Model loaded successfully"
+        }
+,
+{
+            "test_name": "cond_only_q8_reload_cond",
+            "offload_mode": "cond_only",
+            "weight_type": "q8_0",
+            "reload_cond_stage": true,
+            "reload_diffusion": false,
+            "status": "load_failed",
+            "error": "Model loaded successfully"
+        }
+,
+{
+            "test_name": "cond_diffusion_q8_reload_both",
+            "offload_mode": "cond_diffusion",
+            "weight_type": "q8_0",
+            "reload_cond_stage": true,
+            "reload_diffusion": true,
+            "status": "load_failed",
+            "error": "Model loaded successfully"
+        }
+,
+{
+            "test_name": "cond_diffusion_q8_no_reload",
+            "offload_mode": "cond_diffusion",
+            "weight_type": "q8_0",
+            "reload_cond_stage": false,
+            "reload_diffusion": false,
+            "status": "load_failed",
+            "error": "Model loaded successfully"
+        }
+,
+{
+            "test_name": "aggressive_q8_reload_both",
+            "offload_mode": "aggressive",
+            "weight_type": "q8_0",
+            "reload_cond_stage": true,
+            "reload_diffusion": true,
+            "status": "load_failed",
+            "error": "Model loaded successfully"
+        }
+,
+{
+            "test_name": "aggressive_q8_no_reload",
+            "offload_mode": "aggressive",
+            "weight_type": "q8_0",
+            "reload_cond_stage": false,
+            "reload_diffusion": false,
+            "status": "load_failed",
+            "error": "Model loaded successfully"
+        }
+
+], "benchmark_end": "2026-02-25T15:42:45+01:00"}
