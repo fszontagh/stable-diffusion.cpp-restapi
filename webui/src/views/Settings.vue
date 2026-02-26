@@ -1082,6 +1082,7 @@ loadSettings()
   gap: 0.5rem;
   padding: 0.75rem 1rem;
   background: transparent;
+  border: none;
   border-radius: 6px;
   color: var(--text-secondary);
   cursor: pointer;
