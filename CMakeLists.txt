@@ -68,6 +68,7 @@ FetchContent_Declare(
     httplib
     GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
     GIT_TAG        v0.30.1
+    GIT_SHALLOW    TRUE
 )
 set(HTTPLIB_COMPILE OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(httplib)
@@ -77,6 +78,7 @@ FetchContent_Declare(
     json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
     GIT_TAG        v3.12.0
+    GIT_SHALLOW    TRUE
 )
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(json)
@@ -88,6 +90,7 @@ if(SDCPP_WEBSOCKET)
         usockets
         GIT_REPOSITORY https://github.com/uNetworking/uSockets.git
         GIT_TAG        v0.8.8
+        GIT_SHALLOW    TRUE
     )
     FetchContent_MakeAvailable(usockets)
 
@@ -96,6 +99,7 @@ if(SDCPP_WEBSOCKET)
         uwebsockets
         GIT_REPOSITORY https://github.com/uNetworking/uWebSockets.git
         GIT_TAG        v20.74.0
+        GIT_SHALLOW    TRUE
     )
     FetchContent_MakeAvailable(uwebsockets)
 
@@ -154,6 +158,7 @@ else()
         stable-diffusion
         GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
         GIT_TAG        636d3cb
+        GIT_SHALLOW    TRUE
     )
     # First populate to get source directory
     FetchContent_GetProperties(stable-diffusion)
@@ -228,6 +233,7 @@ set(SDCPP_SOURCES
     src/sd_wrapper.cpp
     src/request_handlers.cpp
     src/stb_impl.cpp
+    src/memory_utils.cpp
     src/architecture_manager.cpp
     src/download_manager.cpp
     src/settings_manager.cpp
