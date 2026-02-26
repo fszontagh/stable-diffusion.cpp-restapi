@@ -775,7 +775,6 @@ a:focus-visible {
   padding: 14px 20px;
   border-radius: var(--border-radius);
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
   box-shadow: var(--shadow-md);
   display: flex;
   align-items: center;
