@@ -55,10 +55,10 @@ const navItems = computed(() => {
 .sidebar {
   width: var(--sidebar-width);
   background: var(--bg-secondary);
-  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
 }
 
 .nav {
@@ -104,10 +104,13 @@ const navItems = computed(() => {
 
 .sidebar-footer {
   padding: 12px 8px;
-  border-top: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
 }
 
 @media (max-width: 768px) {
+  .sidebar {
+    width: 60px;
+  }
   .nav-label {
     display: none;
   }
@@ -117,6 +120,12 @@ const navItems = computed(() => {
   }
   .nav-icon {
     margin: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .sidebar {
+    display: none;
   }
 }
 </style>
