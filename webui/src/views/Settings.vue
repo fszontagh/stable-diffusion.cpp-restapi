@@ -1081,7 +1081,7 @@ loadSettings()
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  background: var(--bg-secondary);
+  background: transparent;
   border-radius: 6px;
   color: var(--text-secondary);
   cursor: pointer;
@@ -1089,13 +1089,13 @@ loadSettings()
 }
 
 .nav-item:hover {
-  background: var(--bg-hover);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .nav-item.active {
   background: var(--accent-primary);
   color: white;
-  border-color: var(--accent-primary);
 }
 
 .settings-content {
