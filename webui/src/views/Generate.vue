@@ -1419,7 +1419,6 @@ async function handleSubmit() {
   right: 0;
   margin-top: 4px;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 100;
@@ -1520,7 +1519,6 @@ async function handleSubmit() {
 /* Recommended settings panel */
 .recommended-panel {
   background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   padding: 12px;
   margin-bottom: 16px;
@@ -1604,7 +1602,6 @@ async function handleSubmit() {
   padding: 12px;
   background: var(--bg-tertiary);
   border-radius: var(--border-radius-sm);
-  border: 1px solid var(--border-color);
 }
 
 /* Live Preview Section */
