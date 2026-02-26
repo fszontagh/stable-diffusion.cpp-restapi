@@ -1082,7 +1082,6 @@ loadSettings()
   gap: 0.5rem;
   padding: 0.75rem 1rem;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
   border-radius: 6px;
   color: var(--text-secondary);
   cursor: pointer;
@@ -1091,7 +1090,6 @@ loadSettings()
 
 .nav-item:hover {
   background: var(--bg-hover);
-  border-color: var(--accent-primary);
 }
 
 .nav-item.active {
@@ -1102,8 +1100,8 @@ loadSettings()
 
 .settings-content {
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
   border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   min-height: 500px;
 }
 
@@ -1156,8 +1154,8 @@ loadSettings()
 /* Settings Cards */
 .settings-card {
   background: var(--bg-primary);
-  border: 1px solid var(--border-color);
   border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
   margin-bottom: 1rem;
   overflow: hidden;
 }
@@ -1168,7 +1166,6 @@ loadSettings()
   align-items: center;
   padding: 0.75rem 1rem;
   background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-color);
 }
 
 .settings-card-header h4 {
@@ -1224,7 +1221,6 @@ loadSettings()
   padding: 1rem;
   background: var(--bg-tertiary);
   border-radius: 6px;
-  border: 1px solid var(--border-color);
 }
 
 /* Disabled state */
@@ -1242,7 +1238,6 @@ loadSettings()
   border-radius: 8px;
   margin-bottom: 1rem;
   background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
 }
 
 .connection-status.connected {
@@ -1292,7 +1287,6 @@ loadSettings()
   margin-top: 1rem;
   padding: 0.875rem 1rem;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
   border-radius: 8px;
 }
 
