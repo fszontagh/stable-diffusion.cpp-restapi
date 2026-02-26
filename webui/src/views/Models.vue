@@ -317,18 +317,19 @@ onMounted(() => {
 
 .model-card {
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   padding: 16px;
   transition: all var(--transition-fast);
 }
 
 .model-card:hover {
-  border-color: var(--accent-primary);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transform: translateY(-2px);
 }
 
 .model-card.loaded {
-  border-color: var(--accent-success);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 0 0 2px var(--accent-success);
 }
 
 .model-header {
@@ -379,8 +380,8 @@ onMounted(() => {
 }
 
 .accordion {
-  border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
 .accordion-header {
