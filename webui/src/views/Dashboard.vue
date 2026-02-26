@@ -304,11 +304,10 @@ const importantSettings = [
   justify-content: space-between;
   align-items: center;
   padding: 8px 0;
-  border-bottom: 1px solid var(--border-color);
 }
 
-.detail-row:last-child {
-  border-bottom: none;
+.detail-row:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .detail-label {
@@ -456,7 +455,7 @@ const importantSettings = [
 
 .setting-item.important {
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
 .setting-label {
