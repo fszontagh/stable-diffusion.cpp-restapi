@@ -458,9 +458,20 @@ a:focus-visible {
 }
 
 @media (max-width: 768px) {
-  .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(2, 1fr); }
   .main-content { padding: 16px; }
-  :root { --sidebar-width: 60px; }
+}
+
+@media (max-width: 640px) {
+  :root { --sidebar-width: 0px; }
+
+  .main-content {
+    padding: 16px;
+    padding-bottom: calc(56px + 16px + env(safe-area-inset-bottom, 0));
+  }
+
+  .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
 
   .page-header {
     text-align: center;
@@ -495,18 +506,6 @@ a:focus-visible {
   .stat-value {
     font-size: 22px;
   }
-}
-
-@media (max-width: 480px) {
-  :root { --sidebar-width: 0px; }
-
-  .main-content {
-    padding: 12px;
-  }
-
-  .stats-grid {
-    grid-template-columns: 1fr 1fr;
-  }
 
   .btn {
     padding: 8px 16px;
@@ -516,6 +515,17 @@ a:focus-visible {
   .btn-sm {
     padding: 5px 10px;
     font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content {
+    padding: 12px;
+    padding-bottom: calc(56px + 12px + env(safe-area-inset-bottom, 0));
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
