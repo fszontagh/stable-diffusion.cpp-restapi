@@ -839,10 +839,10 @@ a:focus-visible {
 
 .stat-card {
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   padding: 16px;
   text-align: center;
+  box-shadow: var(--shadow-sm);
 }
 
 .stat-value {
