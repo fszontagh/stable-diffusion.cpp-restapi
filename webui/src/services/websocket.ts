@@ -17,6 +17,7 @@ export type WSEventType =
   | 'upscaler_unloaded'
   | 'server_status'
   | 'server_shutdown'
+  | 'memory_status'
   | 'pong'
 
 // Event data interfaces
@@ -109,6 +110,35 @@ export interface ServerStatusData {
 
 export interface ServerShutdownData {
   reason: string
+}
+
+// Memory status data
+export interface MemoryInfo {
+  total_bytes: number
+  used_bytes: number
+  free_bytes: number
+  total_mb: number
+  used_mb: number
+  free_mb: number
+  usage_percent: number
+}
+
+export interface GpuMemoryInfo extends MemoryInfo {
+  available: boolean
+  name: string
+}
+
+export interface ProcessMemoryInfo {
+  rss_bytes: number
+  virtual_bytes: number
+  rss_mb: number
+  virtual_mb: number
+}
+
+export interface MemoryStatusData {
+  system: MemoryInfo
+  process: ProcessMemoryInfo
+  gpu: GpuMemoryInfo
 }
 
 // WebSocket message structure

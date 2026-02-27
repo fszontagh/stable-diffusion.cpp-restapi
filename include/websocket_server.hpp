@@ -35,7 +35,10 @@ enum class WSEventType {
 
     // Server status
     ServerStatus,       // Periodic server status update / heartbeat
-    ServerShutdown      // Server is shutting down
+    ServerShutdown,     // Server is shutting down
+
+    // Memory status
+    MemoryStatus        // Memory usage update (RAM + VRAM)
 };
 
 /**

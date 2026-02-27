@@ -934,6 +934,9 @@ void ModelManager::unload_model() {
         // Clear atomic flag first
         model_loaded_ = false;
 
+        // Free all GPU resources before unloading to prevent memory leaks
+        // (matches the cleanup pattern in load_model when replacing a model)
+        sd_free_gpu_resources(context_);
         free_sd_ctx(context_);
         context_ = nullptr;
         loaded_model_name_.clear();

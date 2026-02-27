@@ -50,6 +50,34 @@ export interface LoadOptions {
   min_offload_size_mb?: number
 }
 
+export interface MemoryInfo {
+  total_bytes: number
+  used_bytes: number
+  free_bytes: number
+  total_mb: number
+  used_mb: number
+  free_mb: number
+  usage_percent: number
+}
+
+export interface GpuMemoryInfo extends MemoryInfo {
+  available: boolean
+  name: string
+}
+
+export interface ProcessMemoryInfo {
+  rss_bytes: number
+  virtual_bytes: number
+  rss_mb: number
+  virtual_mb: number
+}
+
+export interface MemoryResponse {
+  system: MemoryInfo
+  process: ProcessMemoryInfo
+  gpu: GpuMemoryInfo
+}
+
 export interface HealthResponse {
   status: string
   model_loaded: boolean
@@ -74,6 +102,7 @@ export interface HealthResponse {
   upscaler_loaded: boolean
   upscaler_name: string | null
   ws_port: number | null
+  memory?: MemoryResponse
 }
 
 export interface ModelInfo {
@@ -610,6 +639,11 @@ class ApiClient {
   async getHealth(): Promise<HealthResponse> {
     // Retry health checks with reduced retries (faster failure detection)
     return this.request<HealthResponse>('GET', '/health', undefined, undefined, { maxRetries: 2 })
+  }
+
+  // Memory status
+  async getMemory(): Promise<MemoryResponse> {
+    return this.request<MemoryResponse>('GET', '/memory', undefined, undefined, { maxRetries: 1 })
   }
 
   async getOptions(): Promise<OptionsResponse> {
