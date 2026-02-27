@@ -11,11 +11,11 @@
 #include <sys/sysinfo.h>
 #endif
 
-#ifdef SD_USE_CUDA
+#ifdef SDCPP_USE_CUDA
 #include <cuda_runtime.h>
 #endif
 
-#ifdef SD_USE_VULKAN
+#ifdef SDCPP_USE_VULKAN
 #include <vulkan/vulkan.h>
 #endif
 
@@ -113,7 +113,7 @@ static void read_proc_self_status(MemoryInfo& info) {
 }
 #endif
 
-#ifdef SD_USE_CUDA
+#ifdef SDCPP_USE_CUDA
 static void read_cuda_memory(MemoryInfo& info) {
     int device_count = 0;
     cudaError_t err = cudaGetDeviceCount(&device_count);
@@ -141,7 +141,7 @@ static void read_cuda_memory(MemoryInfo& info) {
 }
 #endif
 
-#ifdef SD_USE_VULKAN
+#ifdef SDCPP_USE_VULKAN
 static void read_vulkan_memory(MemoryInfo& info) {
     // Vulkan memory query is more complex and requires an initialized device
     // For now, we'll mark GPU as available but without detailed memory info
@@ -166,7 +166,7 @@ MemoryInfo get_memory_info() {
     read_proc_self_status(info);
 #endif
 
-#ifdef SD_USE_CUDA
+#ifdef SDCPP_USE_CUDA
     read_cuda_memory(info);
 #endif
 
