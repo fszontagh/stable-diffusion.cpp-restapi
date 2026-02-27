@@ -68,6 +68,32 @@ const progressPercent = computed(() => {
 const hasProgress = computed(() => {
   return store.modelLoading || store.queueStats.processing > 0
 })
+
+// Memory info from health response
+const memoryInfo = computed(() => store.health?.memory)
+
+// Format memory usage percentage with color class
+const ramUsageClass = computed(() => {
+  const percent = memoryInfo.value?.system?.usage_percent ?? 0
+  if (percent > 90) return 'critical'
+  if (percent > 75) return 'warning'
+  return 'normal'
+})
+
+const gpuUsageClass = computed(() => {
+  const percent = memoryInfo.value?.gpu?.usage_percent ?? 0
+  if (percent > 90) return 'critical'
+  if (percent > 75) return 'warning'
+  return 'normal'
+})
+
+// Format MB to human-readable string
+function formatMB(mb: number): string {
+  if (mb >= 1024) {
+    return (mb / 1024).toFixed(1) + ' GB'
+  }
+  return mb.toFixed(0) + ' MB'
+}
 </script>
 
 <template>
@@ -108,6 +134,29 @@ const hasProgress = computed(() => {
       </div>
     </div>
     <div class="status-right">
+      <!-- Memory status -->
+      <div class="memory-status" v-if="memoryInfo">
+        <!-- GPU Memory (if available) -->
+        <div
+          v-if="memoryInfo.gpu?.available"
+          class="memory-item gpu"
+          :class="gpuUsageClass"
+          :title="`GPU: ${memoryInfo.gpu.name}\nUsed: ${formatMB(memoryInfo.gpu.used_mb)} / ${formatMB(memoryInfo.gpu.total_mb)}`"
+        >
+          <span class="memory-icon">GPU</span>
+          <span class="memory-value">{{ memoryInfo.gpu.usage_percent.toFixed(0) }}%</span>
+        </div>
+        <!-- System RAM -->
+        <div
+          class="memory-item ram"
+          :class="ramUsageClass"
+          :title="`RAM Used: ${formatMB(memoryInfo.system.used_mb)} / ${formatMB(memoryInfo.system.total_mb)}\nProcess: ${formatMB(memoryInfo.process.rss_mb)}`"
+        >
+          <span class="memory-icon">RAM</span>
+          <span class="memory-value">{{ memoryInfo.system.usage_percent.toFixed(0) }}%</span>
+        </div>
+      </div>
+
       <!-- Desktop notifications toggle -->
       <button
         class="notification-toggle"
@@ -376,6 +425,57 @@ const hasProgress = computed(() => {
 .queue-indicator .spinner {
   width: 14px;
   height: 14px;
+}
+
+/* Memory status styles */
+.memory-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.memory-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.memory-icon {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.memory-value {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.memory-item.normal .memory-value {
+  color: var(--accent-success);
+}
+
+.memory-item.warning .memory-value {
+  color: var(--accent-warning, #f0a000);
+}
+
+.memory-item.critical .memory-value {
+  color: var(--accent-error);
+}
+
+.memory-item.gpu .memory-icon {
+  color: var(--accent-purple);
+}
+
+.memory-item.ram .memory-icon {
+  color: var(--accent-primary);
 }
 
 @media (max-width: 768px) {

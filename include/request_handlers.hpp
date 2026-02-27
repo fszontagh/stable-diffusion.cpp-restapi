@@ -78,6 +78,9 @@ private:
     // Health endpoint
     void handle_health(const httplib::Request& req, httplib::Response& res);
 
+    // Memory status endpoint
+    void handle_memory(const httplib::Request& req, httplib::Response& res);
+
     // Options endpoint (samplers, schedulers)
     void handle_get_options(const httplib::Request& req, httplib::Response& res);
 

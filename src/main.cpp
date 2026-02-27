@@ -17,6 +17,7 @@
 #include "model_manager.hpp"
 #include "queue_manager.hpp"
 #include "request_handlers.hpp"
+#include "memory_utils.hpp"
 #ifdef SDCPP_WEBSOCKET_ENABLED
 #include "websocket_server.hpp"
 #endif
@@ -361,7 +362,9 @@ int main(int argc, char* argv[]) {
 
             // Set up status provider for WebSocket clients
             sdcpp::set_status_provider([&model_manager]() {
-                return model_manager.get_loaded_models_info();
+                auto status = model_manager.get_loaded_models_info();
+                status["memory"] = sdcpp::get_memory_info().to_json();
+                return status;
             });
 
             ws_server->start();

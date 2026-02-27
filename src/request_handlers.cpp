@@ -3,6 +3,7 @@
 #include "queue_manager.hpp"
 #include "download_manager.hpp"
 #include "settings_manager.hpp"
+#include "memory_utils.hpp"
 
 #ifdef SDCPP_ASSISTANT_ENABLED
 #include "assistant_client.hpp"
@@ -61,6 +62,11 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     // Health check
     server.Get("/health", [this](const httplib::Request& req, httplib::Response& res) {
         handle_health(req, res);
+    });
+
+    // Memory status
+    server.Get("/memory", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_memory(req, res);
     });
 
     // Options (samplers, schedulers)
@@ -248,6 +254,7 @@ void RequestHandlers::register_routes(httplib::Server& server) {
 
 void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Response& res) {
     auto loaded_info = model_manager_.get_loaded_models_info();
+    auto memory_info = get_memory_info();
 
     nlohmann::json response = {
         {"status", "ok"},
@@ -263,10 +270,16 @@ void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Re
         {"loaded_components", loaded_info["loaded_components"]},
         {"upscaler_loaded", loaded_info["upscaler_loaded"]},
         {"upscaler_name", loaded_info["upscaler_name"]},
-        {"ws_port", ws_port_ > 0 ? nlohmann::json(ws_port_) : nlohmann::json(nullptr)}
+        {"ws_port", ws_port_ > 0 ? nlohmann::json(ws_port_) : nlohmann::json(nullptr)},
+        {"memory", memory_info.to_json()}
     };
 
     send_json(res, response);
+}
+
+void RequestHandlers::handle_memory(const httplib::Request& /*req*/, httplib::Response& res) {
+    auto memory_info = get_memory_info();
+    send_json(res, memory_info.to_json());
 }
 
 void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httplib::Response& res) {
