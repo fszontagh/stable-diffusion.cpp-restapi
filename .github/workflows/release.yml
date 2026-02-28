@@ -59,37 +59,37 @@ jobs:
             variant: vulkan
             cmake_flags: "-DSD_VULKAN=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm libvulkan-dev"
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm libvulkan-dev glslc"
           - os: ubuntu-22.04
             variant: rocm
             cmake_flags: "-DSD_HIPBLAS=ON"
             container: "rocm/dev-ubuntu-22.04:6.0"
-            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git hipblas"
 
           # ============================================
           # Ubuntu 24.04 builds
           # ============================================
-          # CPU variants
+          # CPU variants (need libzstd-dev for httplib on 24.04)
           - os: ubuntu-24.04
             variant: noavx
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=OFF -DGGML_AVX2=OFF"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm"
           - os: ubuntu-24.04
             variant: avx
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=OFF"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm"
           - os: ubuntu-24.04
             variant: avx2
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm"
           - os: ubuntu-24.04
             variant: avx512
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX512=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm"
           # GPU variants - CUDA uses 22.04 container for compatibility
           - os: ubuntu-24.04
             variant: cuda
@@ -105,13 +105,13 @@ jobs:
             variant: vulkan
             cmake_flags: "-DSD_VULKAN=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm libvulkan-dev"
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm libvulkan-dev glslc"
           # ROCm uses 22.04 container for both (24.04 ROCm images may not be available)
           - os: ubuntu-24.04
             variant: rocm
             cmake_flags: "-DSD_HIPBLAS=ON"
             container: "rocm/dev-ubuntu-22.04:6.0"
-            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git hipblas"
 
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container || null }}
@@ -130,6 +130,10 @@ jobs:
             sudo apt-get install -y ${{ matrix.deps }}
           else
             apt-get update
+            # For containers, we need to install Node.js 18+ (apt has old versions)
+            # Install curl first, then add nodesource repo
+            apt-get install -y curl ca-certificates
+            curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
             apt-get install -y ${{ matrix.deps }}
           fi
 
