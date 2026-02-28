@@ -271,7 +271,14 @@ void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Re
         {"upscaler_loaded", loaded_info["upscaler_loaded"]},
         {"upscaler_name", loaded_info["upscaler_name"]},
         {"ws_port", ws_port_ > 0 ? nlohmann::json(ws_port_) : nlohmann::json(nullptr)},
-        {"memory", memory_info.to_json()}
+        {"memory", memory_info.to_json()},
+        {"features", {
+#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
+            {"experimental_offload", true}
+#else
+            {"experimental_offload", false}
+#endif
+        }}
     };
 
     send_json(res, response);

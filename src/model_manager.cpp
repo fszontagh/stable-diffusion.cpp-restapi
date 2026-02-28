@@ -49,6 +49,7 @@ static lora_apply_mode_t string_to_lora_apply_mode(const std::string& str) {
     return LORA_APPLY_AUTO;  // default
 }
 
+#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
 static sd_offload_mode_t string_to_offload_mode(const std::string& str) {
     if (str == "cond_only") return SD_OFFLOAD_COND_ONLY;
     if (str == "cond_diffusion") return SD_OFFLOAD_COND_DIFFUSION;
@@ -60,6 +61,7 @@ static sd_vram_estimation_t string_to_vram_estimation(const std::string& str) {
     if (str == "formula") return SD_VRAM_EST_FORMULA;
     return SD_VRAM_EST_DRYRUN;  // default - accurate graph-based estimation
 }
+#endif
 
 std::string model_type_to_string(ModelType type) {
     switch (type) {
@@ -239,7 +241,8 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.chroma_use_t5_mask = opts.value("chroma_use_t5_mask", false);
         params.chroma_t5_mask_pad = opts.value("chroma_t5_mask_pad", 1);
 
-        // Dynamic tensor offloading options
+#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
+        // Dynamic tensor offloading options (experimental)
         params.offload_mode = opts.value("offload_mode", "none");
         params.vram_estimation = opts.value("vram_estimation", "dryrun");
         params.offload_cond_stage = opts.value("offload_cond_stage", true);
@@ -248,6 +251,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.reload_diffusion = opts.value("reload_diffusion", true);
         params.log_offload_events = opts.value("log_offload_events", true);
         params.min_offload_size_mb = opts.value("min_offload_size_mb", 0);
+#endif
     }
 
     return params;
@@ -611,8 +615,10 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     
     // Unload current model if any
     if (context_ != nullptr) {
+#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
         // Free all GPU resources before unloading to prevent memory leaks
         sd_free_gpu_resources(context_);
+#endif
         free_sd_ctx(context_);
         context_ = nullptr;
         loaded_model_name_.clear();
@@ -768,7 +774,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.chroma_use_t5_mask = params.chroma_use_t5_mask;
     ctx_params.chroma_t5_mask_pad = params.chroma_t5_mask_pad;
 
-    // Dynamic tensor offloading options
+#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
+    // Dynamic tensor offloading options (experimental)
     ctx_params.offload_config.mode = string_to_offload_mode(params.offload_mode);
     ctx_params.offload_config.vram_estimation = string_to_vram_estimation(params.vram_estimation);
     ctx_params.offload_config.offload_cond_stage = params.offload_cond_stage;
@@ -777,6 +784,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.offload_config.reload_diffusion = params.reload_diffusion;
     ctx_params.offload_config.log_offload_events = params.log_offload_events;
     ctx_params.offload_config.min_offload_size = params.min_offload_size_mb * 1024 * 1024;  // Convert MB to bytes
+#endif
 
     std::cout << "[ModelManager] Loading model: " << params.model_name << std::endl;
     std::cout << "[ModelManager] Using " << ctx_params.n_threads << " threads" << std::endl;
@@ -794,7 +802,9 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
               << ", flow_shift=" << (std::isinf(ctx_params.flow_shift) ? "auto" : std::to_string(ctx_params.flow_shift))
               << ", rng=" << params.rng_type
               << ", lora_mode=" << params.lora_apply_mode
+#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
               << ", offload_mode=" << params.offload_mode
+#endif
               << std::endl;
 
     // Set up progress callback for model loading
@@ -890,7 +900,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["chroma_use_t5_mask"] = params.chroma_use_t5_mask;
     loaded_options_["chroma_t5_mask_pad"] = params.chroma_t5_mask_pad;
 
-    // Dynamic tensor offloading options
+#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
+    // Dynamic tensor offloading options (experimental)
     loaded_options_["offload_mode"] = params.offload_mode;
     loaded_options_["vram_estimation"] = params.vram_estimation;
     loaded_options_["offload_cond_stage"] = params.offload_cond_stage;
@@ -899,6 +910,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["reload_diffusion"] = params.reload_diffusion;
     loaded_options_["log_offload_events"] = params.log_offload_events;
     loaded_options_["min_offload_size_mb"] = params.min_offload_size_mb;
+#endif
 
     // Set atomic flag for lock-free checks
     model_loaded_ = true;
@@ -934,9 +946,11 @@ void ModelManager::unload_model() {
         // Clear atomic flag first
         model_loaded_ = false;
 
+#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
         // Free all GPU resources before unloading to prevent memory leaks
         // (matches the cleanup pattern in load_model when replacing a model)
         sd_free_gpu_resources(context_);
+#endif
         free_sd_ctx(context_);
         context_ = nullptr;
         loaded_model_name_.clear();

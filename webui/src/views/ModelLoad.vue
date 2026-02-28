@@ -588,8 +588,8 @@ watch(selectedArchitecture, () => {
         </div>
       </details>
 
-      <!-- Offload Settings -->
-      <details class="card section-card accordion">
+      <!-- Offload Settings (only available with experimental offload build) -->
+      <details v-if="store.experimentalOffloadEnabled" class="card section-card accordion">
         <summary class="accordion-header">VRAM Offloading</summary>
         <div class="accordion-content">
           <div class="form-group">
