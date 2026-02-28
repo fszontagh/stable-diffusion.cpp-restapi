@@ -1,19 +1,19 @@
 # SDCPP-RESTAPI
 
-⚠️ WARNING: This is a vibe coded project!
-
 C++20 REST API server for [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp), providing HTTP endpoints for AI-powered image and video generation.
 
 ## Features
 
 - **Generation**: txt2img, img2img, txt2vid, upscaling (ESRGAN)
-- **Model Architectures**: SD 1.x/2.x, SDXL, Flux, SD3, Wan, Z-Image, Qwen
+- **Model Architectures**: SD 1.x/2.x, SDXL, Flux, SD3, Wan, Z-Image, Qwen, Chroma
 - **Queue System**: Job queue with persistence and WebSocket progress updates
 - **Live Preview**: Real-time preview during generation (TAE/VAE modes)
-- **Web UI**: Integrated Vue.js interface
+- **Web UI**: Integrated Vue.js interface with memory monitoring
 - **Model Downloads**: CivitAI and HuggingFace integration
 - **LLM Assistant**: Ollama-compatible prompt enhancement and chat
 - **GPU Backends**: CUDA, Vulkan, Metal, ROCm, OpenCL
+- **Memory Monitoring**: Real-time GPU/system memory usage in status bar
+- **Experimental Features**: Dynamic tensor offloading for low-VRAM GPUs
 
 ## Quick Start
 
@@ -29,17 +29,24 @@ C++20 REST API server for [stable-diffusion.cpp](https://github.com/leejet/stabl
 ### Build
 
 ```bash
-mkdir build && cd build
-cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DSD_CUDA=ON
-ninja
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSD_CUDA=ON
+cmake --build build
 ```
 
-GPU backend options:
+### Build Options
+
+**GPU Backends:**
 - `-DSD_CUDA=ON` - NVIDIA CUDA
 - `-DSD_VULKAN=ON` - Vulkan (cross-platform)
 - `-DSD_METAL=ON` - Apple Metal
 - `-DSD_HIPBLAS=ON` - AMD ROCm
 - `-DSD_OPENCL=ON` - OpenCL
+
+**Optional Features:**
+- `-DSDCPP_WEBUI=OFF` - Disable Web UI (default: ON)
+- `-DSDCPP_WEBSOCKET=OFF` - Disable WebSocket server (default: ON)
+- `-DSDCPP_ASSISTANT=OFF` - Disable LLM Assistant (default: ON)
+- `-DSD_EXPERIMENTAL_OFFLOAD=ON` - Enable experimental dynamic tensor offloading (default: OFF)
 
 ### Configure
 
@@ -51,10 +58,10 @@ cp config.example.json config.json
 ### Run
 
 ```bash
-./bin/sdcpp-restapi
+./build/bin/sdcpp-restapi
 ```
 
-Server starts at `http://localhost:8080` by default.
+Server starts at `http://localhost:8080` by default. Web UI available at `http://localhost:8080/ui`.
 
 ## Installation (Linux with systemd)
 
@@ -62,7 +69,7 @@ For production deployment on Linux, use the install script which sets up a syste
 
 ```bash
 # Build first (see Quick Start above)
-cd build && ninja
+cmake --build build
 
 # Install as system service
 sudo ./scripts/install.sh
@@ -130,14 +137,17 @@ Full API documentation: [docs/API.md](docs/API.md)
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /health` | Server status and loaded model info |
+| `GET /health` | Server status, loaded model info, and feature flags |
+| `GET /memory` | System and GPU memory usage |
 | `GET /models` | List available models |
-| `POST /models/load` | Load a model |
+| `POST /models/load` | Load a model with options |
+| `POST /models/unload` | Unload current model |
 | `POST /txt2img` | Text-to-image generation |
 | `POST /img2img` | Image-to-image generation |
 | `POST /txt2vid` | Text-to-video generation |
-| `POST /upscale` | Image upscaling |
+| `POST /upscale` | Image upscaling (ESRGAN) |
 | `GET /queue/{id}` | Get job status |
+| `GET /architectures` | Get model architecture presets |
 
 ### WebSocket
 
@@ -167,6 +177,26 @@ Access the integrated web interface at `http://localhost:8080/ui`
 
  - Assistant (ollama)
 <img width="1904" height="941" alt="Képernyőkép_20260104_111611" src="https://github.com/user-attachments/assets/0aabacdf-1483-491e-970a-1b00d8cb7052" />
+
+## Experimental Features
+
+### Dynamic Tensor Offloading
+
+For GPUs with limited VRAM, the experimental dynamic tensor offloading feature allows running large models by temporarily moving model components to CPU memory during generation.
+
+**Enable at build time:**
+```bash
+cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON
+```
+
+This enables:
+- **Offload Modes**: `cond_only`, `cond_diffusion`, `aggressive`
+- **VRAM Estimation**: Automatic calculation of required GPU memory
+- **Component Management**: Offload/reload LLM, CLIP, and diffusion models as needed
+
+When enabled, the Web UI shows a "VRAM Offloading" section in model load settings.
+
+**Note:** This feature requires a [forked version of stable-diffusion.cpp](https://github.com/fszontagh/stable-diffusion.cpp/tree/feature/dynamic-tensor-offloading) with offloading support. The fork is automatically fetched when `SD_EXPERIMENTAL_OFFLOAD=ON`.
 
 ## Documentation
 
