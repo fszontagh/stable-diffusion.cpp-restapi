@@ -32,7 +32,7 @@ const connectionStatusText = computed(() => {
   if (!wsAvailable.value) {
     return 'Polling Mode'
   }
-  
+
   switch (store.wsState) {
     case 'connected':
       return 'Real-time'
@@ -41,7 +41,8 @@ const connectionStatusText = computed(() => {
     case 'reconnecting':
       return 'Reconnecting...'
     case 'disconnected':
-      return 'Disconnected'
+      // Show different status if HTTP works but WS doesn't
+      return store.wsOnlyDisconnected ? 'HTTP Only' : 'Disconnected'
     default:
       return 'Unknown'
   }
@@ -176,8 +177,8 @@ function formatMB(mb: number): string {
           <line x1="1" y1="1" x2="23" y2="23"/>
         </svg>
       </button>
-      <div class="connection-status" :class="{ connected: store.wsConnected, polling: !wsAvailable }" role="status" :aria-label="`Connection status: ${connectionStatusText}`">
-        <span class="status-dot" :class="wsAvailable ? (store.wsConnected ? 'connected' : 'disconnected') : 'polling'" aria-hidden="true"></span>
+      <div class="connection-status" :class="{ connected: store.wsConnected, polling: !wsAvailable, 'http-only': store.wsOnlyDisconnected }" role="status" :aria-label="`Connection status: ${connectionStatusText}`">
+        <span class="status-dot" :class="wsAvailable ? (store.wsConnected ? 'connected' : (store.wsOnlyDisconnected ? 'http-only' : 'disconnected')) : 'polling'" aria-hidden="true"></span>
         <span class="status-text">{{ connectionStatusText }}</span>
         <button
           v-if="wsAvailable && store.wsState === 'disconnected'"
@@ -379,6 +380,15 @@ function formatMB(mb: number): string {
 
 .connection-status.polling .status-text {
   color: var(--text-secondary);
+}
+
+.connection-status.http-only .status-text {
+  color: var(--accent-warning, #f0a000);
+}
+
+.status-dot.http-only {
+  background: var(--accent-warning, #f0a000);
+  animation: pulse 2s ease-in-out infinite;
 }
 
 .status-dot.polling {
