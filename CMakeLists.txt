@@ -1,5 +1,24 @@
 cmake_minimum_required(VERSION 3.20)
-project(sdcpp-restapi VERSION 1.0.0 LANGUAGES CXX C)
+
+# Read version from VERSION file (single source of truth)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" SDCPP_VERSION_RAW)
+string(STRIP "${SDCPP_VERSION_RAW}" SDCPP_VERSION)
+message(STATUS "sdcpp-restapi version: ${SDCPP_VERSION}")
+
+project(sdcpp-restapi VERSION ${SDCPP_VERSION} LANGUAGES CXX C)
+
+# Get git commit hash for build info
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE SDCPP_GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT SDCPP_GIT_COMMIT)
+    set(SDCPP_GIT_COMMIT "unknown")
+endif()
+message(STATUS "Git commit: ${SDCPP_GIT_COMMIT}")
 
 # C++20 standard
 set(CMAKE_CXX_STANDARD 20)
@@ -308,6 +327,12 @@ if(SD_CUDA)
     target_link_libraries(sdcpp-restapi PRIVATE CUDA::cudart)
     target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_USE_CUDA=1)
 endif()
+
+# Version information compile definitions (from VERSION file)
+target_compile_definitions(sdcpp-restapi PRIVATE
+    SDCPP_VERSION="${SDCPP_VERSION}"
+    SDCPP_GIT_COMMIT="${SDCPP_GIT_COMMIT}"
+)
 
 # Compiler warnings
 if(MSVC)

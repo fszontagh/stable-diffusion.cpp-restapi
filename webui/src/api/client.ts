@@ -80,6 +80,8 @@ export interface MemoryResponse {
 
 export interface HealthResponse {
   status: string
+  version: string
+  git_commit: string
   model_loaded: boolean
   model_loading: boolean
   loading_model_name: string | null

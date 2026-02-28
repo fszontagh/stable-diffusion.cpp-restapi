@@ -181,6 +181,32 @@ watch(negativePrompt, () => {
   debouncedParseNegativePrompt()
 })
 
+// Flag to track if we need to retry LoRA parsing when models become available
+const pendingLoraParseFromJobReload = ref(false)
+
+// Watch for models to become available and retry LoRA parsing if needed
+// This handles the case where job params are loaded before the models list is fetched
+watch(availableLoras, (newLoras) => {
+  if (pendingLoraParseFromJobReload.value && newLoras.length > 0) {
+    pendingLoraParseFromJobReload.value = false
+    // Immediately parse LoRAs now that models are available (no debounce)
+    if (prompt.value) {
+      const { cleanedPrompt, newLoras: posLoras } = parseLorasFromPrompt(prompt.value, positiveLoraList.value)
+      if (posLoras.length > 0) {
+        prompt.value = cleanedPrompt
+        positiveLoraList.value = [...positiveLoraList.value, ...posLoras]
+      }
+    }
+    if (negativePrompt.value) {
+      const { cleanedPrompt, newLoras: negLoras } = parseLorasFromPrompt(negativePrompt.value, negativeLoraList.value)
+      if (negLoras.length > 0) {
+        negativePrompt.value = cleanedPrompt
+        negativeLoraList.value = [...negativeLoraList.value, ...negLoras]
+      }
+    }
+  }
+})
+
 // Debounced prompt persistence to localStorage
 const debouncedSavePrompt = useDebounceFn(() => {
   localStorage.setItem(PROMPT_STORAGE_KEY, prompt.value)
@@ -771,8 +797,29 @@ onMounted(async () => {
       sessionStorage.removeItem('reloadJobParams')
       // Save these as the current settings for this mode
       saveSettings()
-      // Note: Don't restore from localStorage when reloading job params
-      // The job params contain the full prompt with LoRA tags that will be auto-parsed
+
+      // Handle LoRA parsing: if models are already loaded, parse immediately
+      // Otherwise, set flag to retry when models become available
+      if (availableLoras.value.length > 0) {
+        // Models already loaded - parse LoRAs immediately
+        if (prompt.value) {
+          const { cleanedPrompt, newLoras: posLoras } = parseLorasFromPrompt(prompt.value, positiveLoraList.value)
+          if (posLoras.length > 0) {
+            prompt.value = cleanedPrompt
+            positiveLoraList.value = [...positiveLoraList.value, ...posLoras]
+          }
+        }
+        if (negativePrompt.value) {
+          const { cleanedPrompt, newLoras: negLoras } = parseLorasFromPrompt(negativePrompt.value, negativeLoraList.value)
+          if (negLoras.length > 0) {
+            negativePrompt.value = cleanedPrompt
+            negativeLoraList.value = [...negativeLoraList.value, ...negLoras]
+          }
+        }
+      } else {
+        // Models not loaded yet - set flag to retry when they become available
+        pendingLoraParseFromJobReload.value = true
+      }
     } catch (e) {
       console.error('Failed to load job params:', e)
     }

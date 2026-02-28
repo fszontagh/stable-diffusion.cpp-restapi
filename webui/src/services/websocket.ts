@@ -86,6 +86,8 @@ export interface UpscalerUnloadedData {
 }
 
 export interface ServerStatusData {
+  version?: string
+  git_commit?: string
   model_loaded: boolean
   model_loading: boolean
   model_name: string | null
