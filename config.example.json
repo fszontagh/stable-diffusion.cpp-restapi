@@ -44,5 +44,9 @@
         "system_prompt": "",
         "max_history_turns": 20,
         "proactive_suggestions": true
+    },
+    "recycle_bin": {
+        "enabled": true,
+        "retention_minutes": 10080
     }
 }

@@ -15,6 +15,7 @@
 
 #include <nlohmann/json.hpp>
 #include "sd_wrapper.hpp"
+#include "config.hpp"
 
 namespace sdcpp {
 
@@ -29,7 +30,8 @@ enum class QueueStatus {
     Processing,
     Completed,
     Failed,
-    Cancelled
+    Cancelled,
+    Deleted       // Soft-deleted, in recycle bin
 };
 
 /**
@@ -75,6 +77,10 @@ struct QueueItem {
 
     // Linked job ID (e.g., hash job linked to download job)
     std::string linked_job_id;
+
+    // Recycle bin fields
+    std::chrono::system_clock::time_point deleted_at;  // When item was soft-deleted
+    QueueStatus previous_status = QueueStatus::Pending; // Status before deletion (for restore)
 
     nlohmann::json to_json() const;
     static QueueItem from_json(const nlohmann::json& j);
@@ -158,11 +164,13 @@ public:
      * @param model_manager Reference to model manager
      * @param output_dir Output directory path
      * @param state_file Path to queue state file for persistence
+     * @param recycle_bin_config Recycle bin configuration
      */
     QueueManager(
         ModelManager& model_manager,
         const std::string& output_dir,
-        const std::string& state_file
+        const std::string& state_file,
+        const RecycleBinConfig& recycle_bin_config = RecycleBinConfig{}
     );
     
     ~QueueManager();
@@ -255,16 +263,62 @@ public:
     
     /**
      * Delete a completed/failed/cancelled job from history
+     * If recycle bin is enabled, moves to recycle bin (soft delete)
+     * If recycle bin is disabled, permanently deletes
      * @param job_id Job UUID
-     * @return true if job was deleted
+     * @return true if job was deleted/moved to recycle bin
      */
     bool delete_job(const std::string& job_id);
-    
+
     /**
      * Clear all completed jobs from history
+     * If recycle bin is enabled, moves to recycle bin
+     * If recycle bin is disabled, permanently deletes
      */
     void clear_completed();
-    
+
+    /**
+     * Restore a deleted job from recycle bin
+     * @param job_id Job UUID
+     * @return true if job was restored
+     */
+    bool restore_job(const std::string& job_id);
+
+    /**
+     * Permanently delete a job (bypass recycle bin)
+     * @param job_id Job UUID
+     * @return true if job was purged
+     */
+    bool purge_job(const std::string& job_id);
+
+    /**
+     * Get all jobs in recycle bin (status == Deleted)
+     * @return Vector of deleted queue items
+     */
+    std::vector<QueueItem> get_deleted_jobs() const;
+
+    /**
+     * Purge jobs that have been in recycle bin past retention period
+     * @return Number of jobs purged
+     */
+    int purge_expired_jobs();
+
+    /**
+     * Clear entire recycle bin (permanently delete all deleted jobs)
+     * @return Number of jobs purged
+     */
+    int clear_recycle_bin();
+
+    /**
+     * Check if recycle bin is enabled
+     */
+    bool is_recycle_bin_enabled() const { return recycle_bin_config_.enabled; }
+
+    /**
+     * Get recycle bin retention time in minutes
+     */
+    int get_recycle_bin_retention_minutes() const { return recycle_bin_config_.retention_minutes; }
+
     /**
      * Get current progress of processing job
      */
@@ -345,7 +399,8 @@ private:
     ModelManager& model_manager_;
     std::string output_dir_;
     std::string state_file_;
-    
+    RecycleBinConfig recycle_bin_config_;
+
     // Queue storage
     mutable std::mutex queue_mutex_;
     std::map<std::string, QueueItem> jobs_;

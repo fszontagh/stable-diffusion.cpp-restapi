@@ -15,6 +15,7 @@ const selectedJob = ref<Job | null>(null)
 const showDetailsModal = ref(false)
 const cancelling = ref<string | null>(null)
 const restarting = ref<string | null>(null)
+const deleting = ref<string | null>(null)
 
 // Filter state
 const statusFilter = ref<string>('all')
@@ -198,9 +199,10 @@ const sortedJobs = computed(() => {
   return [...store.queue.items].sort((a, b) => {
     // Processing and pending first (active jobs), then failed/completed sorted by time, cancelled last
     // Failed and completed have same priority so they're sorted by recency together
-    const statusOrder = { processing: 0, pending: 1, failed: 2, completed: 2, cancelled: 3 }
-    const aOrder = statusOrder[a.status] ?? 4
-    const bOrder = statusOrder[b.status] ?? 4
+    // Deleted items should not appear in normal queue view (filtered by server)
+    const statusOrder: Record<string, number> = { processing: 0, pending: 1, failed: 2, completed: 2, cancelled: 3, deleted: 4 }
+    const aOrder = statusOrder[a.status] ?? 5
+    const bOrder = statusOrder[b.status] ?? 5
     if (aOrder !== bOrder) return aOrder - bOrder
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   })
@@ -426,6 +428,19 @@ async function cancelJob(jobId: string) {
     store.showToast(e instanceof Error ? e.message : 'Failed to cancel job', 'error')
   } finally {
     cancelling.value = null
+  }
+}
+
+async function deleteJob(jobId: string) {
+  deleting.value = jobId
+  try {
+    await api.deleteJobs([jobId])
+    store.showToast('Job deleted', 'success')
+    store.fetchQueue()
+  } catch (e) {
+    store.showToast(e instanceof Error ? e.message : 'Failed to delete job', 'error')
+  } finally {
+    deleting.value = null
   }
 }
 
@@ -1069,6 +1084,15 @@ async function sendImageToUpscale(outputPath: string) {
             >
               {{ cancelling === job.job_id ? '...' : 'Cancel' }}
             </button>
+            <button
+              v-if="job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled'"
+              class="btn btn-danger btn-sm"
+              @click="deleteJob(job.job_id)"
+              :disabled="deleting === job.job_id"
+              title="Move to recycle bin"
+            >
+              {{ deleting === job.job_id ? '...' : 'Delete' }}
+            </button>
           </div>
         </div>
       </div>
@@ -1262,6 +1286,15 @@ async function sendImageToUpscale(outputPath: string) {
                   :disabled="cancelling === job.job_id"
                 >
                   {{ cancelling === job.job_id ? '...' : 'Cancel' }}
+                </button>
+                <button
+                  v-if="job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled'"
+                  class="btn btn-danger btn-sm"
+                  @click="deleteJob(job.job_id)"
+                  :disabled="deleting === job.job_id"
+                  title="Move to recycle bin"
+                >
+                  {{ deleting === job.job_id ? '...' : 'Delete' }}
                 </button>
               </div>
             </div>

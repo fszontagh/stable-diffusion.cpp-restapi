@@ -13,6 +13,7 @@ using F = sdcpp::QueueItemFields;
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <algorithm>
 
 namespace sdcpp {
 
@@ -23,6 +24,7 @@ std::string queue_status_to_string(QueueStatus status) {
         case QueueStatus::Completed: return "completed";
         case QueueStatus::Failed: return "failed";
         case QueueStatus::Cancelled: return "cancelled";
+        case QueueStatus::Deleted: return "deleted";
         default: return "unknown";
     }
 }
@@ -33,6 +35,7 @@ QueueStatus string_to_queue_status(const std::string& str) {
     if (str == "completed") return QueueStatus::Completed;
     if (str == "failed") return QueueStatus::Failed;
     if (str == "cancelled") return QueueStatus::Cancelled;
+    if (str == "deleted") return QueueStatus::Deleted;
     return QueueStatus::Pending;
 }
 
@@ -89,6 +92,12 @@ nlohmann::json QueueItem::to_json() const {
         j[F::LINKED_JOB_ID] = linked_job_id;
     }
 
+    // Recycle bin fields
+    if (status == QueueStatus::Deleted) {
+        j["deleted_at"] = utils::time_to_string(deleted_at);
+        j["previous_status"] = queue_status_to_string(previous_status);
+    }
+
     return j;
 }
 
@@ -123,6 +132,14 @@ QueueItem QueueItem::from_json(const nlohmann::json& j) {
         item.linked_job_id = j[F::LINKED_JOB_ID].get<std::string>();
     }
 
+    // Recycle bin fields
+    if (j.contains("deleted_at")) {
+        item.deleted_at = utils::string_to_time(j["deleted_at"].get<std::string>());
+    }
+    if (j.contains("previous_status")) {
+        item.previous_status = string_to_queue_status(j["previous_status"].get<std::string>());
+    }
+
     return item;
 }
 
@@ -140,6 +157,12 @@ static bool contains_insensitive(const std::string& haystack, const std::string&
 }
 
 bool QueueFilter::matches(const QueueItem& item) const {
+    // Exclude deleted items unless explicitly filtering for deleted status
+    if (item.status == QueueStatus::Deleted &&
+        (!status.has_value() || status.value() != QueueStatus::Deleted)) {
+        return false;
+    }
+
     // Status filter
     if (status.has_value() && item.status != status.value()) {
         return false;
@@ -219,13 +242,23 @@ bool QueueFilter::is_empty() const {
 QueueManager::QueueManager(
     ModelManager& model_manager,
     const std::string& output_dir,
-    const std::string& state_file
+    const std::string& state_file,
+    const RecycleBinConfig& recycle_bin_config
 ) : model_manager_(model_manager),
     output_dir_(output_dir),
-    state_file_(state_file) {
-    
+    state_file_(state_file),
+    recycle_bin_config_(recycle_bin_config) {
+
     utils::create_directory(output_dir_);
     load_state();
+
+    // Purge expired recycle bin items on startup
+    if (recycle_bin_config_.enabled) {
+        int purged = purge_expired_jobs();
+        if (purged > 0) {
+            std::cout << "[QueueManager] Purged " << purged << " expired items from recycle bin on startup" << std::endl;
+        }
+    }
 }
 
 QueueManager::~QueueManager() {
@@ -637,13 +670,50 @@ bool QueueManager::delete_job(const std::string& job_id) {
         return false;
     }
 
+    // Already deleted - nothing to do
+    if (it->second.status == QueueStatus::Deleted) {
+        std::cout << "[QueueManager] Delete failed: job " << job_id
+                  << " is already in recycle bin" << std::endl;
+        return false;
+    }
+
     std::string type = generation_type_to_string(it->second.type);
     std::string status = queue_status_to_string(it->second.status);
-    jobs_.erase(it);
-    save_state();
 
-    std::cout << "[QueueManager] Job deleted: " << job_id
-              << " | type=" << type << " | was_status=" << status << std::endl;
+    if (recycle_bin_config_.enabled) {
+        // Soft delete - move to recycle bin
+        it->second.previous_status = it->second.status;
+        it->second.status = QueueStatus::Deleted;
+        it->second.deleted_at = std::chrono::system_clock::now();
+        save_state();
+
+        // Broadcast job deleted event via WebSocket
+        if (auto* ws = get_websocket_server()) {
+            ws->broadcast(WSEventType::JobDeleted, {
+                {"job_id", job_id},
+                {"soft_delete", true}
+            });
+        }
+
+        std::cout << "[QueueManager] Job moved to recycle bin: " << job_id
+                  << " | type=" << type << " | was_status=" << status << std::endl;
+    } else {
+        // Hard delete - permanent removal
+        jobs_.erase(it);
+        save_state();
+
+        // Broadcast job deleted event via WebSocket
+        if (auto* ws = get_websocket_server()) {
+            ws->broadcast(WSEventType::JobDeleted, {
+                {"job_id", job_id},
+                {"soft_delete", false}
+            });
+        }
+
+        std::cout << "[QueueManager] Job permanently deleted: " << job_id
+                  << " | type=" << type << " | was_status=" << status << std::endl;
+    }
+
     return true;
 }
 
@@ -651,11 +721,23 @@ void QueueManager::clear_completed() {
     std::lock_guard<std::mutex> lock(queue_mutex_);
 
     int cleared = 0;
+    auto now = std::chrono::system_clock::now();
+
     for (auto it = jobs_.begin(); it != jobs_.end();) {
         if (it->second.status == QueueStatus::Completed ||
             it->second.status == QueueStatus::Failed ||
             it->second.status == QueueStatus::Cancelled) {
-            it = jobs_.erase(it);
+
+            if (recycle_bin_config_.enabled) {
+                // Soft delete - move to recycle bin
+                it->second.previous_status = it->second.status;
+                it->second.status = QueueStatus::Deleted;
+                it->second.deleted_at = now;
+                ++it;
+            } else {
+                // Hard delete
+                it = jobs_.erase(it);
+            }
             cleared++;
         } else {
             ++it;
@@ -663,7 +745,147 @@ void QueueManager::clear_completed() {
     }
     save_state();
 
-    std::cout << "[QueueManager] Cleared " << cleared << " completed/failed/cancelled jobs" << std::endl;
+    if (recycle_bin_config_.enabled) {
+        std::cout << "[QueueManager] Moved " << cleared << " completed/failed/cancelled jobs to recycle bin" << std::endl;
+    } else {
+        std::cout << "[QueueManager] Cleared " << cleared << " completed/failed/cancelled jobs" << std::endl;
+    }
+}
+
+bool QueueManager::restore_job(const std::string& job_id) {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+
+    auto it = jobs_.find(job_id);
+    if (it == jobs_.end()) {
+        std::cout << "[QueueManager] Restore failed: job " << job_id << " not found" << std::endl;
+        return false;
+    }
+
+    if (it->second.status != QueueStatus::Deleted) {
+        std::cout << "[QueueManager] Restore failed: job " << job_id
+                  << " is not in recycle bin (status=" << queue_status_to_string(it->second.status) << ")" << std::endl;
+        return false;
+    }
+
+    // Restore to previous status
+    it->second.status = it->second.previous_status;
+    it->second.deleted_at = std::chrono::system_clock::time_point{};  // Reset
+    it->second.previous_status = QueueStatus::Pending;  // Reset
+    save_state();
+
+    // Broadcast job restored event via WebSocket
+    if (auto* ws = get_websocket_server()) {
+        ws->broadcast(WSEventType::JobRestored, {
+            {"job_id", job_id},
+            {"status", queue_status_to_string(it->second.status)}
+        });
+    }
+
+    std::cout << "[QueueManager] Job restored from recycle bin: " << job_id
+              << " | status=" << queue_status_to_string(it->second.status) << std::endl;
+    return true;
+}
+
+bool QueueManager::purge_job(const std::string& job_id) {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+
+    auto it = jobs_.find(job_id);
+    if (it == jobs_.end()) {
+        std::cout << "[QueueManager] Purge failed: job " << job_id << " not found" << std::endl;
+        return false;
+    }
+
+    if (it->second.status == QueueStatus::Processing) {
+        std::cout << "[QueueManager] Purge failed: job " << job_id
+                  << " is currently processing" << std::endl;
+        return false;
+    }
+
+    std::string type = generation_type_to_string(it->second.type);
+    std::string status = queue_status_to_string(it->second.status);
+    jobs_.erase(it);
+    save_state();
+
+    // Broadcast job deleted event via WebSocket
+    if (auto* ws = get_websocket_server()) {
+        ws->broadcast(WSEventType::JobDeleted, {
+            {"job_id", job_id},
+            {"soft_delete", false}
+        });
+    }
+
+    std::cout << "[QueueManager] Job permanently purged: " << job_id
+              << " | type=" << type << " | was_status=" << status << std::endl;
+    return true;
+}
+
+std::vector<QueueItem> QueueManager::get_deleted_jobs() const {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+
+    std::vector<QueueItem> deleted_jobs;
+    for (const auto& [id, item] : jobs_) {
+        if (item.status == QueueStatus::Deleted) {
+            deleted_jobs.push_back(item);
+        }
+    }
+
+    // Sort by deleted_at descending (most recent first)
+    std::sort(deleted_jobs.begin(), deleted_jobs.end(),
+              [](const QueueItem& a, const QueueItem& b) {
+                  return a.deleted_at > b.deleted_at;
+              });
+
+    return deleted_jobs;
+}
+
+int QueueManager::purge_expired_jobs() {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+
+    auto now = std::chrono::system_clock::now();
+    auto retention = std::chrono::minutes(recycle_bin_config_.retention_minutes);
+    int purged = 0;
+
+    for (auto it = jobs_.begin(); it != jobs_.end();) {
+        if (it->second.status == QueueStatus::Deleted) {
+            auto age = now - it->second.deleted_at;
+            if (age > retention) {
+                std::cout << "[QueueManager] Purging expired job: " << it->first << std::endl;
+                it = jobs_.erase(it);
+                purged++;
+            } else {
+                ++it;
+            }
+        } else {
+            ++it;
+        }
+    }
+
+    if (purged > 0) {
+        save_state();
+    }
+
+    return purged;
+}
+
+int QueueManager::clear_recycle_bin() {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+
+    int purged = 0;
+    for (auto it = jobs_.begin(); it != jobs_.end();) {
+        if (it->second.status == QueueStatus::Deleted) {
+            it = jobs_.erase(it);
+            purged++;
+        } else {
+            ++it;
+        }
+    }
+
+    if (purged > 0) {
+        save_state();
+    }
+
+    std::cout << "[QueueManager] Cleared recycle bin: " << purged << " jobs purged" << std::endl;
+    return purged;
 }
 
 ProgressInfo QueueManager::get_current_progress() const {

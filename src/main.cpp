@@ -247,7 +247,9 @@ int main(int argc, char* argv[]) {
         // Initialize Queue Manager
         std::string state_file = (output_path / "queue_state.json").string();
         std::cout << "Initializing queue manager (state file: " << state_file << ")..." << std::endl;
-        sdcpp::QueueManager queue_manager(model_manager, config.paths.output, state_file);
+        std::cout << "  Recycle bin: " << (config.recycle_bin.enabled ? "enabled" : "disabled")
+                  << " (retention: " << config.recycle_bin.retention_minutes << " minutes)" << std::endl;
+        sdcpp::QueueManager queue_manager(model_manager, config.paths.output, state_file, config.recycle_bin);
 
         // Initialize preview settings from config
         if (config.preview.enabled) {

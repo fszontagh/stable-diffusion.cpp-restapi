@@ -22,6 +22,8 @@ enum class WSEventType {
     JobProgress,        // Job progress update (step/total_steps)
     JobPreview,         // Job preview image during generation
     JobCancelled,       // Job was cancelled
+    JobDeleted,         // Job was deleted (soft or hard delete)
+    JobRestored,        // Job was restored from recycle bin
 
     // Model lifecycle events
     ModelLoadingProgress, // Model loading progress

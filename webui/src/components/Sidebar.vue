@@ -13,7 +13,8 @@ const navItems = computed(() => {
     { path: '/downloads', name: 'Downloads', icon: '&#11015;' },
     { path: '/generate', name: 'Generate', icon: '&#127912;' },
     { path: '/upscale', name: 'Upscale', icon: '&#128269;' },
-    { path: '/queue', name: 'Queue', icon: '&#128203;' }
+    { path: '/queue', name: 'Queue', icon: '&#128203;' },
+    { path: '/recycle-bin', name: 'Recycle Bin', icon: '&#128465;' }
   ]
 
   // Add chat if assistant is enabled
