@@ -59,7 +59,7 @@ jobs:
             variant: vulkan
             cmake_flags: "-DSD_VULKAN=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm libvulkan-dev glslc"
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm libvulkan-dev glslang-tools"
           - os: ubuntu-22.04
             variant: rocm
             cmake_flags: "-DSD_HIPBLAS=ON"
@@ -105,7 +105,7 @@ jobs:
             variant: vulkan
             cmake_flags: "-DSD_VULKAN=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm libvulkan-dev glslc"
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm libvulkan-dev glslang-tools"
           # ROCm uses 22.04 container for both (24.04 ROCm images may not be available)
           - os: ubuntu-24.04
             variant: rocm
@@ -130,11 +130,13 @@ jobs:
             sudo apt-get install -y ${{ matrix.deps }}
           else
             apt-get update
-            # For containers, we need to install Node.js 18+ (apt has old versions)
-            # Install curl first, then add nodesource repo
-            apt-get install -y curl ca-certificates
+            # For containers, we need Node.js 18+ (apt has old Node.js 12)
+            # Install deps first (excluding nodejs npm which would conflict)
+            DEPS_NO_NODE=$(echo "${{ matrix.deps }}" | sed 's/nodejs//g' | sed 's/npm//g')
+            apt-get install -y curl ca-certificates $DEPS_NO_NODE
+            # Then install Node.js 18 from nodesource
             curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-            apt-get install -y ${{ matrix.deps }}
+            apt-get install -y nodejs
           fi
 
       - name: Get version
@@ -158,6 +160,7 @@ jobs:
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DHTTPLIB_USE_ZSTD_IF_AVAILABLE=OFF \
             -DSDCPP_WEBUI=ON \
             -DSDCPP_WEBSOCKET=ON \
             -DSDCPP_ASSISTANT=ON \
