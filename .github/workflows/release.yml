@@ -1,0 +1,327 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version override (leave empty to use VERSION file)'
+        required: false
+        default: ''
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ============================================
+          # Ubuntu 22.04 builds
+          # ============================================
+          # CPU variants
+          - os: ubuntu-22.04
+            variant: noavx
+            cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=OFF -DGGML_AVX2=OFF"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+          - os: ubuntu-22.04
+            variant: avx
+            cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=OFF"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+          - os: ubuntu-22.04
+            variant: avx2
+            cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+          - os: ubuntu-22.04
+            variant: avx512
+            cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX512=ON"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+          # GPU variants
+          - os: ubuntu-22.04
+            variant: cuda
+            cmake_flags: "-DSD_CUDA=ON"
+            container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
+            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+          - os: ubuntu-22.04
+            variant: cuda-experimental
+            cmake_flags: "-DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON"
+            container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
+            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+          - os: ubuntu-22.04
+            variant: vulkan
+            cmake_flags: "-DSD_VULKAN=ON"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm libvulkan-dev"
+          - os: ubuntu-22.04
+            variant: rocm
+            cmake_flags: "-DSD_HIPBLAS=ON"
+            container: "rocm/dev-ubuntu-22.04:6.0"
+            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+
+          # ============================================
+          # Ubuntu 24.04 builds
+          # ============================================
+          # CPU variants
+          - os: ubuntu-24.04
+            variant: noavx
+            cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=OFF -DGGML_AVX2=OFF"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+          - os: ubuntu-24.04
+            variant: avx
+            cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=OFF"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+          - os: ubuntu-24.04
+            variant: avx2
+            cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+          - os: ubuntu-24.04
+            variant: avx512
+            cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX512=ON"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+          # GPU variants - CUDA uses 22.04 container for compatibility
+          - os: ubuntu-24.04
+            variant: cuda
+            cmake_flags: "-DSD_CUDA=ON"
+            container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
+            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+          - os: ubuntu-24.04
+            variant: cuda-experimental
+            cmake_flags: "-DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON"
+            container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
+            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+          - os: ubuntu-24.04
+            variant: vulkan
+            cmake_flags: "-DSD_VULKAN=ON"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm libvulkan-dev"
+          - os: ubuntu-24.04
+            variant: rocm
+            cmake_flags: "-DSD_HIPBLAS=ON"
+            container: "rocm/dev-ubuntu-24.04:6.0"
+            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container || null }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y ${{ matrix.deps }}
+
+      - name: Get version
+        id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          elif [ -f VERSION ]; then
+            VERSION=$(cat VERSION | tr -d '[:space:]')
+          else
+            VERSION="0.0.0"
+          fi
+          # Sanitize version string (only allow alphanumeric, dots, and hyphens)
+          VERSION=$(echo "$VERSION" | sed 's/[^a-zA-Z0-9.\-]//g')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DSDCPP_WEBUI=ON \
+            -DSDCPP_WEBSOCKET=ON \
+            -DSDCPP_ASSISTANT=ON \
+            ${{ matrix.cmake_flags }}
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} -j $(nproc)
+
+      - name: Prepare package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          OS_NAME: ${{ matrix.os }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          # Sanitize OS name (replace - with .)
+          OS_CLEAN=$(echo "$OS_NAME" | sed 's/-/./')
+          PKG_NAME="sdcpp-restapi-${VERSION}-${OS_CLEAN}-${VARIANT}-x86_64"
+          PKG_DIR="package/${PKG_NAME}"
+
+          # Create directory structure
+          mkdir -p "${PKG_DIR}/bin"
+          mkdir -p "${PKG_DIR}/etc/sdcpp-restapi"
+          mkdir -p "${PKG_DIR}/share/sdcpp-restapi"
+          mkdir -p "${PKG_DIR}/scripts"
+          mkdir -p "${PKG_DIR}/docs"
+
+          # Copy binary
+          cp build/bin/sdcpp-restapi "${PKG_DIR}/bin/"
+
+          # Copy config and data files
+          cp config.example.json "${PKG_DIR}/etc/sdcpp-restapi/"
+          cp data/model_architectures.json "${PKG_DIR}/etc/sdcpp-restapi/"
+          cp data/load_options.json "${PKG_DIR}/etc/sdcpp-restapi/"
+
+          # Copy WebUI if built
+          if [ -d "build/webui" ]; then
+            cp -r build/webui "${PKG_DIR}/share/sdcpp-restapi/"
+          fi
+
+          # Copy scripts
+          cp scripts/install.sh "${PKG_DIR}/scripts/"
+          cp scripts/sdcpp-restapi.service "${PKG_DIR}/scripts/"
+          chmod +x "${PKG_DIR}/scripts/install.sh"
+
+          # Copy documentation
+          cp README.md "${PKG_DIR}/"
+          cp docs/API.md "${PKG_DIR}/docs/" 2>/dev/null || true
+
+          # Create tarball
+          cd package
+          tar -czvf "${PKG_NAME}.tar.gz" "${PKG_NAME}"
+
+          # Generate checksum
+          sha256sum "${PKG_NAME}.tar.gz" > "${PKG_NAME}.tar.gz.sha256"
+
+          echo "PKG_NAME=${PKG_NAME}" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG_NAME }}
+          path: |
+            package/*.tar.gz
+            package/*.sha256
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          elif [ -f VERSION ]; then
+            VERSION=$(cat VERSION | tr -d '[:space:]')
+          else
+            VERSION="0.0.0"
+          fi
+          # Sanitize version string
+          VERSION=$(echo "$VERSION" | sed 's/[^a-zA-Z0-9.\-]//g')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+
+          # Move all tar.gz and sha256 files to release directory
+          find artifacts -name "*.tar.gz" -exec mv {} release/ \;
+          find artifacts -name "*.sha256" -exec mv {} release/ \;
+
+          # Create combined checksums file
+          cd release
+          cat *.sha256 > checksums-sha256.txt
+
+          # List files for verification
+          echo "Release files:"
+          ls -la
+
+      - name: Determine release tag
+        id: tag
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ] && [ -n "$REF_NAME" ]; then
+            echo "tag=$REF_NAME" >> $GITHUB_OUTPUT
+          else
+            echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "Release ${{ steps.version.outputs.version }}"
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release/*.tar.gz
+            release/checksums-sha256.txt
+          body: |
+            ## sdcpp-restapi v${{ steps.version.outputs.version }}
+
+            ### Download Instructions
+
+            Choose the appropriate package for your system:
+
+            **CPU Variants:**
+            - `noavx` - For very old CPUs or VMs without AVX support
+            - `avx` - For CPUs with AVX support (Intel Sandy Bridge 2011+, AMD Bulldozer+)
+            - `avx2` - For modern CPUs with AVX2 (Intel Haswell 2013+, AMD Excavator+) - **Recommended for most users**
+            - `avx512` - For CPUs with AVX-512 (Intel Skylake-X, Ice Lake+)
+
+            **GPU Variants:**
+            - `cuda` - NVIDIA GPU support (requires CUDA drivers)
+            - `cuda-experimental` - NVIDIA GPU with experimental dynamic tensor offloading (for low-VRAM GPUs)
+            - `vulkan` - Cross-platform GPU support via Vulkan
+            - `rocm` - AMD GPU support (requires ROCm drivers)
+
+            ### Installation
+
+            ```bash
+            # Extract the package
+            tar -xzf sdcpp-restapi-*-x86_64.tar.gz
+            cd sdcpp-restapi-*/
+
+            # Run the install script
+            sudo ./scripts/install.sh
+            ```
+
+            ### Checksums
+
+            SHA256 checksums are available in `checksums-sha256.txt`
+
+            To verify a download:
+            ```bash
+            sha256sum -c checksums-sha256.txt --ignore-missing
+            ```
