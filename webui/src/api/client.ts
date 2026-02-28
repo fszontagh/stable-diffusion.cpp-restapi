@@ -350,16 +350,31 @@ export interface JobModelSettings {
 export interface Job {
   job_id: string
   type: 'txt2img' | 'img2img' | 'txt2vid' | 'upscale' | 'convert' | 'model_download' | 'model_hash'
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'deleted'
   progress: JobProgress
   created_at: string
   started_at?: string
   completed_at?: string
+  deleted_at?: string          // When item was soft-deleted (only for deleted items)
+  previous_status?: string     // Status before deletion (only for deleted items)
   outputs: string[]
   params?: Record<string, unknown>
   model_settings?: JobModelSettings
   error?: string
   linked_job_id?: string
+}
+
+export interface RecycleBinResponse {
+  success: boolean
+  enabled: boolean
+  retention_minutes: number
+  count: number
+  items: Job[]
+}
+
+export interface RecycleBinSettings {
+  enabled: boolean
+  retention_minutes: number
 }
 
 export interface QueueDateGroup {
@@ -773,6 +788,27 @@ class ApiClient {
 
   async deleteJobs(jobIds: string[]): Promise<{ success: boolean; deleted: number; failed: number; total: number; failed_job_ids?: string[] }> {
     return this.request('DELETE', '/queue/jobs', { job_ids: jobIds })
+  }
+
+  // Recycle bin operations
+  async getRecycleBin(): Promise<RecycleBinResponse> {
+    return this.request('GET', '/queue/recycle-bin')
+  }
+
+  async restoreJob(jobId: string): Promise<{ success: boolean; message: string }> {
+    return this.request('POST', `/queue/${jobId}/restore`)
+  }
+
+  async purgeJob(jobId: string): Promise<{ success: boolean; message: string }> {
+    return this.request('DELETE', `/queue/${jobId}/purge`)
+  }
+
+  async clearRecycleBin(): Promise<{ success: boolean; purged: number; message: string }> {
+    return this.request('DELETE', '/queue/recycle-bin')
+  }
+
+  async getRecycleBinSettings(): Promise<RecycleBinSettings> {
+    return this.request('GET', '/settings/recycle-bin')
   }
 
   // Restart a job by resubmitting with same params

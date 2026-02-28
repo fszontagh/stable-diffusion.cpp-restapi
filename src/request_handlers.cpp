@@ -131,6 +131,23 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         handle_delete_jobs(req, res);
     });
 
+    // Recycle bin routes
+    server.Get("/queue/recycle-bin", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_get_recycle_bin(req, res);
+    });
+    server.Post(R"(/queue/([a-f0-9\-]+)/restore)", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_restore_job(req, res);
+    });
+    server.Delete(R"(/queue/([a-f0-9\-]+)/purge)", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_purge_job(req, res);
+    });
+    server.Delete("/queue/recycle-bin", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_clear_recycle_bin(req, res);
+    });
+    server.Get("/settings/recycle-bin", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_get_recycle_bin_settings(req, res);
+    });
+
     // Job preview endpoint - serves in-memory preview JPEG
     server.Get(R"(/jobs/([a-f0-9\-]+)/preview)", [this](const httplib::Request& req, httplib::Response& res) {
         handle_get_job_preview(req, res);
@@ -954,6 +971,66 @@ void RequestHandlers::handle_delete_jobs(const httplib::Request& req, httplib::R
     } catch (const std::exception& e) {
         send_error(res, std::string("Failed to delete jobs: ") + e.what(), 500);
     }
+}
+
+void RequestHandlers::handle_get_recycle_bin(const httplib::Request& /*req*/, httplib::Response& res) {
+    auto deleted_jobs = queue_manager_.get_deleted_jobs();
+
+    nlohmann::json items = nlohmann::json::array();
+    for (const auto& item : deleted_jobs) {
+        items.push_back(item.to_json());
+    }
+
+    send_json(res, {
+        {"success", true},
+        {"enabled", queue_manager_.is_recycle_bin_enabled()},
+        {"retention_minutes", queue_manager_.get_recycle_bin_retention_minutes()},
+        {"count", deleted_jobs.size()},
+        {"items", items}
+    });
+}
+
+void RequestHandlers::handle_restore_job(const httplib::Request& req, httplib::Response& res) {
+    std::string job_id = req.matches[1];
+
+    if (queue_manager_.restore_job(job_id)) {
+        send_json(res, {
+            {"success", true},
+            {"message", "Job restored from recycle bin"}
+        });
+    } else {
+        send_error(res, "Cannot restore job (not found or not in recycle bin)", 400);
+    }
+}
+
+void RequestHandlers::handle_purge_job(const httplib::Request& req, httplib::Response& res) {
+    std::string job_id = req.matches[1];
+
+    if (queue_manager_.purge_job(job_id)) {
+        send_json(res, {
+            {"success", true},
+            {"message", "Job permanently deleted"}
+        });
+    } else {
+        send_error(res, "Cannot purge job (not found or still processing)", 400);
+    }
+}
+
+void RequestHandlers::handle_clear_recycle_bin(const httplib::Request& /*req*/, httplib::Response& res) {
+    int purged = queue_manager_.clear_recycle_bin();
+
+    send_json(res, {
+        {"success", true},
+        {"purged", purged},
+        {"message", "Recycle bin cleared"}
+    });
+}
+
+void RequestHandlers::handle_get_recycle_bin_settings(const httplib::Request& /*req*/, httplib::Response& res) {
+    send_json(res, {
+        {"enabled", queue_manager_.is_recycle_bin_enabled()},
+        {"retention_minutes", queue_manager_.get_recycle_bin_retention_minutes()}
+    });
 }
 
 void RequestHandlers::send_json(httplib::Response& res, const nlohmann::json& json, int status) {

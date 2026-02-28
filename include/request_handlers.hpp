@@ -72,6 +72,13 @@ private:
     void handle_cancel_job(const httplib::Request& req, httplib::Response& res);
     void handle_delete_jobs(const httplib::Request& req, httplib::Response& res);
 
+    // Recycle bin endpoints
+    void handle_get_recycle_bin(const httplib::Request& req, httplib::Response& res);
+    void handle_restore_job(const httplib::Request& req, httplib::Response& res);
+    void handle_purge_job(const httplib::Request& req, httplib::Response& res);
+    void handle_clear_recycle_bin(const httplib::Request& req, httplib::Response& res);
+    void handle_get_recycle_bin_settings(const httplib::Request& req, httplib::Response& res);
+
     // Job preview endpoint (serves in-memory preview JPEG)
     void handle_get_job_preview(const httplib::Request& req, httplib::Response& res);
 

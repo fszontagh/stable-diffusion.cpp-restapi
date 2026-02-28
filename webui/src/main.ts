@@ -10,6 +10,7 @@ import Models from './views/Models.vue'
 import Generate from './views/Generate.vue'
 import Upscale from './views/Upscale.vue'
 import Queue from './views/Queue.vue'
+import RecycleBin from './views/RecycleBin.vue'
 import Chat from './views/Chat.vue'
 import Downloads from './views/Downloads.vue'
 import Settings from './views/Settings.vue'
@@ -26,6 +27,7 @@ const routes = [
   { path: '/generate', name: 'Generate', component: Generate },
   { path: '/upscale', name: 'Upscale', component: Upscale },
   { path: '/queue', name: 'Queue', component: Queue },
+  { path: '/recycle-bin', name: 'RecycleBin', component: RecycleBin },
   { path: '/chat', name: 'Chat', component: Chat },
   { path: '/settings', name: 'Settings', component: Settings }
 ]

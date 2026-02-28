@@ -127,6 +127,19 @@ void from_json(const nlohmann::json& j, AssistantConfig& c) {
     c.proactive_suggestions = j.value("proactive_suggestions", true);
 }
 
+// RecycleBinConfig JSON serialization
+void to_json(nlohmann::json& j, const RecycleBinConfig& c) {
+    j = nlohmann::json{
+        {"enabled", c.enabled},
+        {"retention_minutes", c.retention_minutes}
+    };
+}
+
+void from_json(const nlohmann::json& j, RecycleBinConfig& c) {
+    c.enabled = j.value("enabled", true);
+    c.retention_minutes = j.value("retention_minutes", 10080);
+}
+
 // Config JSON serialization
 void to_json(nlohmann::json& j, const Config& c) {
     j = nlohmann::json{
@@ -134,7 +147,8 @@ void to_json(nlohmann::json& j, const Config& c) {
         {"paths", c.paths},
         {"sd_defaults", c.sd_defaults},
         {"preview", c.preview},
-        {"assistant", c.assistant}
+        {"assistant", c.assistant},
+        {"recycle_bin", c.recycle_bin}
     };
 }
 
@@ -153,6 +167,9 @@ void from_json(const nlohmann::json& j, Config& c) {
     }
     if (j.contains("assistant")) {
         c.assistant = j["assistant"].get<AssistantConfig>();
+    }
+    if (j.contains("recycle_bin")) {
+        c.recycle_bin = j["recycle_bin"].get<RecycleBinConfig>();
     }
 }
 

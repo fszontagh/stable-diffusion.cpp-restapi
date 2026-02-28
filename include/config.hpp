@@ -57,6 +57,15 @@ struct PreviewConfig {
 };
 
 /**
+ * Recycle bin configuration for queue items
+ * Allows soft-deletion with automatic cleanup after retention period
+ */
+struct RecycleBinConfig {
+    bool enabled = true;                    // Enable/disable recycle bin (if disabled, items are permanently deleted)
+    int retention_minutes = 10080;          // Time to keep deleted items (default: 7 days = 7*24*60)
+};
+
+/**
  * LLM Assistant configuration
  * Provides an AI assistant that can help with settings, prompt enhancement, and more
  */
@@ -82,6 +91,7 @@ struct Config {
     SDDefaultsConfig sd_defaults;
     PreviewConfig preview;
     AssistantConfig assistant;
+    RecycleBinConfig recycle_bin;
     
     /**
      * Load configuration from JSON file
@@ -118,6 +128,9 @@ void from_json(const nlohmann::json& j, PreviewConfig& c);
 
 void to_json(nlohmann::json& j, const AssistantConfig& c);
 void from_json(const nlohmann::json& j, AssistantConfig& c);
+
+void to_json(nlohmann::json& j, const RecycleBinConfig& c);
+void from_json(const nlohmann::json& j, RecycleBinConfig& c);
 
 void to_json(nlohmann::json& j, const Config& c);
 void from_json(const nlohmann::json& j, Config& c);
