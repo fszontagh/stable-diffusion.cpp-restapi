@@ -55,19 +55,19 @@ jobs:
             cmake_flags: "-DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON"
             container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
             deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
-          # Vulkan and ROCm builds disabled for now - require special SDK setup
-          # TODO: Add Vulkan SDK installation from lunarg
-          # TODO: Add proper ROCm container with hip-dev, hipblas-dev, rocm-dev
-          # - os: ubuntu-22.04
-          #   variant: vulkan
-          #   cmake_flags: "-DSD_VULKAN=ON"
-          #   container: ""
-          #   deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm libvulkan-dev"
-          # - os: ubuntu-22.04
-          #   variant: rocm
-          #   cmake_flags: "-DSD_HIPBLAS=ON"
-          #   container: "rocm/dev-ubuntu-22.04:6.0"
-          #   deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev"
+          # Vulkan build
+          - os: ubuntu-22.04
+            variant: vulkan
+            cmake_flags: "-DSD_VULKAN=ON"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm libvulkan-dev glslc"
+          # ROCm build - uses rocm/dev-ubuntu-24.04:7.2 container
+          - os: ubuntu-22.04
+            variant: rocm
+            cmake_flags: "-DSD_HIPBLAS=ON -DGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032 -DAMDGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
+            container: "rocm/dev-ubuntu-24.04:7.2"
+            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev zip"
+            rocm_compiler: true
 
           # ============================================
           # Ubuntu 24.04 builds
@@ -104,17 +104,19 @@ jobs:
             cmake_flags: "-DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON"
             container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
             deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
-          # Vulkan and ROCm builds disabled for now - require special SDK setup
-          # - os: ubuntu-24.04
-          #   variant: vulkan
-          #   cmake_flags: "-DSD_VULKAN=ON"
-          #   container: ""
-          #   deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm libvulkan-dev"
-          # - os: ubuntu-24.04
-          #   variant: rocm
-          #   cmake_flags: "-DSD_HIPBLAS=ON"
-          #   container: "rocm/dev-ubuntu-22.04:6.0"
-          #   deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev"
+          # Vulkan build
+          - os: ubuntu-24.04
+            variant: vulkan
+            cmake_flags: "-DSD_VULKAN=ON"
+            container: ""
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm libvulkan-dev glslc"
+          # ROCm build - uses rocm/dev-ubuntu-24.04:7.2 container
+          - os: ubuntu-24.04
+            variant: rocm
+            cmake_flags: "-DSD_HIPBLAS=ON -DGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032 -DAMDGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
+            container: "rocm/dev-ubuntu-24.04:7.2"
+            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev zip"
+            rocm_compiler: true
 
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container || null }}
@@ -137,9 +139,14 @@ jobs:
             # Install deps first (excluding nodejs npm which would conflict)
             DEPS_NO_NODE=$(echo "${{ matrix.deps }}" | sed 's/nodejs//g' | sed 's/npm//g')
             apt-get install -y curl ca-certificates $DEPS_NO_NODE
-            # Then install Node.js 18 from nodesource
+            # Then install Node.js 20 from nodesource
             curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
             apt-get install -y nodejs
+          fi
+
+          # Add ROCm to PATH for ROCm builds
+          if [ "${{ matrix.rocm_compiler }}" = "true" ]; then
+            echo "/opt/rocm/bin" >> $GITHUB_PATH
           fi
 
       - name: Get version
@@ -161,12 +168,19 @@ jobs:
 
       - name: Configure CMake
         run: |
+          # Set compiler flags for ROCm builds
+          COMPILER_FLAGS=""
+          if [ "${{ matrix.rocm_compiler }}" = "true" ]; then
+            COMPILER_FLAGS="-DCMAKE_CXX_COMPILER=amdclang++ -DCMAKE_C_COMPILER=amdclang"
+          fi
+
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DHTTPLIB_USE_ZSTD_IF_AVAILABLE=OFF \
             -DSDCPP_WEBUI=ON \
             -DSDCPP_WEBSOCKET=ON \
             -DSDCPP_ASSISTANT=ON \
+            $COMPILER_FLAGS \
             ${{ matrix.cmake_flags }}
 
       - name: Build
