@@ -740,7 +740,10 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.diffusion_conv_direct = params.diffusion_conv_direct;
     ctx_params.tae_preview_only = params.tae_preview_only;
     ctx_params.free_params_immediately = params.free_params_immediately;
+#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
+    // Experimental fork has flow_shift in ctx_params (model load time)
     ctx_params.flow_shift = params.flow_shift;
+#endif
     ctx_params.force_sdxl_vae_conv_scale = params.force_sdxl_vae_conv_scale;
 
     // Set weight type if specified
@@ -799,7 +802,9 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
               << ", offload_to_cpu=" << ctx_params.offload_params_to_cpu
               << ", free_params_immediately=" << ctx_params.free_params_immediately
               << ", tae_preview_only=" << ctx_params.tae_preview_only
+#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
               << ", flow_shift=" << (std::isinf(ctx_params.flow_shift) ? "auto" : std::to_string(ctx_params.flow_shift))
+#endif
               << ", rng=" << params.rng_type
               << ", lora_mode=" << params.lora_apply_mode
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD

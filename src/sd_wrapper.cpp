@@ -581,6 +581,7 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     p.distilled_guidance = parse_float(j, "distilled_guidance", 3.5f);
     p.eta = parse_float(j, "eta", 0.0f);
     p.shifted_timestep = parse_int(j, "shifted_timestep", 0);
+    p.flow_shift = parse_float(j, "flow_shift", 3.0f);
 
     // Skip Layer Guidance (SLG)
     p.slg_scale = parse_float(j, "slg_scale", 0.0f);
@@ -647,7 +648,8 @@ nlohmann::json Txt2ImgParams::to_json() const {
         {"clip_skip", clip_skip},
         {"distilled_guidance", distilled_guidance},
         {"eta", eta},
-        {"shifted_timestep", shifted_timestep}
+        {"shifted_timestep", shifted_timestep},
+        {"flow_shift", flow_shift}
     };
 
     // SLG params
@@ -737,6 +739,7 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     p.distilled_guidance = parse_float(j, "distilled_guidance", 3.5f);
     p.eta = parse_float(j, "eta", 0.0f);
     p.shifted_timestep = parse_int(j, "shifted_timestep", 0);
+    p.flow_shift = parse_float(j, "flow_shift", 3.0f);
 
     // Skip Layer Guidance (SLG)
     p.slg_scale = parse_float(j, "slg_scale", 0.0f);
@@ -826,7 +829,8 @@ nlohmann::json Img2ImgParams::to_json() const {
         {"clip_skip", clip_skip},
         {"distilled_guidance", distilled_guidance},
         {"eta", eta},
-        {"shifted_timestep", shifted_timestep}
+        {"shifted_timestep", shifted_timestep},
+        {"flow_shift", flow_shift}
     };
 
     // SLG params
@@ -1225,6 +1229,7 @@ std::vector<std::string> SDWrapper::generate_txt2img(
     gen_params.sample_params.scheduler = str_to_scheduler(params.scheduler.c_str());
     gen_params.sample_params.eta = params.eta;
     gen_params.sample_params.shifted_timestep = params.shifted_timestep;
+    gen_params.sample_params.flow_shift = params.flow_shift;
 
     // Custom sigmas
     if (!params.custom_sigmas.empty()) {
@@ -1428,6 +1433,7 @@ std::vector<std::string> SDWrapper::generate_img2img(
     gen_params.sample_params.scheduler = str_to_scheduler(params.scheduler.c_str());
     gen_params.sample_params.eta = params.eta;
     gen_params.sample_params.shifted_timestep = params.shifted_timestep;
+    gen_params.sample_params.flow_shift = params.flow_shift;
 
     // Custom sigmas
     if (!params.custom_sigmas.empty()) {
@@ -1626,6 +1632,7 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
     vid_params.sample_params.sample_method = str_to_sample_method(params.sampler.c_str());
     vid_params.sample_params.scheduler = str_to_scheduler(params.scheduler.c_str());
     vid_params.sample_params.eta = params.eta;
+    vid_params.sample_params.flow_shift = params.flow_shift;
 
     // Skip Layer Guidance (SLG)
     if (params.slg_scale > 0.0f) {
