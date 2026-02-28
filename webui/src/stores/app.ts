@@ -46,9 +46,15 @@ export const useAppStore = defineStore('app', () => {
   const wsState = ref<ConnectionState>('disconnected')
   const lastDisconnectTime = ref<number | null>(null)
 
-  // API availability - derived from WebSocket state
+  // API availability - HTTP health check OR WebSocket connected
+  // This allows the UI to work even if WebSocket fails (just without real-time updates)
   const apiAvailable = computed(() => {
-    return wsState.value === 'connected' || wsState.value === 'connecting' || wsState.value === 'reconnecting'
+    return connected.value || wsState.value === 'connected' || wsState.value === 'connecting' || wsState.value === 'reconnecting'
+  })
+
+  // Detect when HTTP works but WebSocket doesn't (degraded mode)
+  const wsOnlyDisconnected = computed(() => {
+    return connected.value && wsState.value === 'disconnected'
   })
 
   // Current preview during generation
@@ -963,6 +969,7 @@ export const useAppStore = defineStore('app', () => {
     wsState,
     lastDisconnectTime,
     apiAvailable,
+    wsOnlyDisconnected,
 
     // Preview
     currentPreview,
