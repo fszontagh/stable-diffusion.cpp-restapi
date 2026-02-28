@@ -65,7 +65,7 @@ jobs:
           # ROCm build - uses rocm/dev-ubuntu-24.04:7.2 container
           - os: ubuntu-22.04
             variant: rocm
-            cmake_flags: "-DSD_HIPBLAS=ON -DGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032 -DAMDGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
+            cmake_flags: '-DSD_HIPBLAS=ON "-DGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032" "-DAMDGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"'
             container: "rocm/dev-ubuntu-24.04:7.2"
             deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev zip"
             rocm_compiler: true
@@ -115,7 +115,7 @@ jobs:
           # ROCm build - uses rocm/dev-ubuntu-24.04:7.2 container
           - os: ubuntu-24.04
             variant: rocm
-            cmake_flags: "-DSD_HIPBLAS=ON -DGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032 -DAMDGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
+            cmake_flags: '-DSD_HIPBLAS=ON "-DGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032" "-DAMDGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"'
             container: "rocm/dev-ubuntu-24.04:7.2"
             deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev zip"
             rocm_compiler: true
