@@ -55,12 +55,13 @@ jobs:
             cmake_flags: "-DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON"
             container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
             deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
-          # Vulkan build
+          # Vulkan build - requires Vulkan SDK for glslc
           - os: ubuntu-22.04
             variant: vulkan
             cmake_flags: "-DSD_VULKAN=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm libvulkan-dev glslc"
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm wget"
+            vulkan_sdk: true
           # ROCm build - uses rocm/dev-ubuntu-24.04:7.2 container
           - os: ubuntu-22.04
             variant: rocm
@@ -104,12 +105,13 @@ jobs:
             cmake_flags: "-DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON"
             container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
             deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
-          # Vulkan build
+          # Vulkan build - requires Vulkan SDK for glslc
           - os: ubuntu-24.04
             variant: vulkan
             cmake_flags: "-DSD_VULKAN=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm libvulkan-dev glslc"
+            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm wget"
+            vulkan_sdk: true
           # ROCm build - uses rocm/dev-ubuntu-24.04:7.2 container
           - os: ubuntu-24.04
             variant: rocm
@@ -148,6 +150,17 @@ jobs:
           if [ "${{ matrix.rocm_compiler }}" = "true" ]; then
             echo "/opt/rocm/bin" >> $GITHUB_PATH
           fi
+
+      - name: Install Vulkan SDK
+        if: matrix.vulkan_sdk == true
+        run: |
+          # Add LunarG Vulkan SDK repository
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
+          # Determine Ubuntu codename for the correct repository
+          CODENAME=$(lsb_release -cs)
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan.list "https://packages.lunarg.com/vulkan/lunarg-vulkan-${CODENAME}.list"
+          sudo apt-get update
+          sudo apt-get install -y vulkan-sdk
 
       - name: Get version
         id: version
