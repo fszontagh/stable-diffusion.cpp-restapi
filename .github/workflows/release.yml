@@ -106,10 +106,11 @@ jobs:
             cmake_flags: "-DSD_VULKAN=ON"
             container: ""
             deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm libvulkan-dev"
+          # ROCm uses 22.04 container for both (24.04 ROCm images may not be available)
           - os: ubuntu-24.04
             variant: rocm
             cmake_flags: "-DSD_HIPBLAS=ON"
-            container: "rocm/dev-ubuntu-24.04:6.0"
+            container: "rocm/dev-ubuntu-22.04:6.0"
             deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
 
     runs-on: ${{ matrix.os }}
@@ -123,8 +124,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          apt-get update
-          apt-get install -y ${{ matrix.deps }}
+          # Use sudo for non-containerized builds (GitHub runners need sudo)
+          if [ -z "${{ matrix.container }}" ]; then
+            sudo apt-get update
+            sudo apt-get install -y ${{ matrix.deps }}
+          else
+            apt-get update
+            apt-get install -y ${{ matrix.deps }}
+          fi
 
       - name: Get version
         id: version
