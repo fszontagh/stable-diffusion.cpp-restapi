@@ -62,6 +62,7 @@ struct Txt2ImgParams {
     float distilled_guidance = 3.5f;    // For Flux/distilled models
     float eta = 0.0f;                   // For DDIM/TCD samplers
     int shifted_timestep = 0;           // For NitroFusion models (250-500)
+    float flow_shift = 3.0f;            // Flow shift for Flux models
 
     // Skip Layer Guidance (SLG) for DiT models
     float slg_scale = 0.0f;             // 0 = disabled, 2.5 for SD3.5 medium
@@ -139,6 +140,7 @@ struct Img2ImgParams {
     float distilled_guidance = 3.5f;    // For Flux/distilled models
     float eta = 0.0f;                   // For DDIM/TCD samplers
     int shifted_timestep = 0;           // For NitroFusion models (250-500)
+    float flow_shift = 3.0f;            // Flow shift for Flux models
 
     // Skip Layer Guidance (SLG) for DiT models
     float slg_scale = 0.0f;             // 0 = disabled, 2.5 for SD3.5 medium
