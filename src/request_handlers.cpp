@@ -4,6 +4,7 @@
 #include "download_manager.hpp"
 #include "settings_manager.hpp"
 #include "memory_utils.hpp"
+#include "version.hpp"
 
 #ifdef SDCPP_ASSISTANT_ENABLED
 #include "assistant_client.hpp"
@@ -258,6 +259,8 @@ void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Re
 
     nlohmann::json response = {
         {"status", "ok"},
+        {"version", sdcpp::get_version()},
+        {"git_commit", sdcpp::get_git_commit()},
         {"model_loaded", loaded_info["model_loaded"]},
         {"model_loading", loaded_info["model_loading"]},
         {"loading_model_name", loaded_info["loading_model_name"]},

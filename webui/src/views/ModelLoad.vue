@@ -197,7 +197,7 @@ onMounted(async () => {
     loadParams.value.model_name = selectedModel.value.name
     loadParams.value.model_type = selectedModel.value.type === 'diffusion' ? 'diffusion' : 'checkpoint'
 
-    // If model is already loaded, pre-populate with current components
+    // If model is already loaded, pre-populate with current components and options
     if (selectedModel.value.is_loaded && store.loadedComponents) {
       loadParams.value.vae = store.loadedComponents.vae || ''
       loadParams.value.clip_l = store.loadedComponents.clip_l || ''
@@ -205,6 +205,29 @@ onMounted(async () => {
       loadParams.value.t5xxl = store.loadedComponents.t5xxl || ''
       loadParams.value.controlnet = store.loadedComponents.controlnet || ''
       loadParams.value.llm = store.loadedComponents.llm || ''
+
+      // Pre-populate load options from currently loaded model
+      if (store.loadOptions) {
+        loadParams.value.options = {
+          ...loadParams.value.options,
+          n_threads: store.loadOptions.n_threads ?? loadParams.value.options?.n_threads ?? -1,
+          keep_clip_on_cpu: store.loadOptions.keep_clip_on_cpu ?? loadParams.value.options?.keep_clip_on_cpu ?? true,
+          keep_vae_on_cpu: store.loadOptions.keep_vae_on_cpu ?? loadParams.value.options?.keep_vae_on_cpu ?? false,
+          keep_controlnet_on_cpu: store.loadOptions.keep_controlnet_on_cpu ?? loadParams.value.options?.keep_controlnet_on_cpu ?? false,
+          flash_attn: store.loadOptions.flash_attn ?? loadParams.value.options?.flash_attn ?? true,
+          offload_to_cpu: store.loadOptions.offload_to_cpu ?? loadParams.value.options?.offload_to_cpu ?? false,
+          enable_mmap: store.loadOptions.enable_mmap ?? loadParams.value.options?.enable_mmap ?? true,
+          vae_decode_only: store.loadOptions.vae_decode_only ?? loadParams.value.options?.vae_decode_only ?? true,
+          tae_preview_only: store.loadOptions.tae_preview_only ?? loadParams.value.options?.tae_preview_only ?? false,
+          weight_type: store.loadOptions.weight_type ?? loadParams.value.options?.weight_type,
+          offload_mode: store.loadOptions.offload_mode ?? loadParams.value.options?.offload_mode ?? 'none',
+          vram_estimation: store.loadOptions.vram_estimation ?? loadParams.value.options?.vram_estimation ?? 'dryrun',
+          offload_cond_stage: store.loadOptions.offload_cond_stage ?? loadParams.value.options?.offload_cond_stage ?? true,
+          offload_diffusion: store.loadOptions.offload_diffusion ?? loadParams.value.options?.offload_diffusion ?? false,
+          reload_cond_stage: store.loadOptions.reload_cond_stage ?? loadParams.value.options?.reload_cond_stage ?? true,
+          reload_diffusion: store.loadOptions.reload_diffusion ?? loadParams.value.options?.reload_diffusion ?? true
+        }
+      }
 
       // Use current architecture if loaded
       if (store.modelArchitecture) {

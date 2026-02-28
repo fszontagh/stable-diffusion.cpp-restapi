@@ -198,6 +198,8 @@ export const useAppStore = defineStore('app', () => {
   const modelArchitecture = computed(() => health.value?.model_architecture ?? null)
   const loadedComponents = computed(() => health.value?.loaded_components ?? null)
   const loadOptions = computed(() => health.value?.load_options ?? null)
+  const serverVersion = computed(() => health.value?.version ?? 'unknown')
+  const serverGitCommit = computed(() => health.value?.git_commit ?? 'unknown')
   const upscalerLoaded = computed(() => health.value?.upscaler_loaded ?? false)
   const upscalerName = computed(() => health.value?.upscaler_name ?? null)
 
@@ -846,6 +848,8 @@ export const useAppStore = defineStore('app', () => {
           // Initialize health if not set - use server status data
           health.value = {
             status: 'ok',
+            version: data.version ?? 'unknown',
+            git_commit: data.git_commit ?? 'unknown',
             model_loaded: data.model_loaded,
             model_loading: data.model_loading,
             loading_model_name: data.loading_model_name,
@@ -986,6 +990,8 @@ export const useAppStore = defineStore('app', () => {
     modelArchitecture,
     loadedComponents,
     loadOptions,
+    serverVersion,
+    serverGitCommit,
     upscalerLoaded,
     upscalerName,
     experimentalOffloadEnabled,

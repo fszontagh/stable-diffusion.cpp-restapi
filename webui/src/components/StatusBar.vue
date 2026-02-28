@@ -110,6 +110,9 @@ function formatMB(mb: number): string {
       <div class="logo">
         <span class="logo-icon">&#129302;</span>
         <span class="logo-text">sd.cpp</span>
+        <span class="version-badge" :title="`Version ${store.serverVersion} (${store.serverGitCommit})`">
+          v{{ store.serverVersion }}
+        </span>
       </div>
     </div>
     <div class="status-center">
@@ -261,6 +264,16 @@ function formatMB(mb: number): string {
   font-size: 18px;
   font-weight: 700;
   color: var(--accent-primary);
+}
+
+.version-badge {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: var(--border-radius-sm);
+  cursor: default;
 }
 
 .status-center {
