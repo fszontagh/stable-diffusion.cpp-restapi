@@ -31,6 +31,7 @@ option(SDCPP_WEBUI "Build and include Web UI (requires Node.js/npm)" ON)
 option(SDCPP_WEBSOCKET "Build WebSocket server for real-time updates" ON)
 option(FORCE_WEBSOCKET "Force WebSocket even if WebUI is disabled" OFF)
 option(SDCPP_ASSISTANT "Build LLM Assistant feature" ON)
+option(SD_EXPERIMENTAL_OFFLOAD "Enable experimental dynamic tensor offloading (requires forked sd.cpp)" OFF)
 set(SDCPP_LOCAL_SOURCE "" CACHE PATH "Path to local stable-diffusion.cpp source (for development/testing)")
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
@@ -163,12 +164,22 @@ if(SDCPP_LOCAL_SOURCE)
     # Add the local source subdirectory directly (no patching needed for local dev)
     add_subdirectory(${stable-diffusion_SOURCE_DIR} ${stable-diffusion_BINARY_DIR})
 else()
-    FetchContent_Declare(
-        stable-diffusion
-        GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-        GIT_TAG        636d3cb
-        GIT_SHALLOW    TRUE
-    )
+    if(SD_EXPERIMENTAL_OFFLOAD)
+        message(STATUS "Experimental offload: ENABLED - Using forked sd.cpp with dynamic tensor offloading")
+        FetchContent_Declare(
+            stable-diffusion
+            GIT_REPOSITORY https://github.com/fszontagh/stable-diffusion.cpp.git
+            GIT_TAG        feature/dynamic-tensor-offloading
+            GIT_SHALLOW    TRUE
+        )
+    else()
+        FetchContent_Declare(
+            stable-diffusion
+            GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
+            GIT_TAG        636d3cb
+            GIT_SHALLOW    TRUE
+        )
+    endif()
     # First populate to get source directory
     FetchContent_GetProperties(stable-diffusion)
 endif()
@@ -325,6 +336,11 @@ if(SDCPP_ASSISTANT)
     target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_ASSISTANT_ENABLED=1)
 endif()
 
+# Experimental offload compile definition
+if(SD_EXPERIMENTAL_OFFLOAD)
+    target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_EXPERIMENTAL_OFFLOAD=1)
+endif()
+
 #
 # Web UI (optional)
 #
@@ -360,5 +376,6 @@ message(STATUS "OpenCL backend:  ${SD_OPENCL}")
 message(STATUS "Web UI:          ${SDCPP_WEBUI}")
 message(STATUS "WebSocket:       ${SDCPP_WEBSOCKET}")
 message(STATUS "LLM Assistant:   ${SDCPP_ASSISTANT}")
+message(STATUS "Exp. Offload:    ${SD_EXPERIMENTAL_OFFLOAD}")
 message(STATUS "===================================")
 message(STATUS "")

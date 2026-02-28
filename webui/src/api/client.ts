@@ -103,6 +103,9 @@ export interface HealthResponse {
   upscaler_name: string | null
   ws_port: number | null
   memory?: MemoryResponse
+  features?: {
+    experimental_offload: boolean
+  }
 }
 
 export interface ModelInfo {

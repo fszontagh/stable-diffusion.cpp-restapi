@@ -195,6 +195,9 @@ export const useAppStore = defineStore('app', () => {
   const upscalerLoaded = computed(() => health.value?.upscaler_loaded ?? false)
   const upscalerName = computed(() => health.value?.upscaler_name ?? null)
 
+  // Feature flags
+  const experimentalOffloadEnabled = computed(() => health.value?.features?.experimental_offload ?? false)
+
   const queueStats = computed(() => ({
     pending: queue.value?.pending_count ?? 0,
     processing: queue.value?.processing_count ?? 0,
@@ -978,6 +981,7 @@ export const useAppStore = defineStore('app', () => {
     loadOptions,
     upscalerLoaded,
     upscalerName,
+    experimentalOffloadEnabled,
     queueStats,
     samplers,
     schedulers,
