@@ -260,6 +260,13 @@ if(NOT SDCPP_USING_LOCAL_SOURCE AND NOT stable-diffusion_POPULATED)
     add_subdirectory(${stable-diffusion_SOURCE_DIR} ${stable-diffusion_BINARY_DIR})
 endif()
 
+# Add CUDA include directories to stable-diffusion target if CUDA is enabled
+# This is needed for the forked sd.cpp with experimental offload which includes <cuda_runtime.h>
+if(SD_CUDA AND TARGET stable-diffusion)
+    target_include_directories(stable-diffusion PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+    message(STATUS "Added CUDA include directories to stable-diffusion target")
+endif()
+
 #
 # Main executable
 #
