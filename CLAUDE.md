@@ -149,9 +149,13 @@ Architecture presets are defined in `data/model_architectures.json` and auto-rel
 - WAN: Video generation requiring video VAE and T5-XXL
 
 **Adding new architecture:**
-1. Add entry to `data/model_architectures.json`
-2. Add component suggestions to `webui/src/composables/useArchitectures.ts`
+1. Add entry to `data/model_architectures.json` with:
+   - `requiredComponents`: VAE, CLIP, T5, LLM as needed
+   - `generationDefaults`: sampler, scheduler, steps, cfg_scale, width, height, etc.
+   - `loadOptions`: flash_attn, offload_to_cpu, etc.
+2. Add component suggestions to `webui/src/composables/useArchitectures.ts` (scoring for auto-suggest)
 3. Auto-detection happens via tensor name patterns in sd.cpp's model.cpp
+4. Recommended settings in Generate view come from `generationDefaults` in the architecture JSON (not hardcoded)
 
 ## Common Issues
 
