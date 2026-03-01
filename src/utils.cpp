@@ -268,7 +268,7 @@ std::vector<std::string> list_files(
 std::string sanitize_filename(const std::string& filename) {
     std::string result;
     result.reserve(filename.size());
-    
+
     for (char c : filename) {
         if (std::isalnum(c) || c == '-' || c == '_' || c == '.') {
             result += c;
@@ -276,8 +276,23 @@ std::string sanitize_filename(const std::string& filename) {
             result += '_';
         }
     }
-    
+
     return result;
+}
+
+bool is_zip_archive(const std::string& filepath) {
+    std::ifstream file(filepath, std::ios::binary);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    // ZIP files start with 'PK' (0x50 0x4B)
+    char magic[2];
+    if (!file.read(magic, 2)) {
+        return false;
+    }
+
+    return magic[0] == 0x50 && magic[1] == 0x4B;
 }
 
 } // namespace utils
