@@ -81,6 +81,21 @@ function scoreComponent(
       }
     }
 
+    // Anima prefers Qwen3 0.6B for LLM and qwen_image_vae for VAE
+    if (archLower.includes('anima')) {
+      if (name.includes('qwen') && (name.includes('0.6b') || name.includes('06b') || name.includes('0_6b'))) {
+        score += 95  // Strong preference for 0.6B
+      }
+      if (name.includes('qwen_image_vae') || name.includes('qwen-image-vae')) {
+        score += 90
+      }
+    }
+
+    // Qwen models use qwen_image_vae
+    if (archLower.includes('qwen') && (name.includes('qwen_image_vae') || name.includes('qwen-image-vae'))) {
+      score += 85
+    }
+
     // SDXL uses specific VAE
     if (archLower.includes('sdxl') && name.includes('sdxl')) {
       score += 80

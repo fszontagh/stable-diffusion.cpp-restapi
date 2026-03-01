@@ -547,6 +547,29 @@
         "width": 832,
         "height": 480
       }
+    },
+    "Anima": {
+      "name": "Anima",
+      "description": "CircleStone Labs Anima model. Requires Qwen Image VAE and Qwen3 0.6B Base LLM as text encoder.",
+      "aliases": ["Anima-preview", "anima-preview"],
+      "requiredComponents": {
+        "vae": "qwen_image_vae.safetensors",
+        "llm": "Qwen3-0.6B-Base (GGUF or safetensors)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 6.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
     }
   },
   "version": 2,

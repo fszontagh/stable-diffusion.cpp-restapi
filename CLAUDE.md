@@ -133,8 +133,29 @@ curl http://localhost:8080/health
 curl -s http://localhost:8080/health | jq '.features.experimental_offload'
 ```
 
+## Supported Model Architectures
+
+Architecture presets are defined in `data/model_architectures.json` and auto-reloaded on change.
+
+**Key architectures:**
+- SD1/SD2/SDXL: Standard Stable Diffusion (VAE optional)
+- SD3: Requires CLIP-L, CLIP-G, T5-XXL
+- Flux: Requires VAE (ae.safetensors), CLIP-L, T5-XXL
+- Flux2: Requires flux2_ae VAE and LLM (Mistral-Small or Qwen3)
+- Z-Image: Fast model requiring ae.gguf VAE and Qwen3 4B LLM
+- Qwen-Image: Requires qwen_image_vae and Qwen2.5-VL 7B LLM
+- Anima: Requires qwen_image_vae and Qwen3 0.6B Base LLM
+- Chroma: Requires ae.safetensors VAE and T5-XXL
+- WAN: Video generation requiring video VAE and T5-XXL
+
+**Adding new architecture:**
+1. Add entry to `data/model_architectures.json`
+2. Add component suggestions to `webui/src/composables/useArchitectures.ts`
+3. Auto-detection happens via tensor name patterns in sd.cpp's model.cpp
+
 ## Common Issues
 
 - **WebUI shows "Loading application..."**: Check if mutex is held too long blocking /health endpoint
 - **ESRGAN models not showing**: Only .pth files that are ZIP archives are supported (magic bytes check)
 - **Upscaler progress not showing**: Ensure progress callback uses "report-all mode" (expected_steps=0)
+- **Anima model not detected**: Ensure sd.cpp fork is updated (delete build/_deps/stable-diffusion-src and rebuild)
