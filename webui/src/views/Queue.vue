@@ -1012,8 +1012,8 @@ async function sendImageToUpscale(outputPath: string) {
 
             <!-- Outputs for completed jobs -->
             <div v-else-if="job.status === 'completed' && job.outputs.length > 0" class="job-outputs">
-              <!-- Source image for upscale jobs -->
-              <template v-if="job.type === 'upscale'">
+              <!-- Source image for upscale and img2img jobs -->
+              <template v-if="job.type === 'upscale' || job.type === 'img2img'">
                 <div class="source-image">
                   <span class="source-label">Source</span>
                   <button
@@ -1233,8 +1233,8 @@ async function sendImageToUpscale(outputPath: string) {
                   </div>
                 </div>
                 <div v-else-if="job.status === 'completed' && job.outputs.length > 0" class="job-outputs">
-                  <!-- Source image for upscale jobs -->
-                  <template v-if="job.type === 'upscale'">
+                  <!-- Source image for upscale and img2img jobs -->
+                  <template v-if="job.type === 'upscale' || job.type === 'img2img'">
                     <div class="source-image">
                       <span class="source-label">Source</span>
                       <button
