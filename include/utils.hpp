@@ -128,5 +128,12 @@ std::vector<std::string> list_files(
  */
 std::string sanitize_filename(const std::string& filename);
 
+/**
+ * Check if file is a ZIP archive (by magic bytes)
+ * @param filepath Path to file
+ * @return true if file starts with ZIP signature (PK)
+ */
+bool is_zip_archive(const std::string& filepath);
+
 } // namespace utils
 } // namespace sdcpp

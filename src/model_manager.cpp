@@ -308,20 +308,29 @@ void ModelManager::scan_directory(const std::string& base_path, ModelType type) 
     if (base_path.empty() || !utils::directory_exists(base_path)) {
         return;
     }
-    
+
     std::vector<std::string> extensions = {".safetensors", ".gguf", ".ckpt", ".pt", ".pth"};
     auto files = utils::list_files(base_path, extensions, true);
-    
+
     for (const auto& rel_path : files) {
         std::string full_path = (fs::path(base_path) / rel_path).string();
-        
+        std::string ext = utils::get_file_extension(full_path);
+
+        // For ESRGAN models, .pth/.pt files must be ZIP-based (PyTorch ZIP archives).
+        // Plain serialized .pth files are not supported by sd.cpp - skip them.
+        if (type == ModelType::ESRGAN && (ext == "pth" || ext == "pt")) {
+            if (!utils::is_zip_archive(full_path)) {
+                continue;  // Skip unsupported format
+            }
+        }
+
         ModelInfo info;
         info.name = rel_path;
         info.full_path = full_path;
         info.type = type;
-        info.file_extension = utils::get_file_extension(full_path);
+        info.file_extension = ext;
         info.file_size = utils::get_file_size(full_path);
-        
+
         models_[type][rel_path] = info;
     }
 }
