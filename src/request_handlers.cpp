@@ -1479,8 +1479,10 @@ std::string RequestHandlers::generate_directory_html(const std::string& dir_path
         }
         .lightbox.active { display: flex; }
         .lightbox img, .lightbox video {
-            max-width: 95%;
-            max-height: 95%;
+            max-width: calc(100vw - 80px);
+            max-height: calc(100vh - 80px);
+            width: auto;
+            height: auto;
             object-fit: contain;
             border-radius: 8px;
         }
