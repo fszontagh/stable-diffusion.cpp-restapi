@@ -24,6 +24,9 @@ let cooldownTimer: ReturnType<typeof setTimeout> | null = null
 // Prompt persistence keys
 const PROMPT_STORAGE_KEY = 'generateSettings_prompt'
 const NEGATIVE_PROMPT_STORAGE_KEY = 'generateSettings_negativePrompt'
+const INIT_IMAGE_STORAGE_KEY = 'generateSettings_initImage'
+const MASK_IMAGE_STORAGE_KEY = 'generateSettings_maskImage'
+const CONTROL_IMAGE_STORAGE_KEY = 'generateSettings_controlImage'
 
 // Common params
 const prompt = ref('')
@@ -219,6 +222,49 @@ const debouncedSaveNegativePrompt = useDebounceFn(() => {
 // Watch prompts for localStorage persistence
 watch(prompt, debouncedSavePrompt)
 watch(negativePrompt, debouncedSaveNegativePrompt)
+
+// Debounced image persistence to sessionStorage (separate from prompts due to size)
+const debouncedSaveInitImage = useDebounceFn(() => {
+  if (initImage.value) {
+    try {
+      sessionStorage.setItem(INIT_IMAGE_STORAGE_KEY, initImage.value)
+    } catch (e) {
+      // Storage quota exceeded - just skip
+      console.warn('Failed to persist init image:', e)
+    }
+  } else {
+    sessionStorage.removeItem(INIT_IMAGE_STORAGE_KEY)
+  }
+}, 500)
+
+const debouncedSaveMaskImage = useDebounceFn(() => {
+  if (maskImage.value) {
+    try {
+      sessionStorage.setItem(MASK_IMAGE_STORAGE_KEY, maskImage.value)
+    } catch (e) {
+      console.warn('Failed to persist mask image:', e)
+    }
+  } else {
+    sessionStorage.removeItem(MASK_IMAGE_STORAGE_KEY)
+  }
+}, 500)
+
+const debouncedSaveControlImage = useDebounceFn(() => {
+  if (controlImage.value) {
+    try {
+      sessionStorage.setItem(CONTROL_IMAGE_STORAGE_KEY, controlImage.value)
+    } catch (e) {
+      console.warn('Failed to persist control image:', e)
+    }
+  } else {
+    sessionStorage.removeItem(CONTROL_IMAGE_STORAGE_KEY)
+  }
+}, 500)
+
+// Watch images for sessionStorage persistence
+watch(initImage, debouncedSaveInitImage)
+watch(maskImage, debouncedSaveMaskImage)
+watch(controlImage, debouncedSaveControlImage)
 
 // Build final prompt with LoRAs
 function buildPromptWithLoras(basePrompt: string, loras: LoraEntry[]): string {
@@ -480,7 +526,7 @@ const schedulers = computed(() =>
     : ['discrete', 'karras', 'exponential', 'ays', 'gits', 'sgm_uniform', 'simple', 'smoothstep', 'kl_optimal', 'lcm', 'bong_tangent']
 )
 
-// Recommended settings per model architecture
+// Recommended settings per model architecture - now loaded from architecture JSON
 interface RecommendedSettings {
   sampler: string
   scheduler: string
@@ -494,119 +540,50 @@ interface RecommendedSettings {
   easycache?: boolean
 }
 
-const modelRecommendations: Record<string, RecommendedSettings> = {
-  'Z-Image': {
-    sampler: 'euler',
-    scheduler: 'smoothstep',
-    steps: 9,
-    cfgScale: 1.0,
-    distilledGuidance: 3.5,
-    clipSkip: -1,
-    width: 1024,
-    height: 1024,
-    easycache: true
-  },
-  'Flux': {
-    sampler: 'euler',
-    scheduler: 'simple',
-    steps: 20,
-    cfgScale: 1.0,
-    distilledGuidance: 3.5,
-    clipSkip: -1,
-    width: 1024,
-    height: 1024
-  },
-  'Flux Schnell': {
-    sampler: 'euler',
-    scheduler: 'simple',
-    steps: 4,
-    cfgScale: 1.0,
-    distilledGuidance: 0.0,
-    clipSkip: -1,
-    width: 1024,
-    height: 1024
-  },
-  'SD3': {
-    sampler: 'euler',
-    scheduler: 'simple',
-    steps: 28,
-    cfgScale: 4.5,
-    distilledGuidance: 0.0,
-    clipSkip: -1,
-    width: 1024,
-    height: 1024
-  },
-  'SDXL': {
-    sampler: 'dpm++2m',
-    scheduler: 'karras',
-    steps: 25,
-    cfgScale: 7.0,
-    distilledGuidance: 0.0,
-    clipSkip: -1,
-    width: 1024,
-    height: 1024
-  },
-  'SD1': {
-    sampler: 'euler_a',
-    scheduler: 'karras',
-    steps: 20,
-    cfgScale: 7.0,
-    distilledGuidance: 0.0,
-    clipSkip: -1,
-    width: 512,
-    height: 512
-  },
-  'SD2': {
-    sampler: 'euler_a',
-    scheduler: 'karras',
-    steps: 20,
-    cfgScale: 7.0,
-    distilledGuidance: 0.0,
-    clipSkip: -1,
-    width: 768,
-    height: 768
-  },
-  'Wan': {
-    sampler: 'euler',
-    scheduler: 'simple',
-    steps: 30,
-    cfgScale: 5.0,
-    distilledGuidance: 0.0,
-    clipSkip: -1,
-    width: 832,
-    height: 480
-  },
-  'Chroma': {
-    sampler: 'euler',
-    scheduler: 'simple',
-    steps: 20,
-    cfgScale: 1.0,
-    distilledGuidance: 4.0,
-    clipSkip: -1,
-    width: 1024,
-    height: 1024
-  }
-}
-
-// Get recommended settings for current model
+// Get recommended settings for current model from architecture JSON
 const recommended = computed((): RecommendedSettings | null => {
-  const arch = store.modelArchitecture
-  if (!arch) return null
+  const archName = store.modelArchitecture
+  if (!archName || !store.architectures?.architectures) return null
 
   // Try exact match first
-  if (modelRecommendations[arch]) {
-    return modelRecommendations[arch]
-  }
+  let archData = store.architectures.architectures[archName]
 
-  // Try partial match (e.g., "SD1.5" matches "SD1")
-  for (const key of Object.keys(modelRecommendations)) {
-    if (arch.toLowerCase().includes(key.toLowerCase()) ||
-        key.toLowerCase().includes(arch.toLowerCase())) {
-      return modelRecommendations[key]
+  // Try case-insensitive match
+  if (!archData) {
+    for (const [key, value] of Object.entries(store.architectures.architectures)) {
+      if (key.toLowerCase() === archName.toLowerCase()) {
+        archData = value
+        break
+      }
     }
   }
 
-  return null
+  // Try partial match (e.g., "Qwen Image Edit" matches "Qwen")
+  if (!archData) {
+    for (const [key, value] of Object.entries(store.architectures.architectures)) {
+      if (archName.toLowerCase().includes(key.toLowerCase()) ||
+          key.toLowerCase().includes(archName.toLowerCase())) {
+        archData = value
+        break
+      }
+    }
+  }
+
+  if (!archData?.generationDefaults) return null
+
+  const defaults = archData.generationDefaults
+  return {
+    sampler: defaults.sampler || 'euler',
+    scheduler: defaults.scheduler || 'discrete',
+    steps: defaults.steps || 20,
+    cfgScale: defaults.cfg_scale ?? 7.0,
+    distilledGuidance: defaults.distilled_guidance ?? 0.0,
+    clipSkip: defaults.clip_skip ?? -1,
+    width: defaults.width || 1024,
+    height: defaults.height || 1024,
+    slgScale: defaults.slg_scale,
+    easycache: defaults.easycache
+  }
 })
 
 // Check if a setting differs from recommended
@@ -842,6 +819,20 @@ onMounted(async () => {
     }
     if (savedNegativePrompt !== null) {
       negativePrompt.value = savedNegativePrompt
+    }
+
+    // Restore images from sessionStorage
+    const savedInitImage = sessionStorage.getItem(INIT_IMAGE_STORAGE_KEY)
+    const savedMaskImage = sessionStorage.getItem(MASK_IMAGE_STORAGE_KEY)
+    const savedControlImage = sessionStorage.getItem(CONTROL_IMAGE_STORAGE_KEY)
+    if (savedInitImage) {
+      initImage.value = savedInitImage
+    }
+    if (savedMaskImage) {
+      maskImage.value = savedMaskImage
+    }
+    if (savedControlImage) {
+      controlImage.value = savedControlImage
     }
   }
 })
