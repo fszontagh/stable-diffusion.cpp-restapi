@@ -435,8 +435,12 @@ async function deleteJob(jobId: string) {
   deleting.value = jobId
   try {
     await api.deleteJobs([jobId])
+    // Optimistically remove from local state for instant UI feedback
+    if (store.queue?.items) {
+      store.queue.items = store.queue.items.filter(j => j.job_id !== jobId)
+    }
     store.showToast('Job deleted', 'success')
-    store.fetchQueue()
+    await store.fetchQueue()
   } catch (e) {
     store.showToast(e instanceof Error ? e.message : 'Failed to delete job', 'error')
   } finally {
