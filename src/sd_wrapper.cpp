@@ -338,12 +338,15 @@ void SDWrapper::internal_progress_callback(int step, int steps, float time, void
     // Determine which phase this callback is from
     // - Diffusion phase: steps matches expected_diffusion_steps_
     // - VAE/other phase: steps differs from expected
+    // - Report-all mode: expected_diffusion_steps_ == 0 means report all progress (for upscale, etc.)
     bool is_diffusion_phase = (expected_diffusion_steps_ > 0 && steps == expected_diffusion_steps_);
     bool is_other_phase = (steps > 0 && steps != expected_diffusion_steps_);
+    bool report_all_mode = (expected_diffusion_steps_ == 0);
 
-    // Only report diffusion progress to the UI callback
-    // This prevents VAE tiling steps from confusing the UI
-    if (progress_callback_ && is_diffusion_phase) {
+    // Report progress to UI callback:
+    // - In diffusion phase (txt2img, img2img, etc.)
+    // - In report-all mode (upscale, where we want to see VAE tiling progress)
+    if (progress_callback_ && (is_diffusion_phase || report_all_mode)) {
         progress_callback_(step, steps);
     }
 

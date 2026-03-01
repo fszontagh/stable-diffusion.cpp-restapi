@@ -1370,11 +1370,18 @@ std::vector<std::string> QueueManager::process_upscale_unlocked(
         throw std::runtime_error("No upscaler loaded. Load an ESRGAN model first using /upscaler/load");
     }
 
+    // Set up progress callback for upscale (expected_steps=0 enables report-all mode)
+    SDWrapper::set_progress_callback([this](int step, int total) {
+        update_progress(step, total);
+    }, 0);
+
     auto outputs = SDWrapper::upscale_image(
         upscaler_ctx, params,
         output_dir_,
         job_id
     );
+
+    SDWrapper::clear_progress_callback();
 
     // Save config.json with all parameters (including defaults)
     save_job_config(job_id, GenerationType::Upscale, full_params);
