@@ -83,6 +83,12 @@ endif()
 #
 include(FetchContent)
 
+# Allow FetchContent_Populate for stable-diffusion.cpp (we need to patch between
+# populate and add_subdirectory, which FetchContent_MakeAvailable doesn't support)
+if(POLICY CMP0169)
+    cmake_policy(SET CMP0169 OLD)
+endif()
+
 # cpp-httplib (header-only HTTP library)
 FetchContent_Declare(
     httplib
