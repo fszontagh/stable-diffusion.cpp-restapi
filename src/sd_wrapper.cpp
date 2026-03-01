@@ -1450,18 +1450,56 @@ std::vector<std::string> SDWrapper::generate_img2img(
         gen_params.sample_params.guidance.slg.layer_end = params.slg_end;
     }
 
-    // Set init image
-    gen_params.init_image.width = params.init_image_width;
-    gen_params.init_image.height = params.init_image_height;
-    gen_params.init_image.channel = params.init_image_channels;
-    gen_params.init_image.data = const_cast<uint8_t*>(params.init_image_data.data());
+    // Set init image - resize if dimensions don't match requested output size
+    std::vector<uint8_t> resized_init_image;
+    const uint8_t* init_image_ptr = params.init_image_data.data();
+    int init_width = params.init_image_width;
+    int init_height = params.init_image_height;
 
-    // Set mask image for inpainting
+    if (params.init_image_width != params.width || params.init_image_height != params.height) {
+        std::cout << "[SDWrapper] Resizing init image from " << params.init_image_width << "x" << params.init_image_height
+                  << " to " << params.width << "x" << params.height << std::endl;
+        resized_init_image = SDWrapper::resize_image_bilinear(
+            params.init_image_data.data(),
+            params.init_image_width, params.init_image_height,
+            params.init_image_channels,
+            params.width, params.height
+        );
+        init_image_ptr = resized_init_image.data();
+        init_width = params.width;
+        init_height = params.height;
+    }
+
+    gen_params.init_image.width = init_width;
+    gen_params.init_image.height = init_height;
+    gen_params.init_image.channel = params.init_image_channels;
+    gen_params.init_image.data = const_cast<uint8_t*>(init_image_ptr);
+
+    // Set mask image for inpainting - resize if needed to match init image
+    std::vector<uint8_t> resized_mask_image;
     if (!params.mask_image_data.empty()) {
-        gen_params.mask_image.width = params.mask_image_width;
-        gen_params.mask_image.height = params.mask_image_height;
+        const uint8_t* mask_ptr = params.mask_image_data.data();
+        int mask_width = params.mask_image_width;
+        int mask_height = params.mask_image_height;
+
+        if (params.mask_image_width != init_width || params.mask_image_height != init_height) {
+            std::cout << "[SDWrapper] Resizing mask image from " << params.mask_image_width << "x" << params.mask_image_height
+                      << " to " << init_width << "x" << init_height << std::endl;
+            resized_mask_image = SDWrapper::resize_image_bilinear(
+                params.mask_image_data.data(),
+                params.mask_image_width, params.mask_image_height,
+                1,  // Grayscale mask
+                init_width, init_height
+            );
+            mask_ptr = resized_mask_image.data();
+            mask_width = init_width;
+            mask_height = init_height;
+        }
+
+        gen_params.mask_image.width = mask_width;
+        gen_params.mask_image.height = mask_height;
         gen_params.mask_image.channel = 1;  // Grayscale mask
-        gen_params.mask_image.data = const_cast<uint8_t*>(params.mask_image_data.data());
+        gen_params.mask_image.data = const_cast<uint8_t*>(mask_ptr);
     } else {
         gen_params.mask_image.data = nullptr;
     }
