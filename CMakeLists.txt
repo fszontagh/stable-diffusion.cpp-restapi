@@ -201,7 +201,7 @@ else()
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        b314d80
+            GIT_TAG        5792c66
             GIT_SHALLOW    TRUE
         )
     endif()
