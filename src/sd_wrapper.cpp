@@ -1477,6 +1477,11 @@ std::vector<std::string> SDWrapper::generate_img2img(
     int aligned_width = align_to_multiple(params.width, 64);
     int aligned_height = align_to_multiple(params.height, 64);
 
+    // Update output dimensions to aligned values - sd.cpp requires init image
+    // dimensions to match output dimensions exactly
+    gen_params.width = aligned_width;
+    gen_params.height = aligned_height;
+
     std::vector<uint8_t> resized_init_image;
     const uint8_t* init_image_ptr = params.init_image_data.data();
     int init_width = params.init_image_width;
