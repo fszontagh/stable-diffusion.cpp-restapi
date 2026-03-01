@@ -54,6 +54,7 @@ static sd_offload_mode_t string_to_offload_mode(const std::string& str) {
     if (str == "cond_only") return SD_OFFLOAD_COND_ONLY;
     if (str == "cond_diffusion") return SD_OFFLOAD_COND_DIFFUSION;
     if (str == "aggressive") return SD_OFFLOAD_AGGRESSIVE;
+    if (str == "layer_streaming") return SD_OFFLOAD_LAYER_STREAMING;
     return SD_OFFLOAD_NONE;  // default
 }
 
@@ -251,6 +252,13 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.reload_diffusion = opts.value("reload_diffusion", true);
         params.log_offload_events = opts.value("log_offload_events", true);
         params.min_offload_size_mb = opts.value("min_offload_size_mb", 0);
+        params.target_free_vram_mb = opts.value("target_free_vram_mb", 0);
+
+        // Layer streaming options
+        params.layer_streaming_enabled = opts.value("layer_streaming_enabled", false);
+        params.streaming_prefetch_layers = opts.value("streaming_prefetch_layers", 1);
+        params.streaming_keep_layers_behind = opts.value("streaming_keep_layers_behind", 0);
+        params.streaming_min_free_vram_mb = opts.value("streaming_min_free_vram_mb", 0);
 #endif
     }
 
@@ -796,6 +804,13 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.offload_config.reload_diffusion = params.reload_diffusion;
     ctx_params.offload_config.log_offload_events = params.log_offload_events;
     ctx_params.offload_config.min_offload_size = params.min_offload_size_mb * 1024 * 1024;  // Convert MB to bytes
+    ctx_params.offload_config.target_free_vram = params.target_free_vram_mb * 1024 * 1024;  // Convert MB to bytes
+
+    // Layer streaming options
+    ctx_params.offload_config.layer_streaming_enabled = params.layer_streaming_enabled;
+    ctx_params.offload_config.streaming_prefetch_layers = params.streaming_prefetch_layers;
+    ctx_params.offload_config.streaming_keep_layers_behind = params.streaming_keep_layers_behind;
+    ctx_params.offload_config.streaming_min_free_vram = params.streaming_min_free_vram_mb * 1024 * 1024;  // Convert MB to bytes
 #endif
 
     std::cout << "[ModelManager] Loading model: " << params.model_name << std::endl;
@@ -924,6 +939,13 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["reload_diffusion"] = params.reload_diffusion;
     loaded_options_["log_offload_events"] = params.log_offload_events;
     loaded_options_["min_offload_size_mb"] = params.min_offload_size_mb;
+    loaded_options_["target_free_vram_mb"] = params.target_free_vram_mb;
+
+    // Layer streaming options
+    loaded_options_["layer_streaming_enabled"] = params.layer_streaming_enabled;
+    loaded_options_["streaming_prefetch_layers"] = params.streaming_prefetch_layers;
+    loaded_options_["streaming_keep_layers_behind"] = params.streaming_keep_layers_behind;
+    loaded_options_["streaming_min_free_vram_mb"] = params.streaming_min_free_vram_mb;
 #endif
 
     // Set atomic flag for lock-free checks

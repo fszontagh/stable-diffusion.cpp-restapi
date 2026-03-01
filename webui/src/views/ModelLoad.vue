@@ -46,7 +46,13 @@ const loadParams = ref<LoadModelParams>({
     offload_cond_stage: true,
     offload_diffusion: false,
     reload_cond_stage: true,
-    reload_diffusion: true
+    reload_diffusion: true,
+    target_free_vram_mb: 0,
+    // Layer streaming options
+    layer_streaming_enabled: false,
+    streaming_prefetch_layers: 1,
+    streaming_keep_layers_behind: 0,
+    streaming_min_free_vram_mb: 0
   }
 })
 
@@ -225,7 +231,13 @@ onMounted(async () => {
           offload_cond_stage: store.loadOptions.offload_cond_stage ?? loadParams.value.options?.offload_cond_stage ?? true,
           offload_diffusion: store.loadOptions.offload_diffusion ?? loadParams.value.options?.offload_diffusion ?? false,
           reload_cond_stage: store.loadOptions.reload_cond_stage ?? loadParams.value.options?.reload_cond_stage ?? true,
-          reload_diffusion: store.loadOptions.reload_diffusion ?? loadParams.value.options?.reload_diffusion ?? true
+          reload_diffusion: store.loadOptions.reload_diffusion ?? loadParams.value.options?.reload_diffusion ?? true,
+          target_free_vram_mb: store.loadOptions.target_free_vram_mb ?? loadParams.value.options?.target_free_vram_mb ?? 0,
+          // Layer streaming options
+          layer_streaming_enabled: store.loadOptions.layer_streaming_enabled ?? loadParams.value.options?.layer_streaming_enabled ?? false,
+          streaming_prefetch_layers: store.loadOptions.streaming_prefetch_layers ?? loadParams.value.options?.streaming_prefetch_layers ?? 1,
+          streaming_keep_layers_behind: store.loadOptions.streaming_keep_layers_behind ?? loadParams.value.options?.streaming_keep_layers_behind ?? 0,
+          streaming_min_free_vram_mb: store.loadOptions.streaming_min_free_vram_mb ?? loadParams.value.options?.streaming_min_free_vram_mb ?? 0
         }
       }
 
@@ -622,6 +634,7 @@ watch(selectedArchitecture, () => {
               <option value="cond_only">After Conditioning (offload LLM/CLIP)</option>
               <option value="cond_diffusion">After Cond + Diffusion</option>
               <option value="aggressive">Aggressive (offload each component)</option>
+              <option value="layer_streaming">Layer Streaming (for models larger than VRAM)</option>
             </select>
             <small class="form-hint">
               {{ getOptionDesc('offload_mode')?.description || 'Temporarily move model components to CPU during generation to free VRAM for VAE decode.' }}
@@ -660,6 +673,64 @@ watch(selectedArchitecture, () => {
                 <input v-model="loadParams.options!.reload_diffusion" type="checkbox" />
                 <span>Reload diffusion model after generation</span>
               </label>
+            </div>
+
+            <!-- Advanced VRAM settings -->
+            <div class="form-group mt-3">
+              <label class="form-label">Target Free VRAM (MB)</label>
+              <input
+                v-model.number="loadParams.options!.target_free_vram_mb"
+                type="number"
+                class="form-input"
+                min="0"
+                step="256"
+                placeholder="0 = always offload"
+              />
+              <small class="form-hint">Target free VRAM before VAE decode. 0 = always offload when mode is set.</small>
+            </div>
+          </div>
+
+          <!-- Layer Streaming Options (for layer_streaming mode) -->
+          <div v-if="loadParams.options!.offload_mode === 'layer_streaming'" class="layer-streaming-options">
+            <h4 class="options-group-title">Layer Streaming Configuration</h4>
+            <p class="form-hint mb-3">
+              Layer streaming enables running models larger than your VRAM by streaming layers one-by-one.
+            </p>
+
+            <div class="form-group">
+              <label class="form-label">Prefetch Layers</label>
+              <input
+                v-model.number="loadParams.options!.streaming_prefetch_layers"
+                type="number"
+                class="form-input"
+                min="0"
+                max="4"
+              />
+              <small class="form-hint">Number of layers to prefetch ahead (default: 1). Higher = more VRAM, potentially faster.</small>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Keep Layers Behind</label>
+              <input
+                v-model.number="loadParams.options!.streaming_keep_layers_behind"
+                type="number"
+                class="form-input"
+                min="0"
+                max="4"
+              />
+              <small class="form-hint">Layers to keep after execution for skip connections. Increase if you see artifacts.</small>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Min Free VRAM (MB)</label>
+              <input
+                v-model.number="loadParams.options!.streaming_min_free_vram_mb"
+                type="number"
+                class="form-input"
+                min="0"
+                step="256"
+              />
+              <small class="form-hint">Minimum VRAM to keep free during streaming. 0 = no limit.</small>
             </div>
           </div>
         </div>
@@ -921,6 +992,16 @@ details[open] .accordion-header::before {
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border-color);
+}
+
+.layer-streaming-options {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.layer-streaming-options .options-group-title {
+  margin-bottom: 0.5rem;
 }
 
 .form-footer {
