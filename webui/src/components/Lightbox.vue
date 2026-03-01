@@ -216,16 +216,17 @@ onUnmounted(() => {
 }
 
 .lightbox-content {
-  max-width: calc(100% - 160px);
-  max-height: calc(100% - 160px);
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 80px;
 }
 
 .lightbox-image {
-  max-width: 100%;
-  max-height: 100%;
+  max-width: calc(100vw - 160px);
+  max-height: calc(100vh - 160px);
+  width: auto;
+  height: auto;
   object-fit: contain;
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
