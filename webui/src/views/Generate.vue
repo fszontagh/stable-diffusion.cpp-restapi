@@ -571,7 +571,18 @@ const recommended = computed((): RecommendedSettings | null => {
 
   if (!archData?.generationDefaults) return null
 
-  const defaults = archData.generationDefaults
+  const defaults = archData.generationDefaults as {
+    sampler?: string
+    scheduler?: string
+    steps?: number
+    cfg_scale?: number
+    distilled_guidance?: number
+    clip_skip?: number
+    width?: number
+    height?: number
+    slg_scale?: number
+    easycache?: boolean
+  }
   return {
     sampler: defaults.sampler || 'euler',
     scheduler: defaults.scheduler || 'discrete',
