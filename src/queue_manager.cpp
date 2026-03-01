@@ -1356,8 +1356,15 @@ std::vector<std::string> QueueManager::process_upscale_unlocked(
         auto_unload = job_params["auto_unload"].get<bool>();
     }
 
-    std::lock_guard<std::mutex> ctx_lock(model_manager_.get_upscaler_mutex());
-    auto* upscaler_ctx = model_manager_.get_upscaler_context();
+    // Get upscaler context with brief lock - don't hold mutex during the actual upscale
+    // operation as it can take minutes and would block health endpoint checks.
+    // This is safe because the queue worker is single-threaded, so no concurrent
+    // load/unload can happen while a job is processing.
+    upscaler_ctx_t* upscaler_ctx = nullptr;
+    {
+        std::lock_guard<std::mutex> ctx_lock(model_manager_.get_upscaler_mutex());
+        upscaler_ctx = model_manager_.get_upscaler_context();
+    }
 
     if (!upscaler_ctx) {
         throw std::runtime_error("No upscaler loaded. Load an ESRGAN model first using /upscaler/load");
