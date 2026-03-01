@@ -1012,6 +1012,20 @@ async function sendImageToUpscale(outputPath: string) {
 
             <!-- Outputs for completed jobs -->
             <div v-else-if="job.status === 'completed' && job.outputs.length > 0" class="job-outputs">
+              <!-- Source image for upscale jobs -->
+              <template v-if="job.type === 'upscale'">
+                <div class="source-image">
+                  <span class="source-label">Source</span>
+                  <button
+                    class="output-thumb source-thumb"
+                    @click="openLightbox([getOutputUrl(job.job_id + '/source.png')], 0)"
+                    title="View source image"
+                  >
+                    <img :src="getThumbUrl(job.job_id + '/source.png')" alt="Source" />
+                  </button>
+                </div>
+                <span class="arrow-separator">→</span>
+              </template>
               <button
                 v-for="(output, idx) in job.outputs.slice(0, 4)"
                 :key="output"
@@ -1219,6 +1233,20 @@ async function sendImageToUpscale(outputPath: string) {
                   </div>
                 </div>
                 <div v-else-if="job.status === 'completed' && job.outputs.length > 0" class="job-outputs">
+                  <!-- Source image for upscale jobs -->
+                  <template v-if="job.type === 'upscale'">
+                    <div class="source-image">
+                      <span class="source-label">Source</span>
+                      <button
+                        class="output-thumb source-thumb"
+                        @click="openLightbox([getOutputUrl(job.job_id + '/source.png')], 0)"
+                        title="View source image"
+                      >
+                        <img :src="getThumbUrl(job.job_id + '/source.png')" alt="Source" />
+                      </button>
+                    </div>
+                    <span class="arrow-separator">→</span>
+                  </template>
                   <button
                     v-for="(output, idx) in job.outputs.slice(0, 4)"
                     :key="output"
@@ -1985,6 +2013,36 @@ async function sendImageToUpscale(outputPath: string) {
   gap: 4px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
+}
+
+.source-image {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.source-label {
+  font-size: 9px;
+  color: var(--text-muted, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.source-thumb {
+  border-color: var(--warning, #f0ad4e) !important;
+  opacity: 0.8;
+}
+
+.source-thumb:hover {
+  opacity: 1;
+}
+
+.arrow-separator {
+  color: var(--text-muted, #666);
+  font-size: 16px;
+  margin: 0 4px;
 }
 
 .output-thumb {

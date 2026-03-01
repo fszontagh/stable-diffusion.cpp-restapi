@@ -1115,6 +1115,13 @@ std::vector<std::string> SDWrapper::upscale_image(
     std::string job_output_dir = (fs::path(output_dir) / job_id).string();
     utils::create_directory(job_output_dir);
 
+    // Save source image for reference
+    std::string source_filename = "source.png";
+    std::string source_filepath = (fs::path(job_output_dir) / source_filename).string();
+    if (!save_image(source_filepath, params.image_data.data(), params.image_width, params.image_height, params.image_channels)) {
+        std::cerr << "[SDWrapper] Failed to save source image to " << source_filepath << std::endl;
+    }
+
     // Create input image structure
     sd_image_t input_image;
     input_image.width = params.image_width;

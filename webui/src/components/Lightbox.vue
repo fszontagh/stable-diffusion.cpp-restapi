@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps<{
   show: boolean
   images: string[]
   currentIndex: number
+  imageNames?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -13,9 +14,45 @@ const emit = defineEmits<{
 }>()
 
 const localIndex = ref(props.currentIndex)
+const imageWidth = ref(0)
+const imageHeight = ref(0)
+
+// Compute aspect ratio as simplified string (e.g., "16:9", "4:3", "1:1")
+const aspectRatio = computed(() => {
+  if (!imageWidth.value || !imageHeight.value) return ''
+  const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b)
+  const divisor = gcd(imageWidth.value, imageHeight.value)
+  const w = imageWidth.value / divisor
+  const h = imageHeight.value / divisor
+  // For very large ratios, show decimal approximation
+  if (w > 50 || h > 50) {
+    return (imageWidth.value / imageHeight.value).toFixed(2) + ':1'
+  }
+  return `${w}:${h}`
+})
+
+const currentImageName = computed(() => {
+  if (!props.imageNames || !props.imageNames[localIndex.value]) {
+    // Extract filename from URL path
+    const url = props.images[localIndex.value]
+    if (!url) return ''
+    const parts = url.split('/')
+    return parts[parts.length - 1] || ''
+  }
+  return props.imageNames[localIndex.value]
+})
+
+function onImageLoad(event: Event) {
+  const img = event.target as HTMLImageElement
+  imageWidth.value = img.naturalWidth
+  imageHeight.value = img.naturalHeight
+}
 
 watch(() => props.currentIndex, (val) => {
   localIndex.value = val
+  // Reset dimensions when switching images
+  imageWidth.value = 0
+  imageHeight.value = 0
 })
 
 watch(() => props.show, (val) => {
@@ -99,7 +136,16 @@ onUnmounted(() => {
               :src="images[localIndex]"
               :alt="`Image ${localIndex + 1}`"
               class="lightbox-image"
+              @load="onImageLoad"
             />
+          </div>
+
+          <div class="lightbox-info">
+            <span class="lightbox-filename">{{ currentImageName }}</span>
+            <span v-if="imageWidth && imageHeight" class="lightbox-dimensions">
+              {{ imageWidth }} × {{ imageHeight }}
+              <span class="lightbox-ratio">({{ aspectRatio }})</span>
+            </span>
           </div>
 
           <button
@@ -243,6 +289,39 @@ onUnmounted(() => {
   background: rgba(0, 0, 0, 0.5);
   padding: 6px 16px;
   border-radius: 20px;
+}
+
+.lightbox-info {
+  position: absolute;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 10px 20px;
+  border-radius: 8px;
+  max-width: calc(100% - 32px);
+}
+
+.lightbox-filename {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 500;
+  word-break: break-all;
+  text-align: center;
+}
+
+.lightbox-dimensions {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+}
+
+.lightbox-ratio {
+  color: rgba(255, 255, 255, 0.5);
+  margin-left: 4px;
 }
 
 .lightbox-thumbnails {

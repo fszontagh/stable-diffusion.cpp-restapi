@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useAppStore } from '../stores/app'
 import { api } from '../api/client'
 import ImageUploader from '../components/ImageUploader.vue'
@@ -25,7 +25,29 @@ const tileSize = ref(128)
 
 // Upscale params
 const inputImage = ref<string | undefined>()
+const inputImageWidth = ref(0)
+const inputImageHeight = ref(0)
 const repeats = ref(1)
+
+// Load image dimensions when input image changes
+function loadImageDimensions(dataUrl: string) {
+  const img = new Image()
+  img.onload = () => {
+    inputImageWidth.value = img.naturalWidth
+    inputImageHeight.value = img.naturalHeight
+  }
+  img.src = dataUrl
+}
+
+// Watch for input image changes
+watch(inputImage, (newVal) => {
+  if (newVal) {
+    loadImageDimensions(newVal)
+  } else {
+    inputImageWidth.value = 0
+    inputImageHeight.value = 0
+  }
+})
 
 // Confirmation modal for replacing loaded upscaler
 const showReplaceModal = ref(false)
@@ -219,6 +241,10 @@ onBeforeUnmount(() => {
 
       <ImageUploader v-model="inputImage" label="Input Image" />
 
+      <div v-if="inputImageWidth && inputImageHeight" class="image-info">
+        <span class="image-resolution">{{ inputImageWidth }} × {{ inputImageHeight }}</span>
+      </div>
+
       <div class="form-group">
         <label class="form-label">Repeats</label>
         <input v-model.number="repeats" type="number" class="form-input" min="1" max="4" />
@@ -256,5 +282,20 @@ onBeforeUnmount(() => {
 .empty-state-small {
   padding: 12px;
   text-align: center;
+}
+
+.image-info {
+  display: flex;
+  justify-content: center;
+  margin-top: -8px;
+  margin-bottom: 16px;
+}
+
+.image-resolution {
+  color: var(--text-secondary, #888);
+  font-size: 0.9rem;
+  background: var(--surface-secondary, rgba(255, 255, 255, 0.05));
+  padding: 4px 12px;
+  border-radius: 4px;
 }
 </style>
