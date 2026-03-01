@@ -190,11 +190,11 @@ if(SDCPP_LOCAL_SOURCE)
     add_subdirectory(${stable-diffusion_SOURCE_DIR} ${stable-diffusion_BINARY_DIR})
 else()
     if(SD_EXPERIMENTAL_OFFLOAD)
-        message(STATUS "Experimental offload: ENABLED - Using forked sd.cpp with dynamic tensor offloading")
+        message(STATUS "Experimental offload: ENABLED - Using forked sd.cpp with VRAM offloading")
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/fszontagh/stable-diffusion.cpp.git
-            GIT_TAG        feature/dynamic-tensor-offloading
+            GIT_TAG        feature/vram-offloading
             GIT_SHALLOW    TRUE
         )
     else()
