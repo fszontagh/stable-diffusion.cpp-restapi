@@ -70,7 +70,7 @@ async function loadUpscaler() {
       tile_size: tileSize.value
     })
     store.showToast('Upscaler loaded successfully', 'success')
-    await store.fetchHealth()  // Wait for health to update so upscalerLoaded reflects the change
+    await store.fetchHealth()
   } catch (e) {
     store.showToast(e instanceof Error ? e.message : 'Failed to load upscaler', 'error')
   } finally {

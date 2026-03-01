@@ -1062,6 +1062,13 @@ nlohmann::json ModelManager::get_loaded_models_info() const {
         result["loading_total_steps"] = nullptr;
     }
 
+    // Add upscaler info (independent of main model)
+    {
+        std::lock_guard<std::mutex> upscaler_lock(upscaler_mutex_);
+        result["upscaler_loaded"] = (upscaler_context_ != nullptr);
+        result["upscaler_name"] = loaded_upscaler_name_.empty() ? nullptr : nlohmann::json(loaded_upscaler_name_);
+    }
+
     if (!is_loaded) {
         result["model_name"] = nullptr;
         result["model_type"] = nullptr;
@@ -1106,13 +1113,6 @@ nlohmann::json ModelManager::get_loaded_models_info() const {
     // Include the load options used when loading the model
     if (!loaded_options_.empty()) {
         result["load_options"] = loaded_options_;
-    }
-
-    // Add upscaler info
-    {
-        std::lock_guard<std::mutex> upscaler_lock(upscaler_mutex_);
-        result["upscaler_loaded"] = (upscaler_context_ != nullptr);
-        result["upscaler_name"] = loaded_upscaler_name_.empty() ? nullptr : nlohmann::json(loaded_upscaler_name_);
     }
 
     return result;
