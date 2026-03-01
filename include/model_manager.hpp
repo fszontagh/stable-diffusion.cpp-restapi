@@ -106,7 +106,7 @@ struct ModelLoadParams {
 
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
     // Dynamic tensor offloading options (experimental - requires forked sd.cpp)
-    std::string offload_mode = "none";          // none, cond_only, cond_diffusion, aggressive
+    std::string offload_mode = "none";          // none, cond_only, cond_diffusion, aggressive, layer_streaming
     std::string vram_estimation = "dryrun";     // dryrun (accurate), formula (fast)
     bool offload_cond_stage = true;             // Offload LLM/CLIP after conditioning
     bool offload_diffusion = false;             // Offload diffusion after sampling
@@ -114,6 +114,13 @@ struct ModelLoadParams {
     bool reload_diffusion = true;               // Reload diffusion after generation
     bool log_offload_events = true;             // Log offload/reload events
     size_t min_offload_size_mb = 0;             // Minimum component size to offload (MB)
+    size_t target_free_vram_mb = 0;             // Target free VRAM before VAE decode (MB), 0 = always offload
+
+    // Layer streaming options (for layer_streaming mode - enables models larger than VRAM)
+    bool layer_streaming_enabled = false;       // Enable layer-by-layer streaming execution
+    int streaming_prefetch_layers = 1;          // Number of layers to prefetch ahead
+    int streaming_keep_layers_behind = 0;       // Layers to keep after execution (for skip connections)
+    size_t streaming_min_free_vram_mb = 0;      // Minimum VRAM to keep free during streaming (MB)
 #endif
 
     // RNG options

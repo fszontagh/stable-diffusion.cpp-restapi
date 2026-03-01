@@ -72,8 +72,15 @@ function formatOptionLabel(key: string): string {
     offload_cond_stage: 'Offload Cond Stage',
     offload_diffusion: 'Offload Diffusion',
     reload_cond_stage: 'Reload Cond Stage',
+    reload_diffusion: 'Reload Diffusion',
     log_offload_events: 'Log Offload Events',
-    min_offload_size_mb: 'Min Offload Size (MB)'
+    min_offload_size_mb: 'Min Offload Size (MB)',
+    target_free_vram_mb: 'Target Free VRAM (MB)',
+    // Layer streaming options
+    layer_streaming_enabled: 'Layer Streaming',
+    streaming_prefetch_layers: 'Prefetch Layers',
+    streaming_keep_layers_behind: 'Keep Layers Behind',
+    streaming_min_free_vram_mb: 'Streaming Min VRAM (MB)'
   }
   return labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
 }
