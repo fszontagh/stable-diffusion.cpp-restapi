@@ -1468,14 +1468,39 @@ std::vector<std::string> SDWrapper::generate_img2img(
     }
 
     // Set init image - resize to match aligned output dimensions
-    // sd.cpp aligns width/height to spatial_multiple (vae_scale * diffusion_down_factor)
-    // We align to 64 to cover all models (8*8 for worst case)
+    // sd.cpp aligns width/height to spatial_multiple (vae_scale_factor * diffusion_model_down_factor)
+    // We must use the same alignment per model architecture to avoid GGML_ASSERT mismatches
     auto align_to_multiple = [](int value, int multiple) -> int {
+        if (multiple <= 1) return value;
         return ((value + multiple - 1) / multiple) * multiple;
     };
 
-    int aligned_width = align_to_multiple(params.width, 64);
-    int aligned_height = align_to_multiple(params.height, 64);
+    // Determine spatial_multiple from loaded model version, matching sd.cpp's internal logic
+    int spatial_multiple = 8;  // Default for DiT models (most common new architectures)
+    const char* version_name = sd_get_model_version_name(ctx);
+    if (version_name) {
+        std::string ver(version_name);
+        if (ver == "Chroma Radiance") {
+            spatial_multiple = 1;   // vae=1, down=1
+        } else if (ver == "Wan 2.2 TI2V") {
+            spatial_multiple = 32;  // vae=16, down=2
+        } else if (ver == "Wan 2.x" || ver == "Wan 2.2 I2V") {
+            spatial_multiple = 16;  // vae=8, down=2
+        } else if (ver == "Flux.2" || ver == "Flux.2 klein") {
+            spatial_multiple = 16;  // vae=16, down=1
+        } else if (ver.find("SD 1") != std::string::npos ||
+                   ver.find("SD 2") != std::string::npos ||
+                   ver.find("SDXL") != std::string::npos ||
+                   ver.find("SDXS") != std::string::npos ||
+                   ver == "SVD" ||
+                   ver == "Instruct-Pix2Pix") {
+            spatial_multiple = 64;  // UNet: vae=8, down=8
+        }
+        // Everything else (SD3, Flux, Qwen Image, Anima, Z-Image, etc.) stays at 8
+    }
+
+    int aligned_width = align_to_multiple(params.width, spatial_multiple);
+    int aligned_height = align_to_multiple(params.height, spatial_multiple);
 
     // Update output dimensions to aligned values - sd.cpp requires init image
     // dimensions to match output dimensions exactly
@@ -1489,7 +1514,10 @@ std::vector<std::string> SDWrapper::generate_img2img(
 
     if (params.init_image_width != aligned_width || params.init_image_height != aligned_height) {
         std::cout << "[SDWrapper] Resizing init image from " << params.init_image_width << "x" << params.init_image_height
-                  << " to " << aligned_width << "x" << aligned_height << " (aligned from " << params.width << "x" << params.height << ")" << std::endl;
+                  << " to " << aligned_width << "x" << aligned_height
+                  << " (requested " << params.width << "x" << params.height
+                  << ", spatial_multiple=" << spatial_multiple
+                  << ", model=" << (version_name ? version_name : "unknown") << ")" << std::endl;
         resized_init_image = SDWrapper::resize_image_bilinear(
             params.init_image_data.data(),
             params.init_image_width, params.init_image_height,
@@ -1506,8 +1534,10 @@ std::vector<std::string> SDWrapper::generate_img2img(
     gen_params.init_image.channel = params.init_image_channels;
     gen_params.init_image.data = const_cast<uint8_t*>(init_image_ptr);
 
-    // Set mask image for inpainting - resize if needed to match aligned init image dimensions
+    // Set mask image - sd.cpp always requires a valid mask for img2img.
+    // If no mask provided, create a white (all-255) mask = full image, no masking.
     std::vector<uint8_t> resized_mask_image;
+    std::vector<uint8_t> default_mask_data;
     if (!params.mask_image_data.empty()) {
         const uint8_t* mask_ptr = params.mask_image_data.data();
         int mask_width = params.mask_image_width;
@@ -1529,10 +1559,15 @@ std::vector<std::string> SDWrapper::generate_img2img(
 
         gen_params.mask_image.width = mask_width;
         gen_params.mask_image.height = mask_height;
-        gen_params.mask_image.channel = 1;  // Grayscale mask
+        gen_params.mask_image.channel = 1;
         gen_params.mask_image.data = const_cast<uint8_t*>(mask_ptr);
     } else {
-        gen_params.mask_image.data = nullptr;
+        // No mask provided - create white mask at aligned dimensions (same as sd.cpp CLI)
+        default_mask_data.resize(aligned_width * aligned_height, 255);
+        gen_params.mask_image.width = aligned_width;
+        gen_params.mask_image.height = aligned_height;
+        gen_params.mask_image.channel = 1;
+        gen_params.mask_image.data = default_mask_data.data();
     }
 
     // Reference images for Flux Kontext

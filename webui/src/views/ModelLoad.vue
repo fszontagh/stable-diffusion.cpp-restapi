@@ -39,7 +39,7 @@ const loadParams = ref<LoadModelParams>({
     flash_attn: true,
     offload_to_cpu: false,
     enable_mmap: true,
-    vae_decode_only: true,
+    vae_decode_only: false,
     tae_preview_only: false,
     offload_mode: 'none',
     vram_estimation: 'dryrun',
@@ -223,7 +223,7 @@ onMounted(async () => {
           flash_attn: store.loadOptions.flash_attn ?? loadParams.value.options?.flash_attn ?? true,
           offload_to_cpu: store.loadOptions.offload_to_cpu ?? loadParams.value.options?.offload_to_cpu ?? false,
           enable_mmap: store.loadOptions.enable_mmap ?? loadParams.value.options?.enable_mmap ?? true,
-          vae_decode_only: store.loadOptions.vae_decode_only ?? loadParams.value.options?.vae_decode_only ?? true,
+          vae_decode_only: store.loadOptions.vae_decode_only ?? loadParams.value.options?.vae_decode_only ?? false,
           tae_preview_only: store.loadOptions.tae_preview_only ?? loadParams.value.options?.tae_preview_only ?? false,
           weight_type: store.loadOptions.weight_type ?? loadParams.value.options?.weight_type,
           offload_mode: store.loadOptions.offload_mode ?? loadParams.value.options?.offload_mode ?? 'none',
@@ -584,7 +584,7 @@ watch(selectedArchitecture, () => {
               <label class="form-checkbox" :title="getOptionDesc('vae_decode_only')?.description">
                 <input v-model="loadParams.options!.vae_decode_only" type="checkbox" />
                 <span>VAE Decode Only</span>
-                <span class="option-hint">Skip encoder weights (enable unless using img2img)</span>
+                <span class="option-hint">Saves memory, but disables img2img (image edit via ref_images still works)</span>
               </label>
               <label class="form-checkbox" :title="getOptionDesc('vae_tiling')?.description">
                 <input v-model="loadParams.options!.vae_tiling" type="checkbox" />
