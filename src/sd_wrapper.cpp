@@ -1259,7 +1259,7 @@ std::vector<std::string> SDWrapper::generate_txt2img(
     // No init image for txt2img
     gen_params.init_image.data = nullptr;
 
-    // Reference images for Flux Kontext
+    // Reference images for Flux Kontext / Image Edit
     std::vector<sd_image_t> ref_images;
     std::vector<std::vector<uint8_t>> ref_image_buffers;
     if (!params.ref_images_base64.empty()) {
@@ -1280,6 +1280,15 @@ std::vector<std::string> SDWrapper::generate_txt2img(
         gen_params.ref_images_count = static_cast<uint32_t>(ref_images.size());
         gen_params.auto_resize_ref_image = params.auto_resize_ref_image;
         gen_params.increase_ref_index = params.increase_ref_index;
+
+        // Save first reference image as source.png for queue display
+        if (ref_images[0].data) {
+            std::string source_filepath = (fs::path(job_output_dir) / "source.png").string();
+            if (!save_image(source_filepath, ref_images[0].data,
+                      ref_images[0].width, ref_images[0].height, ref_images[0].channel)) {
+                std::cerr << "[SDWrapper] Failed to save ref source image to " << source_filepath << std::endl;
+            }
+        }
     }
 
     // ControlNet support
