@@ -440,14 +440,19 @@ export const useAssistantStore = defineStore('assistant', () => {
       }
     }
 
-    // Try partial match
+    // Try partial match - prefer longest (most specific) key match
+    let bestMatch: ArchitecturePreset | null = null
+    let bestMatchLen = 0
     for (const [id, preset] of Object.entries(archs)) {
       if (nameLower.includes(id.toLowerCase()) || id.toLowerCase().includes(nameLower)) {
-        return preset
+        if (id.length > bestMatchLen) {
+          bestMatch = preset
+          bestMatchLen = id.length
+        }
       }
     }
 
-    return null
+    return bestMatch
   }
 
   // Get recommended settings for current model

@@ -213,17 +213,22 @@ const ArchitecturePreset* ArchitectureManager::get(const std::string& name) cons
         }
     }
 
-    // Try partial match
+    // Try partial match - prefer longest (most specific) key match
+    const ArchitecturePreset* best_match = nullptr;
+    size_t best_match_len = 0;
     for (const auto& [id, preset] : presets_) {
         std::string id_lower = id;
         std::transform(id_lower.begin(), id_lower.end(), id_lower.begin(), ::tolower);
         if (name_lower.find(id_lower) != std::string::npos ||
             id_lower.find(name_lower) != std::string::npos) {
-            return &preset;
+            if (id_lower.size() > best_match_len) {
+                best_match = &preset;
+                best_match_len = id_lower.size();
+            }
         }
     }
 
-    return nullptr;
+    return best_match;
 }
 
 int ArchitectureManager::get_default_steps(const std::string& arch_name, int fallback) const {
