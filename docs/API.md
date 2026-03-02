@@ -2,7 +2,7 @@
 
 REST API for stable-diffusion.cpp image and video generation.
 
-**Base URL:** `http://<host>:<port>`  
+**Base URL:** `http://<host>:<port>`
 **Default:** `http://localhost:8080`
 
 **Content-Type:** All requests and responses use `application/json`
@@ -12,8 +12,10 @@ REST API for stable-diffusion.cpp image and video generation.
 ## Table of Contents
 
 - [Health Check](#health-check)
+- [Memory](#memory)
 - [Model Management](#model-management)
   - [List Models](#list-models)
+  - [Refresh Models](#refresh-models)
   - [Load Model](#load-model)
   - [Unload Model](#unload-model)
   - [Get Model Hash](#get-model-hash)
@@ -29,35 +31,48 @@ REST API for stable-diffusion.cpp image and video generation.
   - [List Queue](#list-queue)
   - [Get Job Status](#get-job-status)
   - [Cancel Job](#cancel-job)
+  - [Bulk Delete Jobs](#bulk-delete-jobs)
+  - [Get Job Preview](#get-job-preview)
+- [Recycle Bin](#recycle-bin)
+  - [List Recycle Bin](#list-recycle-bin)
+  - [Restore Job](#restore-job)
+  - [Purge Job](#purge-job)
+  - [Clear Recycle Bin](#clear-recycle-bin)
+  - [Get Recycle Bin Settings](#get-recycle-bin-settings)
 - [Preview Settings](#preview-settings)
   - [Get Preview Settings](#get-preview-settings)
   - [Update Preview Settings](#update-preview-settings)
+- [Settings](#settings)
+  - [Get All Generation Defaults](#get-all-generation-defaults)
+  - [Update All Generation Defaults](#update-all-generation-defaults)
+  - [Get Generation Defaults for Mode](#get-generation-defaults-for-mode)
+  - [Update Generation Defaults for Mode](#update-generation-defaults-for-mode)
+  - [Get UI Preferences](#get-ui-preferences)
+  - [Update UI Preferences](#update-ui-preferences)
+  - [Reset Settings](#reset-settings)
 - [File Browser & Output Serving](#file-browser--output-serving)
 - [Server Options](#server-options)
+  - [Get Options](#get-options)
+  - [Get Option Descriptions](#get-option-descriptions)
 - [Model Conversion](#model-conversion)
-- [Ollama Integration](#ollama-integration)
-  - [Enhance Prompt](#enhance-prompt)
-  - [Get Enhancement History](#get-enhancement-history)
-  - [Get History Entry](#get-history-entry)
-  - [Delete History Entry](#delete-history-entry)
-  - [Clear History](#clear-history)
-  - [Get Ollama Status](#get-ollama-status)
-  - [Get Ollama Models](#get-ollama-models)
-  - [Get Ollama Settings](#get-ollama-settings)
-  - [Update Ollama Settings](#update-ollama-settings)
 - [Assistant Integration](#assistant-integration)
   - [Chat with Assistant](#chat-with-assistant)
+  - [Chat with Assistant (Streaming)](#chat-with-assistant-streaming)
   - [Get Assistant History](#get-assistant-history)
   - [Clear Assistant History](#clear-assistant-history)
   - [Get Assistant Status](#get-assistant-status)
   - [Get Assistant Settings](#get-assistant-settings)
   - [Update Assistant Settings](#update-assistant-settings)
+  - [Get Assistant Model Info](#get-assistant-model-info)
 - [Model Architecture](#model-architecture)
+  - [Get Architectures](#get-architectures)
+  - [Detect Architecture](#detect-architecture)
 - [Model Downloads](#model-downloads)
   - [Download Model](#download-model)
   - [Get CivitAI Model Info](#get-civitai-model-info)
   - [Get HuggingFace Model Info](#get-huggingface-model-info)
   - [Get Model Paths](#get-model-paths)
+- [WebSocket Support](#websocket-support)
 - [Error Responses](#error-responses)
 - [Data Types](#data-types)
 
@@ -74,9 +89,13 @@ Check server status, loaded model, and all loaded components.
 ```json
 {
     "status": "ok",
+    "version": "1.2.3",
+    "git_commit": "abc1234",
     "model_loaded": true,
     "model_loading": false,
     "loading_model_name": null,
+    "loading_step": 0,
+    "loading_total_steps": 0,
     "last_error": null,
     "model_name": "z_image_turbo-Q8_0.gguf",
     "model_type": "diffusion",
@@ -91,7 +110,39 @@ Check server status, loaded model, and all loaded components.
         "llm_vision": null
     },
     "upscaler_loaded": false,
-    "upscaler_name": null
+    "upscaler_name": null,
+    "ws_port": 8081,
+    "memory": {
+        "system": {
+            "total_bytes": 34359738368,
+            "used_bytes": 17179869184,
+            "free_bytes": 17179869184,
+            "total_mb": 32768,
+            "used_mb": 16384,
+            "free_mb": 16384,
+            "usage_percent": 50.0
+        },
+        "process": {
+            "rss_bytes": 1073741824,
+            "virtual_bytes": 2147483648,
+            "rss_mb": 1024,
+            "virtual_mb": 2048
+        },
+        "gpu": {
+            "available": true,
+            "name": "NVIDIA GeForce RTX 4090",
+            "total_bytes": 25769803776,
+            "used_bytes": 8589934592,
+            "free_bytes": 17179869184,
+            "total_mb": 24576,
+            "used_mb": 8192,
+            "free_mb": 16384,
+            "usage_percent": 33.3
+        }
+    },
+    "features": {
+        "experimental_offload": false
+    }
 }
 ```
 
@@ -100,43 +151,42 @@ Check server status, loaded model, and all loaded components.
 ```json
 {
     "status": "ok",
+    "version": "1.2.3",
+    "git_commit": "abc1234",
     "model_loaded": false,
     "model_loading": true,
     "loading_model_name": "flux1-dev-Q4_K_S.gguf",
+    "loading_step": 3,
+    "loading_total_steps": 10,
     "last_error": null,
     "model_name": null,
     "model_type": null,
     "model_architecture": null,
-    "loaded_components": {}
-}
-```
-
-**Response after load failure:**
-
-```json
-{
-    "status": "ok",
-    "model_loaded": false,
-    "model_loading": false,
-    "loading_model_name": null,
-    "last_error": "Failed to load model: invalid_model.gguf",
-    "model_name": null,
-    "model_type": null,
-    "model_architecture": null,
-    "loaded_components": {}
+    "loaded_components": {},
+    "upscaler_loaded": false,
+    "upscaler_name": null,
+    "ws_port": 8081,
+    "memory": { "..." : "..." },
+    "features": {
+        "experimental_offload": false
+    }
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `status` | string | Always `"ok"` if server is running |
+| `version` | string | Server version string |
+| `git_commit` | string | Git commit hash of the build |
 | `model_loaded` | boolean | Whether a model is currently loaded |
 | `model_loading` | boolean | Whether a model is currently being loaded |
 | `loading_model_name` | string\|null | Name of model being loaded, or null if not loading |
+| `loading_step` | integer | Current loading step (0 if not loading) |
+| `loading_total_steps` | integer | Total loading steps (0 if not loading) |
 | `last_error` | string\|null | Last model load error message, or null if no error |
 | `model_name` | string\|null | Name of loaded model, or null if none |
-| `model_type` | string\|null | Type of loaded model (`checkpoint` or `diffusion`), or null if none |
-| `model_architecture` | string\|null | Auto-detected architecture (e.g., `Z-Image`, `Flux`, `SDXL`, `SD1.5`), or null |
+| `model_type` | string\|null | Type of loaded model (`checkpoint` or `diffusion`), or null |
+| `model_architecture` | string\|null | Auto-detected architecture (e.g., `Z-Image`, `Flux`, `SDXL`), or null |
 | `loaded_components` | object | Component models loaded with the main model |
 | `loaded_components.vae` | string\|null | Loaded VAE model name |
 | `loaded_components.clip_l` | string\|null | Loaded CLIP-L model name |
@@ -146,7 +196,75 @@ Check server status, loaded model, and all loaded components.
 | `loaded_components.llm` | string\|null | Loaded LLM model name |
 | `loaded_components.llm_vision` | string\|null | Loaded LLM vision model name |
 | `upscaler_loaded` | boolean | Whether an upscaler is currently loaded |
-| `upscaler_name` | string\|null | Name of loaded upscaler model, or null if none |
+| `upscaler_name` | string\|null | Name of loaded upscaler model, or null |
+| `ws_port` | integer\|null | WebSocket port for real-time updates, or null if disabled |
+| `memory` | object | System, process, and GPU memory information (see [Memory](#memory)) |
+| `features` | object | Feature flags |
+| `features.experimental_offload` | boolean | Whether experimental VRAM offloading is compiled in |
+
+---
+
+## Memory
+
+### `GET /memory`
+
+Get detailed system, process, and GPU memory information.
+
+**Response:**
+
+```json
+{
+    "system": {
+        "total_bytes": 34359738368,
+        "used_bytes": 17179869184,
+        "free_bytes": 17179869184,
+        "total_mb": 32768,
+        "used_mb": 16384,
+        "free_mb": 16384,
+        "usage_percent": 50.0
+    },
+    "process": {
+        "rss_bytes": 1073741824,
+        "virtual_bytes": 2147483648,
+        "rss_mb": 1024,
+        "virtual_mb": 2048
+    },
+    "gpu": {
+        "available": true,
+        "name": "NVIDIA GeForce RTX 4090",
+        "total_bytes": 25769803776,
+        "used_bytes": 8589934592,
+        "free_bytes": 17179869184,
+        "total_mb": 24576,
+        "used_mb": 8192,
+        "free_mb": 16384,
+        "usage_percent": 33.3
+    }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `system.total_bytes` | integer | Total system RAM in bytes |
+| `system.used_bytes` | integer | Used system RAM in bytes |
+| `system.free_bytes` | integer | Free system RAM in bytes |
+| `system.total_mb` | integer | Total system RAM in MB |
+| `system.used_mb` | integer | Used system RAM in MB |
+| `system.free_mb` | integer | Free system RAM in MB |
+| `system.usage_percent` | float | System RAM usage percentage (0-100) |
+| `process.rss_bytes` | integer | Process Resident Set Size in bytes |
+| `process.virtual_bytes` | integer | Process virtual memory in bytes |
+| `process.rss_mb` | integer | Process RSS in MB |
+| `process.virtual_mb` | integer | Process virtual memory in MB |
+| `gpu.available` | boolean | Whether GPU info is available |
+| `gpu.name` | string | GPU device name |
+| `gpu.total_bytes` | integer | Total VRAM in bytes |
+| `gpu.used_bytes` | integer | Used VRAM in bytes |
+| `gpu.free_bytes` | integer | Free VRAM in bytes |
+| `gpu.total_mb` | integer | Total VRAM in MB |
+| `gpu.used_mb` | integer | Used VRAM in MB |
+| `gpu.free_mb` | integer | Free VRAM in MB |
+| `gpu.usage_percent` | float | VRAM usage percentage (0-100) |
 
 ---
 
@@ -192,95 +310,15 @@ GET /models?type=lora&search=detail            # LoRAs with "detail" in name
             "is_loaded": false
         }
     ],
-    "diffusion_models": [
-        {
-            "name": "flux1-dev-Q4_K_S.gguf",
-            "type": "diffusion",
-            "file_extension": ".gguf",
-            "size_bytes": 6876543210,
-            "hash": null,
-            "is_loaded": false
-        }
-    ],
-    "vae": [
-        {
-            "name": "vae-ft-mse-840000-ema-pruned.safetensors",
-            "type": "vae",
-            "file_extension": ".safetensors",
-            "size_bytes": 334643268,
-            "hash": null
-        }
-    ],
-    "loras": [
-        {
-            "name": "add_detail.safetensors",
-            "type": "lora",
-            "file_extension": ".safetensors",
-            "size_bytes": 144664,
-            "hash": null
-        }
-    ],
-    "clip": [
-        {
-            "name": "clip_l.safetensors",
-            "type": "clip",
-            "file_extension": ".safetensors",
-            "size_bytes": 246144152,
-            "hash": null
-        }
-    ],
-    "t5": [
-        {
-            "name": "t5xxl_fp16.safetensors",
-            "type": "t5",
-            "file_extension": ".safetensors",
-            "size_bytes": 9334567890,
-            "hash": null
-        }
-    ],
-    "controlnets": [
-        {
-            "name": "control_v11p_sd15_canny.safetensors",
-            "type": "controlnet",
-            "file_extension": ".safetensors",
-            "size_bytes": 1450958904,
-            "hash": null
-        }
-    ],
-    "llm": [
-        {
-            "name": "qwen_3_4b.Q8_0.gguf",
-            "type": "llm",
-            "file_extension": ".gguf",
-            "size_bytes": 4234567890,
-            "hash": null
-        }
-    ],
-    "esrgan": [
-        {
-            "name": "RealESRGAN_x4plus.pth",
-            "type": "esrgan",
-            "file_extension": ".pth",
-            "size_bytes": 67040989,
-            "hash": null
-        }
-    ],
-    "taesd": [
-        {
-            "name": "taesd_decoder.safetensors",
-            "type": "taesd",
-            "file_extension": ".safetensors",
-            "size_bytes": 4915200,
-            "hash": null
-        },
-        {
-            "name": "taef1_decoder.safetensors",
-            "type": "taesd",
-            "file_extension": ".safetensors",
-            "size_bytes": 4915200,
-            "hash": null
-        }
-    ],
+    "diffusion_models": [ ... ],
+    "vae": [ ... ],
+    "loras": [ ... ],
+    "clip": [ ... ],
+    "t5": [ ... ],
+    "controlnets": [ ... ],
+    "llm": [ ... ],
+    "esrgan": [ ... ],
+    "taesd": [ ... ],
     "embeddings": [],
     "loaded_model": null,
     "loaded_model_type": null
@@ -289,42 +327,13 @@ GET /models?type=lora&search=detail            # LoRAs with "detail" in name
 
 **Response (with filters applied):**
 
-When filters are applied, the response includes an `applied_filters` object showing active filters:
-
-```
-GET /models?type=diffusion&search=flux
-```
+When filters are applied, the response includes an `applied_filters` object:
 
 ```json
 {
     "checkpoints": [],
-    "diffusion_models": [
-        {
-            "name": "flux1-dev-Q4_K_S.gguf",
-            "type": "diffusion",
-            "file_extension": ".gguf",
-            "size_bytes": 6876543210,
-            "hash": null,
-            "is_loaded": false
-        },
-        {
-            "name": "flux1-schnell-Q5_K_M.gguf",
-            "type": "diffusion",
-            "file_extension": ".gguf",
-            "size_bytes": 8234567890,
-            "hash": null,
-            "is_loaded": false
-        }
-    ],
-    "vae": [],
-    "loras": [],
-    "clip": [],
-    "t5": [],
-    "controlnets": [],
-    "llm": [],
-    "esrgan": [],
-    "taesd": [],
-    "embeddings": [],
+    "diffusion_models": [ ... ],
+    "...": "...",
     "loaded_model": null,
     "loaded_model_type": null,
     "applied_filters": {
@@ -349,19 +358,40 @@ GET /models?type=diffusion&search=flux
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `checkpoints` | array | Checkpoint models (filtered if applicable) |
-| `diffusion_models` | array | Diffusion models (filtered if applicable) |
-| `vae` | array | VAE models (filtered if applicable) |
-| `loras` | array | LoRA models (filtered if applicable) |
-| `clip` | array | CLIP models (filtered if applicable) |
-| `t5` | array | T5 models (filtered if applicable) |
-| `controlnets` | array | ControlNet models (filtered if applicable) |
-| `llm` | array | LLM models for multimodal (filtered if applicable) |
-| `esrgan` | array | ESRGAN upscaler models (filtered if applicable) |
-| `embeddings` | array | Textual inversion embeddings (filtered if applicable) |
+| `checkpoints` | array | Checkpoint models |
+| `diffusion_models` | array | Diffusion models |
+| `vae` | array | VAE models |
+| `loras` | array | LoRA models |
+| `clip` | array | CLIP models |
+| `t5` | array | T5 models |
+| `controlnets` | array | ControlNet models |
+| `llm` | array | LLM models for multimodal |
+| `esrgan` | array | ESRGAN upscaler models |
+| `taesd` | array | TAESD preview models |
+| `embeddings` | array | Textual inversion embeddings |
 | `loaded_model` | string\|null | Currently loaded model name |
 | `loaded_model_type` | string\|null | Type of loaded model |
 | `applied_filters` | object | (Optional) Shows which filters were applied |
+
+---
+
+### Refresh Models
+
+#### `POST /models/refresh`
+
+Force a rescan of model directories.
+
+**Request Body:** None required
+
+**Response (200):**
+
+```json
+{
+    "success": true,
+    "message": "Model list refreshed",
+    "models": [ ... ]
+}
+```
 
 ---
 
@@ -404,7 +434,7 @@ Load a model into memory. Only one model can be loaded at a time.
 }
 ```
 
-**Parameters:**
+**Component Parameters:**
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -418,35 +448,58 @@ Load a model into memory. Only one model can be loaded at a time.
 | `controlnet` | string | No | null | ControlNet model name |
 | `llm` | string | No | null | LLM model name for multimodal (e.g., Qwen) |
 | `llm_vision` | string | No | null | LLM vision model name (optional) |
-| `taesd` | string | No | null | TAESD model name for preview (from `paths.taesd` directory) |
+| `taesd` | string | No | null | TAESD model name for preview |
 | `high_noise_diffusion_model` | string | No | null | High-noise diffusion model for MoE |
 | `photo_maker` | string | No | null | PhotoMaker model path |
-| `options.n_threads` | integer | No | -1 (auto) | Number of CPU threads |
-| `options.keep_clip_on_cpu` | boolean | No | true | Keep CLIP on CPU to save VRAM |
-| `options.keep_vae_on_cpu` | boolean | No | false | Keep VAE on CPU |
-| `options.keep_controlnet_on_cpu` | boolean | No | false | Keep ControlNet on CPU to save VRAM |
-| `options.vae_conv_direct` | boolean | No | false | Use ggml_conv2d_direct in VAE |
-| `options.diffusion_conv_direct` | boolean | No | false | Use ggml_conv2d_direct in diffusion model |
-| `options.flash_attn` | boolean | No | true | Enable Flash Attention |
-| `options.offload_to_cpu` | boolean | No | false | Offload model to CPU |
-| `options.enable_mmap` | boolean | No | true | Use memory-mapped file loading for models |
-| `options.vae_decode_only` | boolean | No | true | VAE decode only mode |
-| `options.tae_preview_only` | boolean | No | false | Only use TAESD for preview, not final |
-| `options.free_params_immediately` | boolean | No | false | Free model params after loading |
-| `options.flow_shift` | float | No | auto | Flow shift (INFINITY = auto-detect) |
-| `options.weight_type` | string | No | "" | Weight type (f32, f16, q8_0, q5_0, q4_0) |
-| `options.tensor_type_rules` | string | No | "" | Per-tensor weight rules (e.g., "^vae\.=f16") |
-| `options.rng_type` | string | No | "cuda" | RNG type: std_default, cuda, cpu |
-| `options.sampler_rng_type` | string | No | "" | Sampler RNG (empty = use rng_type) |
-| `options.prediction` | string | No | "" | Prediction type override (eps, v, edm_v, sd3_flow, flux_flow, flux2_flow, or empty for auto) |
-| `options.lora_apply_mode` | string | No | "auto" | LoRA apply mode: auto, immediately, at_runtime |
-| `options.vae_tiling` | boolean | No | false | Enable VAE tiling for large images |
-| `options.vae_tile_size_x` | integer | No | 0 | VAE tile size X (0 = auto) |
-| `options.vae_tile_size_y` | integer | No | 0 | VAE tile size Y (0 = auto) |
-| `options.vae_tile_overlap` | float | No | 0.5 | VAE tile overlap (0.0-1.0) |
-| `options.chroma_use_dit_mask` | boolean | No | true | Chroma: use DiT mask |
-| `options.chroma_use_t5_mask` | boolean | No | false | Chroma: use T5 mask |
-| `options.chroma_t5_mask_pad` | integer | No | 1 | Chroma: T5 mask padding |
+
+**Load Options (`options` object):**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `n_threads` | integer | -1 (auto) | Number of CPU threads |
+| `keep_clip_on_cpu` | boolean | true | Keep CLIP on CPU to save VRAM |
+| `keep_vae_on_cpu` | boolean | false | Keep VAE on CPU |
+| `keep_controlnet_on_cpu` | boolean | false | Keep ControlNet on CPU |
+| `vae_conv_direct` | boolean | false | Use ggml_conv2d_direct in VAE |
+| `diffusion_conv_direct` | boolean | false | Use ggml_conv2d_direct in diffusion model |
+| `flash_attn` | boolean | true | Enable Flash Attention |
+| `offload_to_cpu` | boolean | false | Offload model to CPU |
+| `enable_mmap` | boolean | true | Use memory-mapped file loading |
+| `vae_decode_only` | boolean | true | VAE decode only mode |
+| `tae_preview_only` | boolean | false | Only use TAESD for preview, not final |
+| `free_params_immediately` | boolean | false | Free model params after loading |
+| `flow_shift` | float | auto | Flow shift (INFINITY = auto-detect) |
+| `weight_type` | string | "" | Weight type (f32, f16, q8_0, q5_0, q4_0) |
+| `tensor_type_rules` | string | "" | Per-tensor weight rules (e.g., `"^vae\.=f16"`) |
+| `rng_type` | string | "cuda" | RNG type: `std_default`, `cuda`, `cpu` |
+| `sampler_rng_type` | string | "" | Sampler RNG (empty = use rng_type) |
+| `prediction` | string | "" | Prediction type override (`eps`, `v`, `edm_v`, `sd3_flow`, `flux_flow`, `flux2_flow`, or empty for auto) |
+| `lora_apply_mode` | string | "auto" | LoRA apply mode: `auto`, `immediately`, `at_runtime` |
+| `vae_tiling` | boolean | false | Enable VAE tiling for large images |
+| `vae_tile_size_x` | integer | 0 | VAE tile size X (0 = auto) |
+| `vae_tile_size_y` | integer | 0 | VAE tile size Y (0 = auto) |
+| `vae_tile_overlap` | float | 0.5 | VAE tile overlap (0.0-1.0) |
+| `chroma_use_dit_mask` | boolean | true | Chroma: use DiT mask |
+| `chroma_use_t5_mask` | boolean | false | Chroma: use T5 mask |
+| `chroma_t5_mask_pad` | integer | 1 | Chroma: T5 mask padding |
+
+**Experimental Offload Options** (requires `-DSD_EXPERIMENTAL_OFFLOAD=ON` build):
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `offload_mode` | string | "none" | Offload mode: `none`, `cond_only`, `cond_diffusion`, `aggressive`, `layer_streaming` |
+| `vram_estimation` | string | "formula" | VRAM estimation: `dryrun` (accurate), `formula` (fast) |
+| `offload_cond_stage` | boolean | false | Offload LLM/CLIP after conditioning |
+| `offload_diffusion` | boolean | false | Offload diffusion model after sampling |
+| `reload_cond_stage` | boolean | false | Reload conditioning components after generation |
+| `reload_diffusion` | boolean | false | Reload diffusion model after generation |
+| `log_offload_events` | boolean | false | Log offload events for debugging |
+| `min_offload_size_mb` | integer | 0 | Minimum component size to offload (MB) |
+| `target_free_vram_mb` | integer | 0 | Target free VRAM before VAE decode (0 = always offload) |
+| `layer_streaming_enabled` | boolean | false | Enable layer-by-layer streaming execution |
+| `streaming_prefetch_layers` | integer | 1 | Number of layers to prefetch ahead |
+| `streaming_keep_layers_behind` | integer | 0 | Layers to keep after execution (for skip connections) |
+| `streaming_min_free_vram_mb` | integer | 0 | Minimum VRAM to keep free during streaming |
 
 **Success Response (200):**
 
@@ -473,14 +526,6 @@ Load a model into memory. Only one model can be loaded at a time.
 ```json
 {
     "error": "model_name is required"
-}
-```
-
-**Error Response (500):**
-
-```json
-{
-    "error": "Internal error: Model not found: invalid_model.safetensors"
 }
 ```
 
@@ -550,7 +595,7 @@ All generation endpoints add jobs to a FIFO queue. Jobs are processed sequential
 
 ### ControlNet Usage
 
-ControlNet allows you to guide image generation with control images (edge maps, depth maps, poses, etc.). 
+ControlNet allows you to guide image generation with control images (edge maps, depth maps, poses, etc.).
 
 **Setup:**
 
@@ -651,7 +696,7 @@ Generate images from text prompt.
 | `ref_images` | array | No | [] | Array of base64-encoded reference images (Flux Kontext) |
 | `auto_resize_ref_image` | boolean | No | true | Auto-resize reference images |
 | `increase_ref_index` | boolean | No | false | Increase reference index |
-| `control_image_base64` | string | No | - | Base64-encoded pre-processed control image (requires ControlNet loaded with model) |
+| `control_image_base64` | string | No | - | Base64-encoded pre-processed control image (requires ControlNet) |
 | `control_strength` | float | No | 0.9 | ControlNet influence strength (0.0 - 1.0) |
 | `vae_tiling` | boolean | No | false | Enable VAE tiling for large images |
 | `vae_tile_size_x` | integer | No | 0 | VAE tile X size (0 = auto) |
@@ -659,8 +704,8 @@ Generate images from text prompt.
 | `vae_tile_overlap` | float | No | 0.5 | VAE tile overlap |
 | `easycache` | boolean | No | false | Enable caching for DiT models (speeds up generation) |
 | `easycache_threshold` | float | No | 0.2 | Cache reuse threshold (higher = more reuse, lower quality) |
-| `easycache_start` | float | No | 0.15 | Cache start percent (when to start caching) |
-| `easycache_end` | float | No | 0.95 | Cache end percent (when to stop caching) |
+| `easycache_start` | float | No | 0.15 | Cache start percent |
+| `easycache_end` | float | No | 0.95 | Cache end percent |
 | `pm_id_images` | array | No | [] | Array of base64-encoded PhotoMaker ID images |
 | `pm_id_embed_path` | string | No | "" | Path to PhotoMaker ID embedding file |
 | `pm_style_strength` | float | No | 20.0 | PhotoMaker style strength |
@@ -724,7 +769,7 @@ Generate images from an existing image and text prompt.
 | `strength` | float | No | 0.75 | Denoising strength (0.0 - 1.0) |
 | `img_cfg_scale` | float | No | -1.0 | Image CFG scale for instruct-pix2pix (-1 = same as cfg_scale) |
 | `mask_image_base64` | string | No | - | Base64-encoded mask image for inpainting (white = repaint, black = keep) |
-| `control_image_base64` | string | No | - | Base64-encoded pre-processed control image (requires ControlNet loaded with model) |
+| `control_image_base64` | string | No | - | Base64-encoded pre-processed control image (requires ControlNet) |
 | `control_strength` | float | No | 0.9 | ControlNet influence strength (0.0 - 1.0) |
 
 All other parameters are the same as [Text to Image](#text-to-image) including advanced guidance (SLG, distilled_guidance), reference images, VAE tiling, EasyCache, PhotoMaker, and upscaling.
@@ -806,10 +851,10 @@ Generate video frames from text prompt (requires video-capable model like Wan).
 | `high_noise_slg_end` | float | No | 0.2 | High-noise SLG end percent |
 | `moe_boundary` | float | No | 0.875 | Timestep boundary for MoE models |
 | `vace_strength` | float | No | 1.0 | WAN VACE strength |
-| `easycache` | boolean | No | false | Enable caching for DiT models (speeds up generation) |
-| `easycache_threshold` | float | No | 0.2 | Cache reuse threshold (higher = more reuse, lower quality) |
-| `easycache_start` | float | No | 0.15 | Cache start percent (when to start caching) |
-| `easycache_end` | float | No | 0.95 | Cache end percent (when to stop caching) |
+| `easycache` | boolean | No | false | Enable caching for DiT models |
+| `easycache_threshold` | float | No | 0.2 | Cache reuse threshold |
+| `easycache_start` | float | No | 0.15 | Cache start percent |
+| `easycache_end` | float | No | 0.95 | Cache end percent |
 
 **Success Response (202 Accepted):**
 
@@ -925,9 +970,24 @@ Unload the currently loaded upscaler model.
 
 #### `GET /queue`
 
-Get all jobs and queue status.
+Get jobs with filtering, pagination, and optional date grouping.
 
-**Response:**
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `status` | string | `"all"` | Filter by status: `pending`, `processing`, `completed`, `failed`, `cancelled`, `all` |
+| `type` | string | `"all"` | Filter by type: `txt2img`, `img2img`, `txt2vid`, `upscale`, `convert`, `model_download`, `model_hash`, `all` |
+| `search` | string | - | Search in prompt/negative_prompt (case-insensitive) |
+| `architecture` | string | - | Filter by model architecture (case-insensitive partial match) |
+| `limit` | integer | 20 | Maximum items per page |
+| `page` | integer | 1 | Page number (1-based) |
+| `offset` | integer | 0 | Items to skip (alternative to page-based pagination) |
+| `before` | integer | - | Items created before this Unix timestamp |
+| `after` | integer | - | Items created after this Unix timestamp |
+| `group_by` | string | - | Group response by `date` |
+
+**Response (standard pagination):**
 
 ```json
 {
@@ -935,7 +995,18 @@ Get all jobs and queue status.
     "processing_count": 1,
     "completed_count": 5,
     "failed_count": 0,
+    "cancelled_count": 0,
     "total_count": 8,
+    "filtered_count": 8,
+    "offset": 0,
+    "limit": 20,
+    "has_more": false,
+    "page": 1,
+    "total_pages": 1,
+    "has_prev": false,
+    "newest_timestamp": 1704067260,
+    "oldest_timestamp": 1704067200,
+    "applied_filters": {},
     "items": [
         {
             "job_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -943,12 +1014,7 @@ Get all jobs and queue status.
             "status": "completed",
             "progress": {
                 "step": 20,
-                "total_steps": 20,
-                "current_image": 0,
-                "total_images": 1,
-                "all_steps": 20,
-                "current_all_steps": 20,
-                "percentage": 100.0
+                "total_steps": 20
             },
             "created_at": "2024-01-01T12:00:00Z",
             "started_at": "2024-01-01T12:00:05Z",
@@ -960,31 +1026,37 @@ Get all jobs and queue status.
                 "prompt": "a lovely cat",
                 "width": 512,
                 "height": 512
-            }
-        },
-        {
-            "job_id": "550e8400-e29b-41d4-a716-446655440001",
-            "type": "txt2img",
-            "status": "processing",
-            "progress": {
-                "step": 10,
-                "total_steps": 20,
-                "current_image": 1,
-                "total_images": 4,
-                "all_steps": 80,
-                "current_all_steps": 30,
-                "percentage": 37.5
             },
-            "created_at": "2024-01-01T12:01:00Z",
-            "started_at": "2024-01-01T12:01:05Z",
-            "outputs": [],
-            "params": {
-                "prompt": "a dog in the park",
-                "width": 512,
-                "height": 512
+            "model_settings": {
+                "model_name": "v1-5-pruned.safetensors",
+                "model_architecture": "SD1"
             }
         }
     ]
+}
+```
+
+**Response (with `group_by=date`):**
+
+```json
+{
+    "groups": [
+        {
+            "date": "2024-01-01",
+            "label": "Today",
+            "timestamp": 1704067200,
+            "count": 3,
+            "items": [ ... ]
+        }
+    ],
+    "total_count": 5,
+    "page": 1,
+    "total_pages": 2,
+    "limit": 20,
+    "has_more": true,
+    "has_prev": false,
+    "group_by": "date",
+    "applied_filters": {}
 }
 ```
 
@@ -996,7 +1068,18 @@ Get all jobs and queue status.
 | `processing_count` | integer | Jobs currently being processed (0 or 1) |
 | `completed_count` | integer | Successfully completed jobs |
 | `failed_count` | integer | Failed jobs |
+| `cancelled_count` | integer | Cancelled jobs |
 | `total_count` | integer | Total jobs in history |
+| `filtered_count` | integer | Total matching the current filter |
+| `offset` | integer | Current pagination offset |
+| `limit` | integer | Current page size limit |
+| `has_more` | boolean | Whether more items exist after current page |
+| `page` | integer | Current page number |
+| `total_pages` | integer | Total number of pages |
+| `has_prev` | boolean | Whether previous pages exist |
+| `newest_timestamp` | integer | Unix timestamp of newest item |
+| `oldest_timestamp` | integer | Unix timestamp of oldest item |
+| `applied_filters` | object | Active filter values |
 
 ---
 
@@ -1021,12 +1104,7 @@ Get status of a specific job.
     "status": "completed",
     "progress": {
         "step": 20,
-        "total_steps": 20,
-        "current_image": 0,
-        "total_images": 1,
-        "all_steps": 20,
-        "current_all_steps": 20,
-        "percentage": 100.0
+        "total_steps": 20
     },
     "created_at": "2024-01-01T12:00:00Z",
     "started_at": "2024-01-01T12:00:05Z",
@@ -1046,6 +1124,16 @@ Get status of a specific job.
         "scheduler": "discrete",
         "batch_count": 1,
         "clip_skip": -1
+    },
+    "model_settings": {
+        "model_name": "v1-5-pruned.safetensors",
+        "model_architecture": "SD1",
+        "clip_l_model": null,
+        "clip_g_model": null,
+        "t5xxl_model": null,
+        "vae_model": null,
+        "controlnet_model": null,
+        "lora_model": null
     }
 }
 ```
@@ -1055,21 +1143,18 @@ Get status of a specific job.
 | Field | Type | Description |
 |-------|------|-------------|
 | `job_id` | string | Unique job identifier (UUID) |
-| `type` | string | Job type: `txt2img`, `img2img`, `txt2vid`, `upscale` |
+| `type` | string | Job type: `txt2img`, `img2img`, `txt2vid`, `upscale`, `convert`, `model_download`, `model_hash` |
 | `status` | string | Job status (see [Job Status](#job-status)) |
 | `progress` | object | Current progress information |
 | `progress.step` | integer | Current step within current image |
-| `progress.total_steps` | integer | Total steps per image (diffusion steps) |
-| `progress.current_image` | integer | Current image being generated (0-indexed) |
-| `progress.total_images` | integer | Total images in batch |
-| `progress.all_steps` | integer | Total steps for entire job (total_steps × total_images) |
-| `progress.current_all_steps` | integer | Current step across all images |
-| `progress.percentage` | float | Overall progress percentage (0.0 - 100.0) |
+| `progress.total_steps` | integer | Total steps per image |
 | `created_at` | string | ISO 8601 timestamp when job was created |
-| `started_at` | string | ISO 8601 timestamp when processing started (only if processing/completed/failed) |
-| `completed_at` | string | ISO 8601 timestamp when job completed (only if completed/failed) |
+| `started_at` | string | ISO 8601 timestamp when processing started (if applicable) |
+| `completed_at` | string | ISO 8601 timestamp when job completed (if applicable) |
 | `outputs` | array | List of output file paths (relative to `/output/`) |
-| `params` | object | Original request parameters (optional) |
+| `params` | object | Original request parameters |
+| `model_settings` | object | Model configuration at job creation time |
+| `linked_job_id` | string | ID of linked job (e.g., hash job linked to download job) |
 | `error` | string | Error message (only if status is `failed`) |
 
 **Error Response (404):**
@@ -1108,6 +1193,204 @@ Cancel a pending job. Only jobs with `pending` status can be cancelled.
 ```json
 {
     "error": "Cannot cancel job (not found or already processing)"
+}
+```
+
+---
+
+### Bulk Delete Jobs
+
+#### `DELETE /queue/jobs`
+
+Delete multiple jobs at once (soft-delete to recycle bin).
+
+**Request Body:**
+
+```json
+{
+    "job_ids": ["uuid1", "uuid2", "uuid3"]
+}
+```
+
+**Success Response (200):**
+
+```json
+{
+    "success": true,
+    "deleted": 2,
+    "failed": 1,
+    "total": 3,
+    "failed_job_ids": ["uuid3"]
+}
+```
+
+**Error Response (400):**
+
+```json
+{
+    "error": "job_ids array is required in request body"
+}
+```
+
+---
+
+### Get Job Preview
+
+#### `GET /jobs/{job_id}/preview`
+
+Get the current live preview image for a processing job. Returns a JPEG image, not JSON.
+
+**URL Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `job_id` | Job UUID |
+
+**Response Headers:**
+
+| Header | Description |
+|--------|-------------|
+| `Content-Type` | `image/jpeg` |
+| `Cache-Control` | `no-cache` |
+| `X-Preview-Width` | Preview image width |
+| `X-Preview-Height` | Preview image height |
+| `X-Preview-Step` | Current generation step |
+
+**Response Body:** Binary JPEG image data
+
+**Error Response (404):** No preview available
+
+---
+
+## Recycle Bin
+
+Jobs are soft-deleted to a recycle bin and auto-purged after a configurable retention period.
+
+### List Recycle Bin
+
+#### `GET /queue/recycle-bin`
+
+Get all soft-deleted jobs.
+
+**Response (200):**
+
+```json
+{
+    "success": true,
+    "enabled": true,
+    "retention_minutes": 1440,
+    "count": 2,
+    "items": [
+        {
+            "job_id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "txt2img",
+            "status": "deleted",
+            "progress": { "step": 20, "total_steps": 20 },
+            "created_at": "2024-01-01T08:00:00Z",
+            "started_at": "2024-01-01T08:01:00Z",
+            "completed_at": "2024-01-01T08:05:00Z",
+            "outputs": ["image_0.png"],
+            "params": { ... },
+            "model_settings": { ... },
+            "deleted_at": "2024-01-01T10:30:00Z",
+            "previous_status": "completed"
+        }
+    ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Whether recycle bin is enabled |
+| `retention_minutes` | integer | Auto-purge after this many minutes |
+| `count` | integer | Number of items in recycle bin |
+| `items[].deleted_at` | string | ISO 8601 timestamp when deleted |
+| `items[].previous_status` | string | Status before deletion |
+
+---
+
+### Restore Job
+
+#### `POST /queue/{job_id}/restore`
+
+Restore a job from the recycle bin to its previous status.
+
+**Request Body:** None required
+
+**Success Response (200):**
+
+```json
+{
+    "success": true,
+    "message": "Job restored from recycle bin"
+}
+```
+
+**Error Response (400):**
+
+```json
+{
+    "error": "Cannot restore job (not found or not in recycle bin)"
+}
+```
+
+---
+
+### Purge Job
+
+#### `DELETE /queue/{job_id}/purge`
+
+Permanently delete a job from the recycle bin.
+
+**Success Response (200):**
+
+```json
+{
+    "success": true,
+    "message": "Job permanently deleted"
+}
+```
+
+**Error Response (400):**
+
+```json
+{
+    "error": "Cannot purge job (not found or still processing)"
+}
+```
+
+---
+
+### Clear Recycle Bin
+
+#### `DELETE /queue/recycle-bin`
+
+Permanently delete all jobs in the recycle bin.
+
+**Success Response (200):**
+
+```json
+{
+    "success": true,
+    "purged": 5,
+    "message": "Recycle bin cleared"
+}
+```
+
+---
+
+### Get Recycle Bin Settings
+
+#### `GET /settings/recycle-bin`
+
+Get recycle bin configuration.
+
+**Response (200):**
+
+```json
+{
+    "enabled": true,
+    "retention_minutes": 1440
 }
 ```
 
@@ -1197,6 +1480,169 @@ Update preview settings.
 
 ---
 
+## Settings
+
+Server-side persistence for generation defaults and UI preferences.
+
+### Get All Generation Defaults
+
+#### `GET /settings/generation`
+
+Get generation defaults for all modes.
+
+**Response (200):**
+
+```json
+{
+    "txt2img": { ... },
+    "img2img": { ... },
+    "txt2vid": { ... }
+}
+```
+
+---
+
+### Update All Generation Defaults
+
+#### `PUT /settings/generation`
+
+Update generation defaults for all modes.
+
+**Request Body:**
+
+```json
+{
+    "txt2img": { ... },
+    "img2img": { ... },
+    "txt2vid": { ... }
+}
+```
+
+**Success Response (200):**
+
+```json
+{
+    "success": true,
+    "settings": {
+        "txt2img": { ... },
+        "img2img": { ... },
+        "txt2vid": { ... }
+    }
+}
+```
+
+---
+
+### Get Generation Defaults for Mode
+
+#### `GET /settings/generation/{mode}`
+
+Get generation defaults for a specific mode.
+
+**URL Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `mode` | Generation mode: `txt2img`, `img2img`, `txt2vid` |
+
+**Response (200):** Mode-specific generation defaults object.
+
+---
+
+### Update Generation Defaults for Mode
+
+#### `PUT /settings/generation/{mode}`
+
+Update generation defaults for a specific mode.
+
+**URL Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `mode` | Generation mode: `txt2img`, `img2img`, `txt2vid` |
+
+**Request Body:** Mode-specific generation defaults object.
+
+**Success Response (200):**
+
+```json
+{
+    "success": true,
+    "mode": "txt2img",
+    "preferences": { ... }
+}
+```
+
+---
+
+### Get UI Preferences
+
+#### `GET /settings/preferences`
+
+Get UI preferences.
+
+**Response (200):**
+
+```json
+{
+    "desktop_notifications": true,
+    "theme": "dark",
+    "theme_custom": null
+}
+```
+
+---
+
+### Update UI Preferences
+
+#### `PUT /settings/preferences`
+
+Update UI preferences.
+
+**Request Body:**
+
+```json
+{
+    "desktop_notifications": true,
+    "theme": "dark",
+    "theme_custom": null
+}
+```
+
+**Success Response (200):**
+
+```json
+{
+    "success": true,
+    "preferences": {
+        "desktop_notifications": true,
+        "theme": "dark",
+        "theme_custom": null
+    }
+}
+```
+
+---
+
+### Reset Settings
+
+#### `POST /settings/reset`
+
+Reset all settings to defaults.
+
+**Request Body:** None required
+
+**Success Response (200):**
+
+```json
+{
+    "success": true,
+    "message": "Settings reset to defaults"
+}
+```
+
+---
+
 ## File Browser & Output Serving
 
 ### `GET /output`
@@ -1219,34 +1665,11 @@ Browse output directory or serve generated files. Returns an interactive HTML fi
 
 **Directory Response (200):**
 - Content-Type: `text/html`
-- Returns interactive HTML file browser with:
-  - Folder and file listing with icons
-  - Thumbnails for images and videos
-  - File size and modification date
-  - Sortable columns
-  - Breadcrumb navigation
-  - Lightbox for image/video preview
-  - Statistics (folder count, file count, total size)
+- Returns interactive HTML file browser with thumbnails, sorting, and lightbox
 
 **File Response (200):**
 - Content-Type: Determined by file extension
 - Returns raw file content
-
-**Example Requests:**
-
-```bash
-# Browse root output directory
-curl http://localhost:8080/output
-
-# Browse a job folder
-curl http://localhost:8080/output/550e8400-e29b-41d4-a716-446655440000
-
-# Download a specific image
-curl -O http://localhost:8080/output/550e8400-e29b-41d4-a716-446655440000/image_0.png
-
-# Sort by date, descending
-curl "http://localhost:8080/output?sort=date&order=desc"
-```
 
 **Error Responses:**
 - **400 Bad Request:** Invalid path (path traversal attempt with `..`)
@@ -1272,12 +1695,6 @@ Get thumbnail for an image or video file.
 **Supported Formats:**
 - Images: .png, .jpg, .jpeg, .gif, .webp, .bmp
 - Videos: .mp4, .webm, .avi, .mov, .mkv
-
-**Example:**
-
-```bash
-curl http://localhost:8080/thumb/550e8400-e29b-41d4-a716-446655440000/image_0.png > thumbnail.jpg
-```
 
 **Error Responses:**
 - **400 Bad Request:** Invalid path, path traversal, or not a media file
@@ -1305,7 +1722,9 @@ curl http://localhost:8080/thumb/550e8400-e29b-41d4-a716-446655440000/image_0.pn
 
 ## Server Options
 
-### `GET /options`
+### Get Options
+
+#### `GET /options`
 
 Get available generation options including samplers, schedulers, and quantization types.
 
@@ -1315,11 +1734,11 @@ Get available generation options including samplers, schedulers, and quantizatio
 {
     "samplers": [
         "euler", "euler_a", "heun", "dpm2", "dpm++2s_a", "dpm++2m", "dpm++2mv2",
-        "ipndm", "ipndm_v", "lcm", "ddim_trailing", "tcd"
+        "ipndm", "ipndm_v", "lcm", "ddim_trailing", "tcd", "res_multistep", "res_2s"
     ],
     "schedulers": [
         "discrete", "karras", "exponential", "ays", "gits", "sgm_uniform",
-        "simple", "smoothstep", "lcm"
+        "simple", "smoothstep", "kl_optimal", "lcm", "bong_tangent"
     ],
     "quantization_types": [
         {"id": "f32", "name": "F32 (32-bit float)", "bits": 32},
@@ -1337,6 +1756,30 @@ Get available generation options including samplers, schedulers, and quantizatio
         {"id": "q3_k", "name": "Q3_K (3-bit K-quant)", "bits": 3},
         {"id": "q2_k", "name": "Q2_K (2-bit K-quant)", "bits": 2}
     ]
+}
+```
+
+---
+
+### Get Option Descriptions
+
+#### `GET /options/descriptions`
+
+Get detailed descriptions of all load options including labels, types, defaults, and recommended values. Returns the contents of the `data/load_options.json` configuration file.
+
+**Response (200):**
+
+```json
+{
+    "options": {
+        "flash_attn": {
+            "label": "Flash Attention",
+            "description": "Enable Flash Attention for faster inference",
+            "type": "boolean",
+            "default": true
+        }
+    },
+    "categories": { ... }
 }
 ```
 
@@ -1381,199 +1824,9 @@ Convert a model to GGUF format with specified quantization.
 
 ---
 
-## Ollama Integration
-
-Integration with Ollama LLM for prompt enhancement.
-
-### Enhance Prompt
-
-#### `POST /ollama/enhance`
-
-Enhance an image generation prompt using Ollama LLM.
-
-**Request:**
-
-```json
-{
-    "prompt": "a cat",
-    "system_prompt": "Custom system prompt (optional)"
-}
-```
-
-**Response:**
-
-```json
-{
-    "success": true,
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "original_prompt": "a cat",
-    "enhanced_prompt": "a beautiful fluffy orange tabby cat sitting gracefully...",
-    "model_used": "llama3.2",
-    "created_at": 1704067200
-}
-```
-
-### Get Enhancement History
-
-#### `GET /ollama/history`
-
-Retrieve prompt enhancement history with pagination.
-
-**Query Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | integer | 50 | Number of entries to return |
-| `offset` | integer | 0 | Pagination offset |
-
-**Response:**
-
-```json
-{
-    "total_count": 42,
-    "items": [
-        {
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "original_prompt": "a cat",
-            "enhanced_prompt": "a beautiful fluffy orange tabby cat...",
-            "model_used": "llama3.2",
-            "created_at": 1704067200,
-            "success": true,
-            "error_message": ""
-        }
-    ]
-}
-```
-
-### Get History Entry
-
-#### `GET /ollama/history/{id}`
-
-Get a specific prompt enhancement history entry.
-
-**Response:** Same as single item in history list.
-
-**Error:** 404 if not found.
-
-### Delete History Entry
-
-#### `DELETE /ollama/history/{id}`
-
-Delete a specific history entry.
-
-**Response:**
-
-```json
-{
-    "success": true
-}
-```
-
-### Clear History
-
-#### `DELETE /ollama/history`
-
-Clear all prompt enhancement history.
-
-**Response:**
-
-```json
-{
-    "success": true
-}
-```
-
-### Get Ollama Status
-
-#### `GET /ollama/status`
-
-Get Ollama client connection status.
-
-**Response:**
-
-```json
-{
-    "enabled": true,
-    "connected": true,
-    "base_url": "http://localhost:11434",
-    "model": "llama3.2",
-    "max_history": 100,
-    "history_count": 42
-}
-```
-
-### Get Ollama Models
-
-#### `GET /ollama/models`
-
-Get list of available models from Ollama server.
-
-**Response:**
-
-```json
-{
-    "models": ["llama3.2", "mistral", "neural-chat"]
-}
-```
-
-### Get Ollama Settings
-
-#### `GET /ollama/settings`
-
-Get current Ollama configuration.
-
-**Response:**
-
-```json
-{
-    "enabled": true,
-    "base_url": "http://localhost:11434",
-    "model": "llama3.2",
-    "timeout_seconds": 60,
-    "max_history": 100,
-    "api_key": "***masked***"
-}
-```
-
-### Update Ollama Settings
-
-#### `PUT /ollama/settings`
-
-Update Ollama configuration at runtime.
-
-**Request:**
-
-```json
-{
-    "enabled": true,
-    "base_url": "http://localhost:11434",
-    "model": "llama3.2",
-    "timeout_seconds": 60,
-    "max_history": 100,
-    "api_key": "optional_key"
-}
-```
-
-**Response:**
-
-```json
-{
-    "success": true,
-    "settings": {
-        "enabled": true,
-        "base_url": "http://localhost:11434",
-        "model": "llama3.2",
-        "timeout_seconds": 60,
-        "max_history": 100
-    }
-}
-```
-
----
-
 ## Assistant Integration
 
-LLM-powered assistant for the Web UI with context awareness.
+LLM-powered assistant for the Web UI with context awareness. Requires building with `-DSDCPP_ASSISTANT_ENABLED=ON`.
 
 ### Chat with Assistant
 
@@ -1600,12 +1853,21 @@ Send a message to the LLM assistant with application context.
 | `message` | string | Yes | User message |
 | `context` | object | No | Application state context |
 
-**Response:**
+**Response (200):**
 
 ```json
 {
     "success": true,
     "message": "I'll load the SDXL model for you. Here's what I'm doing...",
+    "thinking": "The user wants to load an SDXL model...",
+    "tool_calls": [
+        {
+            "name": "load_model",
+            "parameters": { ... },
+            "result": "Model loaded successfully",
+            "executed_on_backend": true
+        }
+    ],
     "actions": [
         {
             "type": "load_model",
@@ -1618,7 +1880,55 @@ Send a message to the LLM assistant with application context.
 }
 ```
 
-The `actions` array contains suggested actions that the Web UI can execute.
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | boolean | Whether the request succeeded |
+| `message` | string | Text response to display |
+| `thinking` | string | LLM reasoning trace (optional) |
+| `tool_calls` | array | Backend tool executions (optional) |
+| `actions` | array | Suggested UI actions to execute |
+
+**Error Response (500):**
+
+```json
+{
+    "success": false,
+    "error": "Failed to get response from assistant"
+}
+```
+
+---
+
+### Chat with Assistant (Streaming)
+
+#### `POST /assistant/chat/stream`
+
+Stream a response from the LLM assistant using Server-Sent Events.
+
+**Request:** Same as [Chat with Assistant](#chat-with-assistant).
+
+**Response:** `Content-Type: text/event-stream`
+
+**SSE Event Format:**
+
+```
+event: content
+data: {"text": "I'll load the..."}
+
+event: thinking
+data: {"text": "The user wants..."}
+
+event: tool_call
+data: {"name": "load_model", "parameters": {...}}
+
+event: done
+data: {}
+
+event: error
+data: {"error": "Something went wrong"}
+```
+
+---
 
 ### Get Assistant History
 
@@ -1626,7 +1936,7 @@ The `actions` array contains suggested actions that the Web UI can execute.
 
 Get conversation history with the assistant.
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -1646,13 +1956,15 @@ Get conversation history with the assistant.
 }
 ```
 
+---
+
 ### Clear Assistant History
 
 #### `DELETE /assistant/history`
 
 Clear conversation history.
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -1660,13 +1972,15 @@ Clear conversation history.
 }
 ```
 
+---
+
 ### Get Assistant Status
 
 #### `GET /assistant/status`
 
 Get assistant connection status.
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -1679,24 +1993,47 @@ Get assistant connection status.
 }
 ```
 
+---
+
 ### Get Assistant Settings
 
 #### `GET /assistant/settings`
 
 Get assistant configuration.
 
-**Response:**
+**Response (200):**
 
 ```json
 {
     "enabled": true,
-    "base_url": "http://localhost:11434",
+    "endpoint": "http://localhost:11434/v1",
     "model": "llama3.2",
+    "temperature": 0.7,
+    "max_tokens": 4096,
     "timeout_seconds": 120,
-    "max_history": 50,
-    "api_key": "***masked***"
+    "max_history_turns": 50,
+    "proactive_suggestions": true,
+    "system_prompt": "You are a helpful assistant...",
+    "default_system_prompt": "You are a helpful assistant...",
+    "has_api_key": true
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Whether the assistant is enabled |
+| `endpoint` | string | LLM API endpoint URL |
+| `model` | string | LLM model name |
+| `temperature` | float | Sampling temperature |
+| `max_tokens` | integer | Maximum response tokens |
+| `timeout_seconds` | integer | Request timeout |
+| `max_history_turns` | integer | Maximum conversation turns to keep |
+| `proactive_suggestions` | boolean | Whether to offer proactive suggestions |
+| `system_prompt` | string | Current system prompt |
+| `default_system_prompt` | string | Default system prompt |
+| `has_api_key` | boolean | Whether an API key is configured |
+
+---
 
 ### Update Assistant Settings
 
@@ -1709,26 +2046,63 @@ Update assistant configuration at runtime.
 ```json
 {
     "enabled": true,
-    "base_url": "http://localhost:11434",
+    "endpoint": "http://localhost:11434/v1",
     "model": "llama3.2",
+    "temperature": 0.7,
+    "max_tokens": 4096,
     "timeout_seconds": 120,
-    "max_history": 50,
+    "max_history_turns": 50,
+    "proactive_suggestions": true,
+    "system_prompt": "Custom system prompt",
     "api_key": "optional_key"
 }
 ```
 
-**Response:**
+**Response (200):**
 
 ```json
 {
     "success": true,
     "settings": {
         "enabled": true,
-        "base_url": "http://localhost:11434",
+        "endpoint": "http://localhost:11434/v1",
         "model": "llama3.2",
+        "temperature": 0.7,
+        "max_tokens": 4096,
         "timeout_seconds": 120,
-        "max_history": 50
+        "max_history_turns": 50,
+        "proactive_suggestions": true,
+        "system_prompt": "Custom system prompt",
+        "default_system_prompt": "You are a helpful assistant...",
+        "has_api_key": true
     }
+}
+```
+
+---
+
+### Get Assistant Model Info
+
+#### `GET /assistant/model-info`
+
+Get information about the assistant's LLM model capabilities.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `model` | string | No | Model name to query (defaults to current model) |
+
+**Response (200):**
+
+```json
+{
+    "model": "llama3.2",
+    "capabilities": ["chat", "tool_use"],
+    "context_length": 131072,
+    "family": "llama",
+    "parameter_size": "3B",
+    "has_vision": false
 }
 ```
 
@@ -1736,55 +2110,128 @@ Update assistant configuration at runtime.
 
 ## Model Architecture
 
-### `GET /architectures`
+### Get Architectures
+
+#### `GET /architectures`
 
 Get all supported model architecture presets and current architecture info.
 
-**Response:**
+**Response (200):**
 
 ```json
 {
     "architectures": {
         "SD1": {
-            "display_name": "Stable Diffusion 1.5",
-            "requiredComponents": ["clip"],
-            "optionalComponents": ["vae", "lora", "controlnet"],
+            "id": "SD1",
+            "name": "Stable Diffusion 1.5",
+            "description": "Standard SD 1.x models",
+            "aliases": ["SD1.5", "SD1.x"],
+            "requiredComponents": {
+                "clip": "CLIP text encoder"
+            },
+            "optionalComponents": {
+                "vae": "VAE model",
+                "lora": "LoRA weights",
+                "controlnet": "ControlNet model"
+            },
+            "loadOptions": {
+                "flash_attn": true
+            },
             "generationDefaults": {
                 "width": 512,
                 "height": 512,
                 "steps": 20,
-                "cfg_scale": 7.0
-            }
-        },
-        "SDXL": {
-            "display_name": "Stable Diffusion XL",
-            "requiredComponents": ["clip_l", "clip_g"],
-            "optionalComponents": ["vae", "lora", "controlnet"],
-            "generationDefaults": {
-                "width": 1024,
-                "height": 1024,
-                "steps": 25,
-                "cfg_scale": 7.0
+                "cfg_scale": 7.0,
+                "sampler": "euler_a",
+                "scheduler": "discrete"
             }
         },
         "Flux": {
-            "display_name": "Flux",
-            "requiredComponents": ["clip_l", "t5xxl", "vae"],
-            "optionalComponents": ["lora"],
+            "id": "Flux",
+            "name": "Flux",
+            "description": "Black Forest Labs Flux models",
+            "aliases": [],
+            "requiredComponents": {
+                "clip_l": "CLIP-L text encoder",
+                "t5xxl": "T5-XXL text encoder",
+                "vae": "VAE (ae.safetensors)"
+            },
+            "optionalComponents": {
+                "lora": "LoRA weights"
+            },
+            "loadOptions": {
+                "flash_attn": true,
+                "keep_clip_on_cpu": true
+            },
             "generationDefaults": {
                 "width": 1024,
                 "height": 1024,
                 "steps": 20,
-                "cfg_scale": 1.0
-            }
+                "cfg_scale": 1.0,
+                "sampler": "euler"
+            },
+            "imageEditMode": "ref_images"
         }
     },
-    "current_architecture": "SDXL",
-    "current_preset": {
-        "display_name": "SDXL",
-        "requiredComponents": ["clip_l", "clip_g"],
-        "generationDefaults": {}
+    "current_architecture": "Flux",
+    "current_preset": { ... }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `architectures` | object | Map of architecture ID to preset |
+| `architectures.*.id` | string | Architecture identifier |
+| `architectures.*.name` | string | Display name |
+| `architectures.*.description` | string | Architecture description |
+| `architectures.*.aliases` | array | Alternative names |
+| `architectures.*.requiredComponents` | object | Required component models |
+| `architectures.*.optionalComponents` | object | Optional component models |
+| `architectures.*.loadOptions` | object | Recommended load options |
+| `architectures.*.generationDefaults` | object | Default generation parameters |
+| `architectures.*.imageEditMode` | string\|null | Image edit mode (e.g., `"ref_images"`) |
+| `current_architecture` | string\|null | Currently loaded model's architecture |
+| `current_preset` | object\|null | Full preset for current architecture |
+
+---
+
+### Detect Architecture
+
+#### `GET /architectures/detect`
+
+Detect the architecture of a model without loading it.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `model` | string | Yes | Model name to detect |
+
+**Response (detected):**
+
+```json
+{
+    "detected": true,
+    "architecture": {
+        "id": "Flux",
+        "name": "Flux",
+        "description": "Black Forest Labs Flux models",
+        "aliases": [],
+        "requiredComponents": { ... },
+        "optionalComponents": { ... },
+        "loadOptions": { ... },
+        "generationDefaults": { ... },
+        "imageEditMode": "ref_images"
     }
+}
+```
+
+**Response (not detected):**
+
+```json
+{
+    "detected": false,
+    "architecture": null
 }
 ```
 
@@ -1817,14 +2264,23 @@ Download a model from URL, CivitAI, or HuggingFace.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `model_type` | string | Yes | Target model type (checkpoint, vae, lora, etc.) |
-| `source` | string | No | Source type: `url`, `civitai`, `huggingface` (auto-detected) |
-| `model_id` | string | For CivitAI | CivitAI model ID |
-| `url` | string | For URL | Direct download URL |
-| `repo_id` | string | For HuggingFace | HuggingFace repository ID |
+| `model_type` | string | Yes | Target model type (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `llm`, `esrgan`, `taesd`) |
+| `source` | string | No | Source type: `url`, `civitai`, `huggingface` (auto-detected from other fields) |
+| `model_id` | string | For CivitAI | CivitAI model ID (format: `"123456"` or `"123456:789012"` for version) |
+| `url` | string | For URL | Direct download URL (also accepts CivitAI/HuggingFace URLs for auto-detection) |
+| `repo_id` | string | For HuggingFace | HuggingFace repository ID (e.g., `"stabilityai/sdxl-turbo"`) |
 | `filename` | string | For HuggingFace | Filename in repository |
 | `subfolder` | string | No | Target subfolder in model directory |
-| `revision` | string | No | Git revision for HuggingFace (default: "main") |
+| `revision` | string | No | Git revision for HuggingFace (default: `"main"`) |
+
+**Source Auto-Detection:**
+
+If `source` is not specified:
+- URL containing `civitai.com` → `civitai`
+- URL containing `huggingface.co` → `huggingface`
+- `url` present → `url`
+- `model_id` present → `civitai`
+- `repo_id` and `filename` present → `huggingface`
 
 **Response (202 Accepted):**
 
@@ -1839,6 +2295,8 @@ Download a model from URL, CivitAI, or HuggingFace.
 }
 ```
 
+---
+
 ### Get CivitAI Model Info
 
 #### `GET /models/civitai/{id}`
@@ -1849,16 +2307,16 @@ Get metadata for a CivitAI model.
 
 - `id`: CivitAI model ID. Supports format `123456` or `123456:789012` (model:version)
 
-**Response:**
+**Response (200):**
 
 ```json
 {
     "success": true,
-    "model_id": "123456",
-    "version_id": "789012",
+    "model_id": 123456,
+    "version_id": 789012,
     "name": "Model Name",
     "version_name": "v1.0",
-    "type": "checkpoint",
+    "type": "Checkpoint",
     "base_model": "SDXL 1.0",
     "filename": "model.safetensors",
     "file_size": 5368709120,
@@ -1866,6 +2324,8 @@ Get metadata for a CivitAI model.
     "download_url": "https://civitai.com/..."
 }
 ```
+
+---
 
 ### Get HuggingFace Model Info
 
@@ -1877,11 +2337,11 @@ Get metadata for a HuggingFace model file.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `repo_id` | string | Yes | HuggingFace repository ID (e.g., "stabilityai/sdxl-turbo") |
+| `repo_id` | string | Yes | HuggingFace repository ID (e.g., `"stabilityai/sdxl-turbo"`) |
 | `filename` | string | Yes | Filename within repository |
-| `revision` | string | No | Git revision (default: "main") |
+| `revision` | string | No | Git revision (default: `"main"`) |
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -1894,13 +2354,15 @@ Get metadata for a HuggingFace model file.
 }
 ```
 
+---
+
 ### Get Model Paths
 
 #### `GET /models/paths`
 
 Get configured model storage paths.
 
-**Response:**
+**Response (200):**
 
 ```json
 {
@@ -1916,6 +2378,144 @@ Get configured model storage paths.
     "esrgan": "/path/to/esrgan",
     "taesd": "/path/to/taesd"
 }
+```
+
+---
+
+## WebSocket Support
+
+Real-time progress updates are available via WebSocket connection on a separate port (default: 8081, see `ws_port` in health response).
+
+### Connection
+
+Connect to `ws://<host>:<ws_port>` (e.g., `ws://localhost:8081`).
+
+### Event Types
+
+All messages are JSON with this structure:
+
+```json
+{
+    "event": "event_type",
+    "timestamp": "2024-01-01T12:00:00.000Z",
+    "data": { ... }
+}
+```
+
+#### Job Events
+
+| Event | Description |
+|-------|-------------|
+| `job_added` | New job added to queue |
+| `job_status_changed` | Job status changed (pending/processing/completed/failed/cancelled) |
+| `job_progress` | Generation progress update (step/total_steps) |
+| `job_preview` | Live preview image during generation |
+| `job_cancelled` | Job was cancelled |
+
+#### Model Events
+
+| Event | Description |
+|-------|-------------|
+| `model_loading_progress` | Model loading progress |
+| `model_loaded` | Model finished loading |
+| `model_load_failed` | Model failed to load |
+| `model_unloaded` | Model was unloaded |
+| `upscaler_loaded` | Upscaler finished loading |
+| `upscaler_unloaded` | Upscaler was unloaded |
+
+#### Server Events
+
+| Event | Description |
+|-------|-------------|
+| `server_status` | Periodic heartbeat/status update |
+| `server_shutdown` | Server is shutting down |
+
+### job_preview Event
+
+Sent during generation when previews are enabled. Contains a base64-encoded JPEG image.
+
+**Example:**
+
+```json
+{
+    "event": "job_preview",
+    "timestamp": "2024-01-01T12:00:30.123Z",
+    "data": {
+        "job_id": "550e8400-e29b-41d4-a716-446655440000",
+        "step": 10,
+        "frame_count": 1,
+        "width": 256,
+        "height": 256,
+        "is_noisy": false,
+        "image": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+    }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `job_id` | string | Job UUID |
+| `step` | integer | Current generation step |
+| `frame_count` | integer | Number of frames (1 for images, >1 for video) |
+| `width` | integer | Preview image width |
+| `height` | integer | Preview image height |
+| `is_noisy` | boolean | Whether this is a noisy preview |
+| `image` | string | Base64-encoded JPEG data URL |
+
+### job_progress Event
+
+**Example:**
+
+```json
+{
+    "event": "job_progress",
+    "timestamp": "2024-01-01T12:00:25.456Z",
+    "data": {
+        "job_id": "550e8400-e29b-41d4-a716-446655440000",
+        "step": 10,
+        "total_steps": 20
+    }
+}
+```
+
+### job_status_changed Event
+
+**Example:**
+
+```json
+{
+    "event": "job_status_changed",
+    "timestamp": "2024-01-01T12:01:00.789Z",
+    "data": {
+        "job_id": "550e8400-e29b-41d4-a716-446655440000",
+        "status": "completed",
+        "previous_status": "processing",
+        "outputs": ["550e8400-e29b-41d4-a716-446655440000/image_0.png"]
+    }
+}
+```
+
+### JavaScript Example
+
+```javascript
+const ws = new WebSocket('ws://localhost:8081');
+
+ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+
+    switch (msg.event) {
+        case 'job_progress':
+            console.log(`Progress: ${msg.data.step}/${msg.data.total_steps}`);
+            break;
+        case 'job_preview':
+            // Display preview image
+            document.getElementById('preview').src = msg.data.image;
+            break;
+        case 'job_status_changed':
+            console.log(`Job ${msg.data.job_id}: ${msg.data.status}`);
+            break;
+    }
+};
 ```
 
 ---
@@ -1953,6 +2553,19 @@ All error responses follow this format:
 | `completed` | Job finished successfully |
 | `failed` | Job encountered an error |
 | `cancelled` | Job was cancelled by user |
+| `deleted` | Job is in recycle bin (soft-deleted) |
+
+### Generation Types
+
+| Type | Description |
+|------|-------------|
+| `txt2img` | Text to Image |
+| `img2img` | Image to Image |
+| `txt2vid` | Text to Video |
+| `upscale` | Image Upscaling |
+| `convert` | Model Format Conversion |
+| `model_download` | Model Download |
+| `model_hash` | Model Hash Computation |
 
 ### Samplers
 
@@ -1972,6 +2585,8 @@ Available sampling methods:
 | `lcm` | LCM sampler |
 | `ddim_trailing` | DDIM Trailing sampler |
 | `tcd` | TCD sampler |
+| `res_multistep` | Res Multistep sampler |
+| `res_2s` | Res 2S sampler |
 
 ### Schedulers
 
@@ -1987,7 +2602,9 @@ Available scheduler types:
 | `sgm_uniform` | SGM Uniform scheduler |
 | `simple` | Simple scheduler |
 | `smoothstep` | Smoothstep scheduler (Z-Image) |
+| `kl_optimal` | KL Optimal scheduler |
 | `lcm` | LCM scheduler |
+| `bong_tangent` | Bong Tangent scheduler |
 
 ### Model Types
 
@@ -2002,6 +2619,7 @@ Available scheduler types:
 | `controlnet` | `controlnet/` | ControlNet models |
 | `llm` | `llm/` | LLM models for multimodal (Qwen, etc.) |
 | `esrgan` | `esrgan/` | ESRGAN upscaler models |
+| `taesd` | `taesd/` | TAESD preview models |
 | `embedding` | `embeddings/` | Textual inversion embeddings |
 
 ---
@@ -2240,8 +2858,7 @@ curl -X POST http://localhost:8080/models/load \
 curl -X POST http://localhost:8080/txt2img \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt": "A solitary 27-year-old woman sits sideways on a weathered, moss-flecked tree trunk that lies diagonally across a quiet forest clearing; she faces camera-left, torso gently twisted toward the viewer. She wears matte-black aviator sunglasses, a charcoal canvas field jacket closed at the front, and a loosely draped camel-brown wool scarf. Bare oak and birch trunks rise in soft tiers behind her, their branches delicate and leafless; the ground is carpeted with dry, pale ochre grass. Diffused late-afternoon sunlight filters through the canopy. Shot on 35mm film aesthetic, fine grain, natural color balance, serene and contemplative mood.",
-    "negative_prompt": "piercings, jewelry, tattoos",
+    "prompt": "A solitary 27-year-old woman sits sideways on a weathered tree trunk",
     "width": 1024,
     "height": 688,
     "steps": 8,
@@ -2251,22 +2868,6 @@ curl -X POST http://localhost:8080/txt2img \
     "seed": 42,
     "batch_count": 4,
     "easycache": true
-  }'
-```
-
-**Z-Image with LoRA:**
-
-```bash
-curl -X POST http://localhost:8080/txt2img \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "<lora:zimage_amberrayne_v1:0.6>A cinematic photograph of a solitary hooded figure walking through a rain-slicked metropolis at night. The city lights are a chaotic blur of neon orange and cool blue, reflecting on the wet asphalt. Moody, atmospheric, dark academic.",
-    "width": 1024,
-    "height": 512,
-    "steps": 8,
-    "cfg_scale": 1.0,
-    "sampler": "euler",
-    "scheduler": "smoothstep"
   }'
 ```
 
@@ -2306,24 +2907,6 @@ curl -X POST http://localhost:8080/txt2vid \
     "cfg_scale": 6.0,
     "sampler": "euler",
     "flow_shift": 3.0
-  }'
-```
-
-**Load Wan2.1 T2V 14B (quantized, with CPU offload for low VRAM):**
-
-```bash
-curl -X POST http://localhost:8080/models/load \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model_name": "wan2.1-t2v-14b-Q8_0.gguf",
-    "model_type": "diffusion",
-    "vae": "wan_2.1_vae.safetensors",
-    "t5xxl": "umt5-xxl-encoder-Q8_0.gguf",
-    "options": {
-      "flash_attn": true,
-      "offload_to_cpu": true,
-      "flow_shift": 3.0
-    }
   }'
 ```
 
@@ -2454,6 +3037,12 @@ curl http://localhost:8080/queue/{job_id}
 curl http://localhost:8080/queue
 ```
 
+**List jobs with filters:**
+
+```bash
+curl "http://localhost:8080/queue?status=completed&type=txt2img&limit=10"
+```
+
 **Cancel a pending job:**
 
 ```bash
@@ -2521,8 +3110,7 @@ while True:
     resp = requests.get(f"{BASE_URL}/queue/{job_id}")
     status = resp.json()
     prog = status['progress']
-    print(f"Status: {status['status']}, Image {prog['current_image']}/{prog['total_images']}, "
-          f"Step {prog['step']}/{prog['total_steps']}, Progress: {prog['percentage']:.1f}%")
+    print(f"Status: {status['status']}, Step {prog['step']}/{prog['total_steps']}")
 
     if status["status"] in ["completed", "failed", "cancelled"]:
         break
@@ -2577,10 +3165,7 @@ while true; do
   STATE=$(echo $STATUS | jq -r '.status')
   STEP=$(echo $STATUS | jq -r '.progress.step')
   TOTAL=$(echo $STATUS | jq -r '.progress.total_steps')
-  CUR_IMG=$(echo $STATUS | jq -r '.progress.current_image')
-  TOTAL_IMG=$(echo $STATUS | jq -r '.progress.total_images')
-  PROGRESS=$(echo $STATUS | jq -r '.progress.percentage')
-  echo "Status: $STATE, Image $CUR_IMG/$TOTAL_IMG, Step $STEP/$TOTAL, Progress: $PROGRESS%"
+  echo "Status: $STATE, Step $STEP/$TOTAL"
 
   if [ "$STATE" = "completed" ] || [ "$STATE" = "failed" ]; then
     break
@@ -2595,140 +3180,4 @@ if [ "$STATE" = "completed" ]; then
   curl -s -O "$BASE_URL/output/$OUTPUT"
   echo "Saved: $(basename $OUTPUT)"
 fi
-```
-
----
-
-## WebSocket Support
-
-Real-time progress updates are available via WebSocket connection on a separate port (default: 8081).
-
-### Connection
-
-Connect to `ws://<host>:<ws_port>` (e.g., `ws://localhost:8081`).
-
-### Event Types
-
-All messages are JSON with this structure:
-
-```json
-{
-    "event": "event_type",
-    "timestamp": "2024-01-01T12:00:00.000Z",
-    "data": { ... }
-}
-```
-
-#### Job Events
-
-| Event | Description |
-|-------|-------------|
-| `job_added` | New job added to queue |
-| `job_status_changed` | Job status changed (pending/processing/completed/failed/cancelled) |
-| `job_progress` | Generation progress update (step/total_steps) |
-| `job_preview` | Live preview image during generation |
-| `job_cancelled` | Job was cancelled |
-
-#### Model Events
-
-| Event | Description |
-|-------|-------------|
-| `model_loading_progress` | Model loading progress |
-| `model_loaded` | Model finished loading |
-| `model_unloaded` | Model was unloaded |
-| `upscaler_loaded` | Upscaler finished loading |
-| `upscaler_unloaded` | Upscaler was unloaded |
-
-#### Server Events
-
-| Event | Description |
-|-------|-------------|
-| `server_status` | Periodic heartbeat/status update |
-
-### job_preview Event
-
-Sent during generation when previews are enabled. Contains a base64-encoded JPEG image.
-
-**Example:**
-
-```json
-{
-    "event": "job_preview",
-    "timestamp": "2024-01-01T12:00:30.123Z",
-    "data": {
-        "job_id": "550e8400-e29b-41d4-a716-446655440000",
-        "step": 10,
-        "frame_count": 1,
-        "width": 256,
-        "height": 256,
-        "is_noisy": false,
-        "image": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
-    }
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `job_id` | string | Job UUID |
-| `step` | integer | Current generation step |
-| `frame_count` | integer | Number of frames (1 for images, >1 for video) |
-| `width` | integer | Preview image width |
-| `height` | integer | Preview image height |
-| `is_noisy` | boolean | Whether this is a noisy preview |
-| `image` | string | Base64-encoded JPEG data URL |
-
-### job_progress Event
-
-**Example:**
-
-```json
-{
-    "event": "job_progress",
-    "timestamp": "2024-01-01T12:00:25.456Z",
-    "data": {
-        "job_id": "550e8400-e29b-41d4-a716-446655440000",
-        "step": 10,
-        "total_steps": 20
-    }
-}
-```
-
-### job_status_changed Event
-
-**Example:**
-
-```json
-{
-    "event": "job_status_changed",
-    "timestamp": "2024-01-01T12:01:00.789Z",
-    "data": {
-        "job_id": "550e8400-e29b-41d4-a716-446655440000",
-        "status": "completed",
-        "previous_status": "processing",
-        "outputs": ["550e8400-e29b-41d4-a716-446655440000/image_0.png"]
-    }
-}
-```
-
-### JavaScript Example
-
-```javascript
-const ws = new WebSocket('ws://localhost:8081');
-
-ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-
-    switch (msg.event) {
-        case 'job_progress':
-            console.log(`Progress: ${msg.data.step}/${msg.data.total_steps}`);
-            break;
-        case 'job_preview':
-            // Display preview image
-            document.getElementById('preview').src = msg.data.image;
-            break;
-        case 'job_status_changed':
-            console.log(`Job ${msg.data.job_id}: ${msg.data.status}`);
-            break;
-    }
-};
 ```
