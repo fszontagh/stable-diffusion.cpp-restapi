@@ -1288,6 +1288,7 @@ export interface ArchitecturePreset {
   requiredComponents: Record<string, string>
   optionalComponents: Record<string, string>
   loadOptions: Record<string, unknown>
+  imageEditMode?: 'ref_images' | 'init_image'
   generationDefaults: Record<string, unknown>
 }
 
