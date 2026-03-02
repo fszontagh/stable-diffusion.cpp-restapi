@@ -298,7 +298,13 @@ function formatDuration(startStr: string, endStr: string): string {
 }
 
 function isRefImagesJob(job: Job): boolean {
-  return job.type === 'txt2img' && Array.isArray(job.params?.ref_images) && (job.params.ref_images as unknown[]).length > 0
+  if (job.type !== 'txt2img') return false
+  const p = job.params
+  if (!p) return false
+  // Backend stores ref_images_count (number) instead of the actual base64 array
+  if (typeof p.ref_images_count === 'number' && p.ref_images_count > 0) return true
+  if (Array.isArray(p.ref_images) && (p.ref_images as unknown[]).length > 0) return true
+  return false
 }
 
 function getTypeIcon(type: string, job?: Job): string {
@@ -1018,8 +1024,8 @@ async function sendImageToUpscale(outputPath: string) {
 
             <!-- Outputs for completed jobs -->
             <div v-else-if="job.status === 'completed' && job.outputs.length > 0" class="job-outputs">
-              <!-- Source image for upscale and img2img jobs -->
-              <template v-if="job.type === 'upscale' || job.type === 'img2img'">
+              <!-- Source image for upscale, img2img, and image edit jobs -->
+              <template v-if="job.type === 'upscale' || job.type === 'img2img' || isRefImagesJob(job)">
                 <div class="source-image">
                   <span class="source-label">Source</span>
                   <button

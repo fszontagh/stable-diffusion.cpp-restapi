@@ -947,7 +947,7 @@ onBeforeUnmount(() => {
 
 function loadJobParams(type: string, params: Record<string, unknown>) {
   // Set mode based on job type — detect ref_images jobs as image edit
-  if (type === 'txt2img' && params.ref_images) {
+  if (type === 'txt2img' && (params.ref_images || (typeof params.ref_images_count === 'number' && params.ref_images_count > 0))) {
     mode.value = 'img_edit'
   } else if (type === 'txt2img' || type === 'img2img' || type === 'txt2vid') {
     mode.value = type
