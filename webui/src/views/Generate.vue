@@ -615,8 +615,6 @@ const currentArchPreset = computed(() => {
   return archData ?? null
 })
 
-// Image edit mode for current architecture (ref_images = reference-based, null = traditional/none)
-const imageEditMode = computed(() => currentArchPreset.value?.imageEditMode ?? null)
 
 // Get recommended settings for current model from architecture JSON
 const recommended = computed((): RecommendedSettings | null => {
@@ -1017,8 +1015,6 @@ const showSidebar = computed(() => {
   return false
 })
 
-// Image edit available when model supports ref_images
-const isImageEditAvailable = computed(() => imageEditMode.value === 'ref_images')
 
 // Computed property to check if there's a processing job for our last submission
 const isCurrentJobProcessing = computed(() => {
@@ -1564,15 +1560,10 @@ async function handleSubmit() {
           <div class="card-header">
             <h3 class="card-title">Image Edit</h3>
           </div>
-          <template v-if="isImageEditAvailable">
-            <div class="info-hint">
-              This model uses reference-based editing. Upload a reference image and describe the changes in the prompt.
-            </div>
-            <ImageUploader v-model="refImage" label="Reference Image" />
-          </template>
-          <div v-else class="info-hint">
-            Load a model that supports reference-based image editing (ref_images) to use this feature.
+          <div class="info-hint">
+            Upload a reference image and describe the changes in the prompt.
           </div>
+          <ImageUploader v-model="refImage" label="Reference Image" />
         </div>
       </div>
     </div>
