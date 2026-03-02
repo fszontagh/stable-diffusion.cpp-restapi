@@ -208,7 +208,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.flash_attn = opts.value("flash_attn", true);
         params.offload_to_cpu = opts.value("offload_to_cpu", false);
         params.enable_mmap = opts.value("enable_mmap", true);
-        params.vae_decode_only = opts.value("vae_decode_only", true);
+        params.vae_decode_only = opts.value("vae_decode_only", false);
         params.vae_conv_direct = opts.value("vae_conv_direct", false);
         params.diffusion_conv_direct = opts.value("diffusion_conv_direct", false);
         params.tae_preview_only = opts.value("tae_preview_only", false);
