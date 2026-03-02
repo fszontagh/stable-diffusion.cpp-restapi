@@ -16,7 +16,7 @@ const store = useAppStore()
 const highlightedSetting = ref<string | null>(null)
 let highlightTimeout: ReturnType<typeof setTimeout> | null = null
 
-const mode = ref<'txt2img' | 'img2img' | 'txt2vid'>('txt2img')
+const mode = ref<'txt2img' | 'img2img' | 'img_edit' | 'txt2vid'>('txt2img')
 const submitting = ref(false)
 const cooldown = ref(false)
 let cooldownTimer: ReturnType<typeof setTimeout> | null = null
@@ -27,6 +27,7 @@ function getNegativePromptStorageKey(m: string) { return `generateSettings_negat
 const INIT_IMAGE_STORAGE_KEY = 'generateSettings_initImage'
 const MASK_IMAGE_STORAGE_KEY = 'generateSettings_maskImage'
 const CONTROL_IMAGE_STORAGE_KEY = 'generateSettings_controlImage'
+const REF_IMAGE_STORAGE_KEY = 'generateSettings_refImage'
 
 // Common params
 const prompt = ref('')
@@ -46,6 +47,9 @@ const clipSkip = ref(-1)
 const initImage = ref<string | undefined>()
 const strength = ref(0.75)
 const maskImage = ref<string | undefined>()
+
+// img_edit params (separate from initImage)
+const refImage = ref<string | undefined>()
 
 // ControlNet params
 const controlImage = ref<string | undefined>()
@@ -264,10 +268,23 @@ const debouncedSaveControlImage = useDebounceFn(() => {
   }
 }, 500)
 
+const debouncedSaveRefImage = useDebounceFn(() => {
+  if (refImage.value) {
+    try {
+      sessionStorage.setItem(REF_IMAGE_STORAGE_KEY, refImage.value)
+    } catch (e) {
+      console.warn('Failed to persist ref image:', e)
+    }
+  } else {
+    sessionStorage.removeItem(REF_IMAGE_STORAGE_KEY)
+  }
+}, 500)
+
 // Watch images for sessionStorage persistence
 watch(initImage, debouncedSaveInitImage)
 watch(maskImage, debouncedSaveMaskImage)
 watch(controlImage, debouncedSaveControlImage)
+watch(refImage, debouncedSaveRefImage)
 
 // Build final prompt with LoRAs
 function buildPromptWithLoras(basePrompt: string, loras: LoraEntry[]): string {
@@ -377,8 +394,11 @@ async function saveSettings() {
   // Don't save prompt to persistent settings - just generation parameters
   const { prompt: _, negativePrompt: __, ...toSave } = settings
 
+  // img_edit shares txt2img backend settings
+  const backendMode = mode.value === 'img_edit' ? 'txt2img' : mode.value
+
   try {
-    await api.updateGenerationDefaultsForMode(mode.value, toSave as any)
+    await api.updateGenerationDefaultsForMode(backendMode, toSave as any)
     // Silently save, don't show toast for each change
   } catch (e) {
     console.error('Failed to save settings:', e)
@@ -386,13 +406,15 @@ async function saveSettings() {
 }
 
 // Load settings for a specific mode from backend
-async function loadSettingsForMode(targetMode: 'txt2img' | 'img2img' | 'txt2vid') {
+async function loadSettingsForMode(targetMode: 'txt2img' | 'img2img' | 'img_edit' | 'txt2vid') {
+  // img_edit shares txt2img backend settings
+  const backendMode = targetMode === 'img_edit' ? 'txt2img' : targetMode
   try {
     // Get architecture defaults from current model
     const architectureDefaults = getArchitectureDefaultsForMode()
 
     // Get user preferences from backend
-    const userPrefs = (store.generationDefaults?.[targetMode] as Record<string, unknown>) || {}
+    const userPrefs = (store.generationDefaults?.[backendMode] as Record<string, unknown>) || {}
 
     // Merge: user prefs override architecture defaults
     const settings = mergeWithDefaults(architectureDefaults, userPrefs)
@@ -406,9 +428,11 @@ async function loadSettingsForMode(targetMode: 'txt2img' | 'img2img' | 'txt2vid'
 }
 
 // Copy settings from another mode
-async function copySettingsFrom(sourceMode: 'txt2img' | 'img2img' | 'txt2vid') {
+async function copySettingsFrom(sourceMode: 'txt2img' | 'img2img' | 'img_edit' | 'txt2vid') {
+  // img_edit shares txt2img backend settings
+  const backendMode = sourceMode === 'img_edit' ? 'txt2img' : sourceMode
   try {
-    const userPrefs = (store.generationDefaults?.[sourceMode] as Record<string, unknown>) || {}
+    const userPrefs = (store.generationDefaults?.[backendMode] as Record<string, unknown>) || {}
     if (Object.keys(userPrefs).length === 0) {
       store.showToast(`No saved preferences for ${getModeLabel(sourceMode)}`, 'warning')
       showCopyMenu.value = false
@@ -428,6 +452,7 @@ function getModeLabel(m: string): string {
   const labels: Record<string, string> = {
     txt2img: 'Text to Image',
     img2img: 'Image to Image',
+    img_edit: 'Image Edit',
     txt2vid: 'Text to Video'
   }
   return labels[m] || m
@@ -435,7 +460,7 @@ function getModeLabel(m: string): string {
 
 // Get other modes for copy menu
 const otherModes = computed(() => {
-  const modes: Array<'txt2img' | 'img2img' | 'txt2vid'> = ['txt2img', 'img2img', 'txt2vid']
+  const modes: Array<'txt2img' | 'img2img' | 'img_edit' | 'txt2vid'> = ['txt2img', 'img2img', 'img_edit', 'txt2vid']
   return modes.filter(m => m !== mode.value)
 })
 
@@ -448,9 +473,13 @@ watch(mode, async (newMode, oldMode) => {
     await saveSettings()
     await saveLoraSettings()
   }
+  // Persist selected mode
+  localStorage.setItem('generateSettings_lastMode', newMode)
   // Load settings for new mode
   await loadSettingsForMode(newMode)
-  loadLoraSettingsForMode(newMode)
+  // img_edit shares txt2img LoRA settings
+  const loraMode = newMode === 'img_edit' ? 'txt2img' : newMode
+  loadLoraSettingsForMode(loraMode)
   // Restore prompts for new mode (skip during queue reload - loadJobParams handles it)
   if (!suppressPromptRestore) {
     const savedPrompt = localStorage.getItem(getPromptStorageKey(newMode))
@@ -471,12 +500,14 @@ async function saveLoraSettings() {
     const currentPrefs = store.uiPreferences || {} as any
     const loraLists = (currentPrefs as any).lora_lists || {}
 
+    // img_edit shares txt2img LoRA settings
+    const loraMode = mode.value === 'img_edit' ? 'txt2img' : mode.value
     await api.updateUIPreferences({
       ...currentPrefs,
       lora_settings: loraSettings.value,
       lora_lists: {
         ...loraLists,
-        [mode.value]: {
+        [loraMode]: {
           positive: positiveLoraList.value,
           negative: negativeLoraList.value
         }
@@ -801,7 +832,9 @@ onMounted(async () => {
       // Set mode first - suppress prompt restore since loadJobParams will set the prompt
       suppressPromptRestore = true
       if (data.type === 'txt2img' || data.type === 'img2img' || data.type === 'txt2vid') {
-        mode.value = data.type
+        // loadJobParams will set the correct mode (including img_edit for ref_images jobs)
+        // Set the base mode here; loadJobParams below may override to img_edit
+        mode.value = data.type as 'txt2img' | 'img2img' | 'txt2vid'
       }
       loadJobParams(data.type, data.params)
       suppressPromptRestore = false
@@ -836,14 +869,15 @@ onMounted(async () => {
     }
   } else {
     // Restore last used mode from local storage
-    const lastMode = localStorage.getItem('generateSettings_lastMode') as 'txt2img' | 'img2img' | 'txt2vid' | null
-    if (lastMode && ['txt2img', 'img2img', 'txt2vid'].includes(lastMode)) {
+    const lastMode = localStorage.getItem('generateSettings_lastMode') as 'txt2img' | 'img2img' | 'img_edit' | 'txt2vid' | null
+    if (lastMode && ['txt2img', 'img2img', 'img_edit', 'txt2vid'].includes(lastMode)) {
       mode.value = lastMode
     }
     // Load settings for current mode
     await loadSettingsForMode(mode.value)
-    // Load LoRA settings
-    loadLoraSettingsForMode(mode.value)
+    // Load LoRA settings (img_edit shares txt2img)
+    const loraMode = mode.value === 'img_edit' ? 'txt2img' : mode.value
+    loadLoraSettingsForMode(loraMode)
 
     // Restore prompts from localStorage for current mode (only when NOT reloading job params)
     const savedPrompt = localStorage.getItem(getPromptStorageKey(mode.value))
@@ -880,6 +914,7 @@ onMounted(async () => {
     const savedInitImage = sessionStorage.getItem(INIT_IMAGE_STORAGE_KEY)
     const savedMaskImage = sessionStorage.getItem(MASK_IMAGE_STORAGE_KEY)
     const savedControlImage = sessionStorage.getItem(CONTROL_IMAGE_STORAGE_KEY)
+    const savedRefImage = sessionStorage.getItem(REF_IMAGE_STORAGE_KEY)
     if (savedInitImage) {
       initImage.value = savedInitImage
     }
@@ -888,6 +923,9 @@ onMounted(async () => {
     }
     if (savedControlImage) {
       controlImage.value = savedControlImage
+    }
+    if (savedRefImage) {
+      refImage.value = savedRefImage
     }
   }
 })
@@ -909,7 +947,7 @@ onBeforeUnmount(() => {
 function loadJobParams(type: string, params: Record<string, unknown>) {
   // Set mode based on job type — detect ref_images jobs as image edit
   if (type === 'txt2img' && params.ref_images) {
-    mode.value = 'img2img'
+    mode.value = 'img_edit'
   } else if (type === 'txt2img' || type === 'img2img' || type === 'txt2vid') {
     mode.value = type
   }
@@ -971,6 +1009,16 @@ function openPreviewLightbox() {
     showLightbox.value = true
   }
 }
+
+// Show sidebar when there's content to display (source images or preview)
+const showSidebar = computed(() => {
+  if (mode.value === 'img2img' || mode.value === 'img_edit') return true
+  if (isCurrentJobProcessing.value) return true
+  return false
+})
+
+// Image edit available when model supports ref_images
+const isImageEditAvailable = computed(() => imageEditMode.value === 'ref_images')
 
 // Computed property to check if there's a processing job for our last submission
 const isCurrentJobProcessing = computed(() => {
@@ -1046,30 +1094,33 @@ async function handleSubmit() {
     let result
     if (mode.value === 'txt2img') {
       result = await api.txt2img(baseParams)
+    } else if (mode.value === 'img_edit') {
+      if (!refImage.value) {
+        store.showToast('Please upload a reference image', 'warning')
+        submitting.value = false
+        return
+      }
+      // Reference-based editing → txt2img endpoint with ref_images
+      const imgData = refImage.value.includes(',')
+        ? refImage.value.split(',')[1]
+        : refImage.value
+      result = await api.txt2img({ ...baseParams, ref_images: [imgData] })
     } else if (mode.value === 'img2img') {
       if (!initImage.value) {
         store.showToast('Please upload an input image', 'warning')
         submitting.value = false
         return
       }
-      if (imageEditMode.value === 'ref_images') {
-        // Reference-based editing → txt2img endpoint with ref_images
-        const imgData = initImage.value.includes(',')
-          ? initImage.value.split(',')[1]
-          : initImage.value
-        result = await api.txt2img({ ...baseParams, ref_images: [imgData] })
-      } else {
-        // Traditional img2img → img2img endpoint
-        const params: Img2ImgParams = {
-          ...baseParams,
-          init_image_base64: initImage.value,
-          strength: strength.value
-        }
-        if (maskImage.value) {
-          params.mask_image_base64 = maskImage.value
-        }
-        result = await api.img2img(params)
+      // Traditional img2img → img2img endpoint
+      const params: Img2ImgParams = {
+        ...baseParams,
+        init_image_base64: initImage.value,
+        strength: strength.value
       }
+      if (maskImage.value) {
+        params.mask_image_base64 = maskImage.value
+      }
+      result = await api.img2img(params)
     } else {
       const params: Txt2VidParams = {
         ...baseParams,
@@ -1111,7 +1162,10 @@ async function handleSubmit() {
           Text to Image
         </button>
         <button :class="['tab', { active: mode === 'img2img' }]" @click="mode = 'img2img'">
-          {{ imageEditMode === 'ref_images' ? 'Image Edit' : 'Image to Image' }}
+          Image to Image
+        </button>
+        <button :class="['tab', { active: mode === 'img_edit' }]" @click="mode = 'img_edit'">
+          Image Edit
         </button>
         <button :class="['tab', { active: mode === 'txt2vid' }]" @click="mode = 'txt2vid'">
           Text to Video
@@ -1138,357 +1192,387 @@ async function handleSubmit() {
       </div>
     </div>
 
-    <div class="generate-form">
-      <!-- Loaded Model Panel -->
-      <LoadedModelPanel />
+    <!-- Two-column layout -->
+    <div :class="['generate-layout', { 'single-column': !showSidebar }]">
+      <!-- LEFT: Main form controls -->
+      <div class="generate-main">
+        <!-- Loaded Model Panel -->
+        <LoadedModelPanel />
 
-      <!-- Prompt Section -->
-      <div class="card">
-        <div class="form-group" data-setting="prompt" :class="{ 'setting-highlighted': highlightedSetting === 'prompt' }">
-          <label class="form-label">Prompt</label>
-          <HighlightedPrompt
-            v-model="prompt"
-            placeholder="A beautiful landscape with mountains and a lake..."
-            :rows="3"
-          />
-          <div class="form-hint">
-            LoRAs typed as &lt;lora:name:weight&gt; are auto-detected and moved to the LoRA panel.
-            <span v-if="invalidLorasInPositivePrompt.length > 0" class="lora-warning-hint">
-              &#9888; Unknown LoRAs: {{ invalidLorasInPositivePrompt.join(', ') }}
-            </span>
+        <!-- Prompt Section -->
+        <div class="card">
+          <div class="form-group" data-setting="prompt" :class="{ 'setting-highlighted': highlightedSetting === 'prompt' }">
+            <label class="form-label">Prompt</label>
+            <HighlightedPrompt
+              v-model="prompt"
+              placeholder="A beautiful landscape with mountains and a lake..."
+              :rows="3"
+            />
+            <div class="form-hint">
+              LoRAs typed as &lt;lora:name:weight&gt; are auto-detected and moved to the LoRA panel.
+              <span v-if="invalidLorasInPositivePrompt.length > 0" class="lora-warning-hint">
+                &#9888; Unknown LoRAs: {{ invalidLorasInPositivePrompt.join(', ') }}
+              </span>
+            </div>
+          </div>
+
+          <div class="form-group" data-setting="negative-prompt" :class="{ 'setting-highlighted': highlightedSetting === 'negative-prompt' }">
+            <label class="form-label">Negative Prompt (optional)</label>
+            <HighlightedPrompt
+              v-model="negativePrompt"
+              placeholder="blurry, low quality, bad anatomy..."
+              :rows="2"
+            />
+            <div v-if="invalidLorasInNegativePrompt.length > 0" class="form-hint lora-warning-hint">
+              &#9888; Unknown LoRAs: {{ invalidLorasInNegativePrompt.join(', ') }}
+            </div>
           </div>
         </div>
 
-        <div class="form-group" data-setting="negative-prompt" :class="{ 'setting-highlighted': highlightedSetting === 'negative-prompt' }">
-          <label class="form-label">Negative Prompt (optional)</label>
-          <HighlightedPrompt
-            v-model="negativePrompt"
-            placeholder="blurry, low quality, bad anatomy..."
-            :rows="2"
-          />
-          <div v-if="invalidLorasInNegativePrompt.length > 0" class="form-hint lora-warning-hint">
-            &#9888; Unknown LoRAs: {{ invalidLorasInNegativePrompt.join(', ') }}
+        <!-- LoRA Panel -->
+        <LoraPanel
+          v-if="availableLoras.length > 0"
+          :positive-list="positiveLoraList"
+          :negative-list="negativeLoraList"
+          :available-loras="availableLoras"
+          :settings="loraSettings"
+          @update:positive-list="positiveLoraList = $event"
+          @update:negative-list="negativeLoraList = $event"
+          @update:settings="loraSettings = $event"
+        />
+
+        <!-- ControlNet Section -->
+        <div v-if="hasControlNet" class="card">
+          <div class="card-header">
+            <h3 class="card-title">ControlNet</h3>
           </div>
+          <ImageUploader v-model="controlImage" label="Control Image" />
+          <div class="form-group">
+            <label class="form-label">Control Strength: {{ controlStrength.toFixed(2) }}</label>
+            <input v-model.number="controlStrength" type="range" class="form-range" min="0" max="1" step="0.05" />
+          </div>
+        </div>
+
+        <!-- Parameters -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Parameters</h3>
+            <button
+              v-if="recommended"
+              class="btn btn-secondary btn-sm"
+              @click="applyRecommendedSettings"
+              title="Apply recommended settings for this model"
+            >
+              Apply Recommended
+            </button>
+          </div>
+
+          <!-- Recommended Settings Summary -->
+          <div v-if="recommended" class="recommended-panel">
+            <div class="recommended-header">
+              <span class="recommended-icon">&#128161;</span>
+              <span class="recommended-title">Recommended for {{ store.modelArchitecture }}</span>
+            </div>
+            <div class="recommended-items">
+              <span class="rec-item">
+                <span class="rec-label">Sampler:</span>
+                <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('sampler', sampler) }">{{ recommended.sampler }}</span>
+              </span>
+              <span class="rec-item">
+                <span class="rec-label">Scheduler:</span>
+                <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('scheduler', scheduler) }">{{ recommended.scheduler }}</span>
+              </span>
+              <span class="rec-item">
+                <span class="rec-label">Steps:</span>
+                <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('steps', steps) }">{{ recommended.steps }}</span>
+              </span>
+              <span class="rec-item">
+                <span class="rec-label">CFG:</span>
+                <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('cfgScale', cfgScale) }">{{ recommended.cfgScale }}</span>
+              </span>
+              <span class="rec-item">
+                <span class="rec-label">Size:</span>
+                <span class="rec-value" :class="{ 'rec-different': width !== recommended.width || height !== recommended.height }">{{ recommended.width }}x{{ recommended.height }}</span>
+              </span>
+              <span v-if="recommended.distilledGuidance > 0" class="rec-item">
+                <span class="rec-label">Dist. Guidance:</span>
+                <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('distilledGuidance', distilledGuidance) }">{{ recommended.distilledGuidance }}</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Size Presets -->
+          <div class="form-group">
+            <label class="form-label">Size Presets</label>
+            <div class="preset-buttons">
+              <button
+                v-for="preset in presets"
+                :key="preset.label"
+                :class="['btn', 'btn-sm', width === preset.w && height === preset.h ? 'btn-primary' : 'btn-secondary']"
+                @click="setPreset(preset)"
+              >
+                {{ preset.label }}
+              </button>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" data-setting="width" :class="{ 'setting-highlighted': highlightedSetting === 'width' }">
+              <label class="form-label">Width</label>
+              <input v-model.number="width" type="number" class="form-input" step="8" min="64" max="2048" />
+            </div>
+            <div class="form-group" data-setting="height" :class="{ 'setting-highlighted': highlightedSetting === 'height' }">
+              <label class="form-label">Height</label>
+              <input v-model.number="height" type="number" class="form-input" step="8" min="64" max="2048" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" data-setting="steps" :class="{ 'setting-highlighted': highlightedSetting === 'steps' }">
+              <label class="form-label">
+                Steps: {{ steps }}
+                <span v-if="recommended && isDifferentFromRecommended('steps', steps)" class="rec-hint">
+                  (rec: {{ recommended.steps }})
+                </span>
+              </label>
+              <input v-model.number="steps" type="range" class="form-range" min="1" max="150" />
+            </div>
+            <div class="form-group" data-setting="cfg-scale" :class="{ 'setting-highlighted': highlightedSetting === 'cfg-scale' }">
+              <label class="form-label">
+                CFG Scale: {{ cfgScale.toFixed(1) }}
+                <span v-if="recommended && isDifferentFromRecommended('cfgScale', cfgScale)" class="rec-hint">
+                  (rec: {{ recommended.cfgScale }})
+                </span>
+              </label>
+              <input v-model.number="cfgScale" type="range" class="form-range" min="0" max="20" step="0.1" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" data-setting="sampler" :class="{ 'setting-highlighted': highlightedSetting === 'sampler' }">
+              <label class="form-label">
+                Sampler
+                <span v-if="recommended && isDifferentFromRecommended('sampler', sampler)" class="rec-hint">
+                  (rec: {{ recommended.sampler }})
+                </span>
+              </label>
+              <select v-model="sampler" class="form-select">
+                <option v-for="s in samplers" :key="s" :value="s">{{ s }}</option>
+              </select>
+            </div>
+            <div class="form-group" data-setting="scheduler" :class="{ 'setting-highlighted': highlightedSetting === 'scheduler' }">
+              <label class="form-label">
+                Scheduler
+                <span v-if="recommended && isDifferentFromRecommended('scheduler', scheduler)" class="rec-hint">
+                  (rec: {{ recommended.scheduler }})
+                </span>
+              </label>
+              <select v-model="scheduler" class="form-select">
+                <option v-for="s in schedulers" :key="s" :value="s">{{ s }}</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" data-setting="seed" :class="{ 'setting-highlighted': highlightedSetting === 'seed' }">
+              <label class="form-label">Seed (-1 = random)</label>
+              <div class="input-with-button">
+                <input v-model.number="seed" type="number" class="form-input" />
+                <button class="btn btn-secondary btn-icon" @click="randomizeSeed" title="Randomize">
+                  &#127922;
+                </button>
+              </div>
+            </div>
+            <div class="form-group" data-setting="batch-count" :class="{ 'setting-highlighted': highlightedSetting === 'batch-count' }">
+              <label class="form-label">Batch Count</label>
+              <input v-model.number="batchCount" type="number" class="form-input" min="1" max="16" />
+            </div>
+          </div>
+
+          <!-- txt2vid specific -->
+          <div v-if="mode === 'txt2vid'" class="form-row">
+            <div class="form-group" data-setting="video-frames" :class="{ 'setting-highlighted': highlightedSetting === 'video-frames' }">
+              <label class="form-label">Video Frames</label>
+              <input v-model.number="videoFrames" type="number" class="form-input" min="1" max="129" />
+            </div>
+            <div class="form-group" data-setting="fps" :class="{ 'setting-highlighted': highlightedSetting === 'fps' }">
+              <label class="form-label">FPS</label>
+              <input v-model.number="fps" type="number" class="form-input" min="1" max="60" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Flow Shift</label>
+              <input v-model.number="flowShift" type="number" class="form-input" step="0.5" min="0" max="10" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Advanced Options -->
+        <details class="card accordion">
+          <summary class="accordion-header" @click="showAdvanced = !showAdvanced">
+            Advanced Options
+          </summary>
+          <div class="accordion-content">
+            <div class="form-row">
+              <div class="form-group" data-setting="clip-skip" :class="{ 'setting-highlighted': highlightedSetting === 'clip-skip' }">
+                <label class="form-label">
+                  CLIP Skip (-1 = default)
+                  <span v-if="recommended && isDifferentFromRecommended('clipSkip', clipSkip)" class="rec-hint">
+                    (rec: {{ recommended.clipSkip }})
+                  </span>
+                </label>
+                <input v-model.number="clipSkip" type="number" class="form-input" min="-1" max="12" />
+              </div>
+              <div class="form-group" data-setting="distilled-guidance" :class="{ 'setting-highlighted': highlightedSetting === 'distilled-guidance' }">
+                <label class="form-label">
+                  Distilled Guidance
+                  <span v-if="recommended && isDifferentFromRecommended('distilledGuidance', distilledGuidance)" class="rec-hint">
+                    (rec: {{ recommended.distilledGuidance }})
+                  </span>
+                </label>
+                <input v-model.number="distilledGuidance" type="number" class="form-input" step="0.5" min="0" max="10" />
+              </div>
+            </div>
+
+            <div class="form-group" data-setting="slg-scale" :class="{ 'setting-highlighted': highlightedSetting === 'slg-scale' }">
+              <label class="form-label">
+                SLG Scale (Skip Layer Guidance)
+                <span v-if="recommended?.slgScale !== undefined && isDifferentFromRecommended('slgScale', slgScale)" class="rec-hint">
+                  (rec: {{ recommended.slgScale }})
+                </span>
+              </label>
+              <input v-model.number="slgScale" type="number" class="form-input" step="0.5" min="0" max="10" />
+            </div>
+
+            <label class="form-checkbox" data-setting="easycache" :class="{ 'setting-highlighted': highlightedSetting === 'easycache' }">
+              <input v-model="easycache" type="checkbox" />
+              Enable EasyCache (faster DiT models)
+              <span v-if="recommended?.easycache !== undefined && recommended.easycache !== easycache" class="rec-hint">
+                (rec: {{ recommended.easycache ? 'enabled' : 'disabled' }})
+              </span>
+            </label>
+
+            <div v-if="easycache" class="form-group mt-2">
+              <label class="form-label">EasyCache Threshold</label>
+              <input v-model.number="easycacheThreshold" type="number" class="form-input" step="0.05" min="0" max="1" />
+            </div>
+
+            <label class="form-checkbox" data-setting="vae-tiling" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tiling' }">
+              <input v-model="vaeTiling" type="checkbox" />
+              VAE Tiling (for large images{{ mode === 'txt2vid' ? '/videos' : '' }})
+            </label>
+
+            <div v-if="vaeTiling" class="tiling-options">
+              <div class="form-row">
+                <div class="form-group" data-setting="vae-tile-size-x" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-size-x' }">
+                  <label class="form-label">Tile Size X (0 = auto)</label>
+                  <input v-model.number="vaeTileSizeX" type="number" class="form-input" min="0" max="2048" step="64" />
+                </div>
+                <div class="form-group" data-setting="vae-tile-size-y" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-size-y' }">
+                  <label class="form-label">Tile Size Y (0 = auto)</label>
+                  <input v-model.number="vaeTileSizeY" type="number" class="form-input" min="0" max="2048" step="64" />
+                </div>
+              </div>
+              <div class="form-group" data-setting="vae-tile-overlap" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-overlap' }">
+                <label class="form-label">Tile Overlap: {{ vaeTileOverlap.toFixed(2) }}</label>
+                <input v-model.number="vaeTileOverlap" type="range" class="form-range" min="0" max="1" step="0.05" />
+              </div>
+              <div class="form-hint">VAE tiling reduces VRAM usage for high-resolution images/videos by processing in tiles.</div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Submit Button -->
+        <div class="submit-section">
+          <button
+            class="btn btn-primary btn-lg"
+            @click="handleSubmit"
+            :disabled="submitting || cooldown || !store.modelLoaded"
+          >
+            <span v-if="submitting" class="spinner"></span>
+            {{ submitting ? 'Submitting...' : cooldown ? 'Please wait...' : `Generate ${mode === 'txt2vid' ? 'Video' : 'Image'}` }}
+          </button>
+          <p v-if="!store.modelLoaded" class="text-error mt-2">
+            Please load a model first
+          </p>
         </div>
       </div>
 
-      <!-- LoRA Panel -->
-      <LoraPanel
-        v-if="availableLoras.length > 0"
-        :positive-list="positiveLoraList"
-        :negative-list="negativeLoraList"
-        :available-loras="availableLoras"
-        :settings="loraSettings"
-        @update:positive-list="positiveLoraList = $event"
-        @update:negative-list="negativeLoraList = $event"
-        @update:settings="loraSettings = $event"
-      />
+      <!-- RIGHT: Sidebar (preview + source images) -->
+      <div v-if="showSidebar" class="generate-sidebar">
+        <!-- Preview widget (if enabled + generating) -->
+        <div v-if="isCurrentJobProcessing && store.previewEnabled" class="card sidebar-preview-card">
+          <div class="card-header">
+            <h3 class="card-title">Generating...</h3>
+            <span v-if="currentJobProgress" class="progress-text">
+              Step {{ currentJobProgress.step }} / {{ currentJobProgress.total_steps }}
+            </span>
+          </div>
+          <div class="sidebar-preview-content">
+            <div class="sidebar-preview-image-container">
+              <img
+                v-if="hasPreviewForCurrentJob && store.currentPreview?.image"
+                :src="store.currentPreview.image"
+                alt="Generation preview"
+                class="sidebar-preview-image"
+                @click="openPreviewLightbox"
+              />
+              <div v-else class="sidebar-preview-placeholder">
+                <span class="spinner spinner-lg"></span>
+                <span class="placeholder-text">Waiting for preview...</span>
+              </div>
+            </div>
+            <ProgressBar
+              v-if="currentJobProgress"
+              :progress="currentJobProgress.total_steps > 0 ? (currentJobProgress.step / currentJobProgress.total_steps) * 100 : 0"
+              :show-label="true"
+            />
+          </div>
+        </div>
 
-      <!-- img2img / Image Edit Input -->
-      <div v-if="mode === 'img2img'" class="card">
-        <div class="card-header">
-          <h3 class="card-title">{{ imageEditMode === 'ref_images' ? 'Image Edit' : 'Source Image' }}</h3>
+        <!-- Progress only (if preview disabled but generating) -->
+        <div v-else-if="isCurrentJobProcessing" class="card sidebar-progress-card">
+          <div class="card-header">
+            <h3 class="card-title">Generating...</h3>
+            <span v-if="currentJobProgress" class="progress-text">
+              Step {{ currentJobProgress.step }} / {{ currentJobProgress.total_steps }}
+            </span>
+          </div>
+          <div class="sidebar-progress-content">
+            <ProgressBar
+              v-if="currentJobProgress"
+              :progress="currentJobProgress.total_steps > 0 ? (currentJobProgress.step / currentJobProgress.total_steps) * 100 : 0"
+              :show-label="true"
+            />
+          </div>
         </div>
-        <div v-if="imageEditMode === 'ref_images'" class="info-hint">
-          This model uses reference-based editing. Describe changes in the prompt.
-        </div>
-        <ImageUploader v-model="initImage" :label="imageEditMode === 'ref_images' ? 'Reference Image' : 'Initial Image'" />
-        <template v-if="imageEditMode !== 'ref_images'">
+
+        <!-- img2img: source images -->
+        <div v-if="mode === 'img2img'" class="card">
+          <div class="card-header">
+            <h3 class="card-title">Source Image</h3>
+          </div>
+          <ImageUploader v-model="initImage" label="Initial Image" />
           <div class="form-group">
             <label class="form-label">Strength: {{ strength.toFixed(2) }}</label>
             <input v-model.number="strength" type="range" class="form-range" min="0" max="1" step="0.05" />
           </div>
           <ImageUploader v-model="maskImage" label="Mask Image (optional - white = repaint)" />
-        </template>
-      </div>
-
-      <!-- ControlNet Section -->
-      <div v-if="hasControlNet" class="card">
-        <div class="card-header">
-          <h3 class="card-title">ControlNet</h3>
-        </div>
-        <ImageUploader v-model="controlImage" label="Control Image" />
-        <div class="form-group">
-          <label class="form-label">Control Strength: {{ controlStrength.toFixed(2) }}</label>
-          <input v-model.number="controlStrength" type="range" class="form-range" min="0" max="1" step="0.05" />
-        </div>
-      </div>
-
-      <!-- Parameters -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Parameters</h3>
-          <button
-            v-if="recommended"
-            class="btn btn-secondary btn-sm"
-            @click="applyRecommendedSettings"
-            title="Apply recommended settings for this model"
-          >
-            Apply Recommended
-          </button>
         </div>
 
-        <!-- Recommended Settings Summary -->
-        <div v-if="recommended" class="recommended-panel">
-          <div class="recommended-header">
-            <span class="recommended-icon">&#128161;</span>
-            <span class="recommended-title">Recommended for {{ store.modelArchitecture }}</span>
+        <!-- img_edit: reference image -->
+        <div v-if="mode === 'img_edit'" class="card">
+          <div class="card-header">
+            <h3 class="card-title">Image Edit</h3>
           </div>
-          <div class="recommended-items">
-            <span class="rec-item">
-              <span class="rec-label">Sampler:</span>
-              <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('sampler', sampler) }">{{ recommended.sampler }}</span>
-            </span>
-            <span class="rec-item">
-              <span class="rec-label">Scheduler:</span>
-              <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('scheduler', scheduler) }">{{ recommended.scheduler }}</span>
-            </span>
-            <span class="rec-item">
-              <span class="rec-label">Steps:</span>
-              <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('steps', steps) }">{{ recommended.steps }}</span>
-            </span>
-            <span class="rec-item">
-              <span class="rec-label">CFG:</span>
-              <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('cfgScale', cfgScale) }">{{ recommended.cfgScale }}</span>
-            </span>
-            <span class="rec-item">
-              <span class="rec-label">Size:</span>
-              <span class="rec-value" :class="{ 'rec-different': width !== recommended.width || height !== recommended.height }">{{ recommended.width }}x{{ recommended.height }}</span>
-            </span>
-            <span v-if="recommended.distilledGuidance > 0" class="rec-item">
-              <span class="rec-label">Dist. Guidance:</span>
-              <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('distilledGuidance', distilledGuidance) }">{{ recommended.distilledGuidance }}</span>
-            </span>
-          </div>
-        </div>
-
-        <!-- Size Presets -->
-        <div class="form-group">
-          <label class="form-label">Size Presets</label>
-          <div class="preset-buttons">
-            <button
-              v-for="preset in presets"
-              :key="preset.label"
-              :class="['btn', 'btn-sm', width === preset.w && height === preset.h ? 'btn-primary' : 'btn-secondary']"
-              @click="setPreset(preset)"
-            >
-              {{ preset.label }}
-            </button>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group" data-setting="width" :class="{ 'setting-highlighted': highlightedSetting === 'width' }">
-            <label class="form-label">Width</label>
-            <input v-model.number="width" type="number" class="form-input" step="8" min="64" max="2048" />
-          </div>
-          <div class="form-group" data-setting="height" :class="{ 'setting-highlighted': highlightedSetting === 'height' }">
-            <label class="form-label">Height</label>
-            <input v-model.number="height" type="number" class="form-input" step="8" min="64" max="2048" />
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group" data-setting="steps" :class="{ 'setting-highlighted': highlightedSetting === 'steps' }">
-            <label class="form-label">
-              Steps: {{ steps }}
-              <span v-if="recommended && isDifferentFromRecommended('steps', steps)" class="rec-hint">
-                (rec: {{ recommended.steps }})
-              </span>
-            </label>
-            <input v-model.number="steps" type="range" class="form-range" min="1" max="150" />
-          </div>
-          <div class="form-group" data-setting="cfg-scale" :class="{ 'setting-highlighted': highlightedSetting === 'cfg-scale' }">
-            <label class="form-label">
-              CFG Scale: {{ cfgScale.toFixed(1) }}
-              <span v-if="recommended && isDifferentFromRecommended('cfgScale', cfgScale)" class="rec-hint">
-                (rec: {{ recommended.cfgScale }})
-              </span>
-            </label>
-            <input v-model.number="cfgScale" type="range" class="form-range" min="0" max="20" step="0.1" />
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group" data-setting="sampler" :class="{ 'setting-highlighted': highlightedSetting === 'sampler' }">
-            <label class="form-label">
-              Sampler
-              <span v-if="recommended && isDifferentFromRecommended('sampler', sampler)" class="rec-hint">
-                (rec: {{ recommended.sampler }})
-              </span>
-            </label>
-            <select v-model="sampler" class="form-select">
-              <option v-for="s in samplers" :key="s" :value="s">{{ s }}</option>
-            </select>
-          </div>
-          <div class="form-group" data-setting="scheduler" :class="{ 'setting-highlighted': highlightedSetting === 'scheduler' }">
-            <label class="form-label">
-              Scheduler
-              <span v-if="recommended && isDifferentFromRecommended('scheduler', scheduler)" class="rec-hint">
-                (rec: {{ recommended.scheduler }})
-              </span>
-            </label>
-            <select v-model="scheduler" class="form-select">
-              <option v-for="s in schedulers" :key="s" :value="s">{{ s }}</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group" data-setting="seed" :class="{ 'setting-highlighted': highlightedSetting === 'seed' }">
-            <label class="form-label">Seed (-1 = random)</label>
-            <div class="input-with-button">
-              <input v-model.number="seed" type="number" class="form-input" />
-              <button class="btn btn-secondary btn-icon" @click="randomizeSeed" title="Randomize">
-                &#127922;
-              </button>
+          <template v-if="isImageEditAvailable">
+            <div class="info-hint">
+              This model uses reference-based editing. Upload a reference image and describe the changes in the prompt.
             </div>
+            <ImageUploader v-model="refImage" label="Reference Image" />
+          </template>
+          <div v-else class="info-hint">
+            Load a model that supports reference-based image editing (ref_images) to use this feature.
           </div>
-          <div class="form-group" data-setting="batch-count" :class="{ 'setting-highlighted': highlightedSetting === 'batch-count' }">
-            <label class="form-label">Batch Count</label>
-            <input v-model.number="batchCount" type="number" class="form-input" min="1" max="16" />
-          </div>
-        </div>
-
-        <!-- txt2vid specific -->
-        <div v-if="mode === 'txt2vid'" class="form-row">
-          <div class="form-group" data-setting="video-frames" :class="{ 'setting-highlighted': highlightedSetting === 'video-frames' }">
-            <label class="form-label">Video Frames</label>
-            <input v-model.number="videoFrames" type="number" class="form-input" min="1" max="129" />
-          </div>
-          <div class="form-group" data-setting="fps" :class="{ 'setting-highlighted': highlightedSetting === 'fps' }">
-            <label class="form-label">FPS</label>
-            <input v-model.number="fps" type="number" class="form-input" min="1" max="60" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Flow Shift</label>
-            <input v-model.number="flowShift" type="number" class="form-input" step="0.5" min="0" max="10" />
-          </div>
-        </div>
-      </div>
-
-      <!-- Advanced Options -->
-      <details class="card accordion">
-        <summary class="accordion-header" @click="showAdvanced = !showAdvanced">
-          Advanced Options
-        </summary>
-        <div class="accordion-content">
-          <div class="form-row">
-            <div class="form-group" data-setting="clip-skip" :class="{ 'setting-highlighted': highlightedSetting === 'clip-skip' }">
-              <label class="form-label">
-                CLIP Skip (-1 = default)
-                <span v-if="recommended && isDifferentFromRecommended('clipSkip', clipSkip)" class="rec-hint">
-                  (rec: {{ recommended.clipSkip }})
-                </span>
-              </label>
-              <input v-model.number="clipSkip" type="number" class="form-input" min="-1" max="12" />
-            </div>
-            <div class="form-group" data-setting="distilled-guidance" :class="{ 'setting-highlighted': highlightedSetting === 'distilled-guidance' }">
-              <label class="form-label">
-                Distilled Guidance
-                <span v-if="recommended && isDifferentFromRecommended('distilledGuidance', distilledGuidance)" class="rec-hint">
-                  (rec: {{ recommended.distilledGuidance }})
-                </span>
-              </label>
-              <input v-model.number="distilledGuidance" type="number" class="form-input" step="0.5" min="0" max="10" />
-            </div>
-          </div>
-
-          <div class="form-group" data-setting="slg-scale" :class="{ 'setting-highlighted': highlightedSetting === 'slg-scale' }">
-            <label class="form-label">
-              SLG Scale (Skip Layer Guidance)
-              <span v-if="recommended?.slgScale !== undefined && isDifferentFromRecommended('slgScale', slgScale)" class="rec-hint">
-                (rec: {{ recommended.slgScale }})
-              </span>
-            </label>
-            <input v-model.number="slgScale" type="number" class="form-input" step="0.5" min="0" max="10" />
-          </div>
-
-          <label class="form-checkbox" data-setting="easycache" :class="{ 'setting-highlighted': highlightedSetting === 'easycache' }">
-            <input v-model="easycache" type="checkbox" />
-            Enable EasyCache (faster DiT models)
-            <span v-if="recommended?.easycache !== undefined && recommended.easycache !== easycache" class="rec-hint">
-              (rec: {{ recommended.easycache ? 'enabled' : 'disabled' }})
-            </span>
-          </label>
-
-          <div v-if="easycache" class="form-group mt-2">
-            <label class="form-label">EasyCache Threshold</label>
-            <input v-model.number="easycacheThreshold" type="number" class="form-input" step="0.05" min="0" max="1" />
-          </div>
-
-          <label class="form-checkbox" data-setting="vae-tiling" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tiling' }">
-            <input v-model="vaeTiling" type="checkbox" />
-            VAE Tiling (for large images{{ mode === 'txt2vid' ? '/videos' : '' }})
-          </label>
-
-          <div v-if="vaeTiling" class="tiling-options">
-            <div class="form-row">
-              <div class="form-group" data-setting="vae-tile-size-x" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-size-x' }">
-                <label class="form-label">Tile Size X (0 = auto)</label>
-                <input v-model.number="vaeTileSizeX" type="number" class="form-input" min="0" max="2048" step="64" />
-              </div>
-              <div class="form-group" data-setting="vae-tile-size-y" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-size-y' }">
-                <label class="form-label">Tile Size Y (0 = auto)</label>
-                <input v-model.number="vaeTileSizeY" type="number" class="form-input" min="0" max="2048" step="64" />
-              </div>
-            </div>
-            <div class="form-group" data-setting="vae-tile-overlap" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-overlap' }">
-              <label class="form-label">Tile Overlap: {{ vaeTileOverlap.toFixed(2) }}</label>
-              <input v-model.number="vaeTileOverlap" type="range" class="form-range" min="0" max="1" step="0.05" />
-            </div>
-            <div class="form-hint">VAE tiling reduces VRAM usage for high-resolution images/videos by processing in tiles.</div>
-          </div>
-        </div>
-      </details>
-
-      <!-- Submit Button -->
-      <div class="submit-section">
-        <button
-          class="btn btn-primary btn-lg"
-          @click="handleSubmit"
-          :disabled="submitting || cooldown || !store.modelLoaded"
-        >
-          <span v-if="submitting" class="spinner"></span>
-          {{ submitting ? 'Submitting...' : cooldown ? 'Please wait...' : `Generate ${mode === 'txt2vid' ? 'Video' : 'Image'}` }}
-        </button>
-        <p v-if="!store.modelLoaded" class="text-error mt-2">
-          Please load a model first
-        </p>
-      </div>
-
-      <!-- Live Preview Section -->
-      <div v-if="isCurrentJobProcessing" class="card live-preview-card">
-        <div class="card-header">
-          <h3 class="card-title">Generating...</h3>
-          <span v-if="currentJobProgress" class="progress-text">
-            Step {{ currentJobProgress.step }} / {{ currentJobProgress.total_steps }}
-          </span>
-        </div>
-        <div class="live-preview-content">
-          <div class="live-preview-image-container">
-            <img
-              v-if="hasPreviewForCurrentJob && store.currentPreview?.image"
-              :src="store.currentPreview.image"
-              alt="Generation preview"
-              class="live-preview-image"
-              @click="openPreviewLightbox"
-            />
-            <div v-else class="live-preview-placeholder">
-              <span class="spinner spinner-lg"></span>
-              <span class="placeholder-text">Waiting for preview...</span>
-            </div>
-          </div>
-          <div class="live-preview-info">
-            <ProgressBar
-              v-if="currentJobProgress"
-              :progress="currentJobProgress.total_steps > 0 ? (currentJobProgress.step / currentJobProgress.total_steps) * 100 : 0"
-              :show-label="true"
-             />
-             <p class="preview-hint">
-               Configure preview settings in Settings page
-             </p>
-           </div>
         </div>
       </div>
     </div>
@@ -1505,6 +1589,39 @@ async function handleSubmit() {
 </template>
 
 <style scoped>
+/* Layout */
+.generate {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.generate-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 24px;
+  align-items: start;
+}
+
+.generate-layout.single-column {
+  grid-template-columns: 1fr;
+  max-width: 900px;
+}
+
+.generate-main {
+  min-width: 0;
+}
+
+.generate-sidebar {
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Tabs */
 .tabs-container {
   display: flex;
   align-items: center;
@@ -1556,39 +1673,7 @@ async function handleSubmit() {
   border-bottom: 1px solid var(--border-color);
 }
 
-.generate {
-  max-width: 900px;
-  margin: 0 auto;
-}
-
-.generate-form {
-  max-width: 100%;
-}
-
-@media (max-width: 768px) {
-  .generate {
-    padding: 0;
-  }
-
-  .tabs-container {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .tabs-container .tabs {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .copy-menu-container {
-    align-self: flex-end;
-  }
-
-  .preset-buttons {
-    justify-content: center;
-  }
-}
-
+/* Form elements */
 .preset-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -1705,13 +1790,6 @@ async function handleSubmit() {
   border-radius: 4px;
 }
 
-/* Preview Mode Selector */
-.preview-mode-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .mt-4 {
   margin-top: 16px;
 }
@@ -1723,9 +1801,12 @@ async function handleSubmit() {
   border-radius: var(--border-radius-sm);
 }
 
-/* Live Preview Section */
-.live-preview-card {
-  margin-top: 24px;
+/* Sidebar preview */
+.sidebar-preview-card {
+  animation: slideIn 0.3s ease-out;
+}
+
+.sidebar-progress-card {
   animation: slideIn 0.3s ease-out;
 }
 
@@ -1740,16 +1821,15 @@ async function handleSubmit() {
   }
 }
 
-.live-preview-content {
+.sidebar-preview-content {
   display: flex;
-  gap: 20px;
-  padding: 16px;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.live-preview-image-container {
-  flex-shrink: 0;
-  width: 256px;
-  min-height: 256px;
+.sidebar-preview-image-container {
+  width: 100%;
+  max-height: 500px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1758,19 +1838,19 @@ async function handleSubmit() {
   overflow: hidden;
 }
 
-.live-preview-image {
+.sidebar-preview-image {
   max-width: 100%;
-  max-height: 400px;
+  max-height: 500px;
   object-fit: contain;
   cursor: pointer;
   transition: transform 0.2s;
 }
 
-.live-preview-image:hover {
+.sidebar-preview-image:hover {
   transform: scale(1.02);
 }
 
-.live-preview-placeholder {
+.sidebar-preview-placeholder {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1778,6 +1858,11 @@ async function handleSubmit() {
   gap: 12px;
   color: var(--text-secondary);
   padding: 40px;
+  min-height: 200px;
+}
+
+.sidebar-progress-content {
+  padding: 4px 0;
 }
 
 .placeholder-text {
@@ -1789,40 +1874,44 @@ async function handleSubmit() {
   height: 32px;
 }
 
-.live-preview-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .progress-text {
   font-size: 13px;
   color: var(--text-secondary);
 }
 
-.preview-hint {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  margin: 0;
+/* Responsive */
+@media (max-width: 1024px) {
+  .generate-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .generate-sidebar {
+    position: static;
+    max-height: none;
+  }
 }
 
-@media (max-width: 600px) {
-  .live-preview-content {
+@media (max-width: 768px) {
+  .generate {
+    padding: 0;
+  }
+
+  .tabs-container {
     flex-direction: column;
+    align-items: stretch;
   }
 
-  .live-preview-image-container {
-    width: 100%;
-    min-height: 200px;
+  .tabs-container .tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
-  .preview-mode-options {
-    flex-direction: column;
+  .copy-menu-container {
+    align-self: flex-end;
   }
 
-  .preview-mode-options .btn {
-    width: 100%;
+  .preset-buttons {
+    justify-content: center;
   }
 }
 

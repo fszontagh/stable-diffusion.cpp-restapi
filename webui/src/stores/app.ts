@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api, type HealthResponse, type ModelsResponse, type QueueResponse, type OptionsResponse, type Job, type QueueFilters, type GenerationDefaults, type UIPreferences, type ArchitecturesResponse, type OptionDescriptionsResponse } from '../api/client'
+import { api, type HealthResponse, type ModelsResponse, type QueueResponse, type OptionsResponse, type Job, type QueueFilters, type GenerationDefaults, type UIPreferences, type ArchitecturesResponse, type OptionDescriptionsResponse, type PreviewSettings } from '../api/client'
 import {
   wsService,
   type ConnectionState,
@@ -96,6 +96,8 @@ export const useAppStore = defineStore('app', () => {
   // Settings state
   const generationDefaults = ref<GenerationDefaults | null>(null)
   const uiPreferences = ref<UIPreferences | null>(null)
+  const previewSettings = ref<PreviewSettings | null>(null)
+  const previewEnabled = computed(() => previewSettings.value?.enabled ?? false)
 
   async function fetchGenerationDefaults(): Promise<GenerationDefaults> {
     try {
@@ -143,6 +145,17 @@ export const useAppStore = defineStore('app', () => {
       uiPreferences.value = result.settings
     } catch (e) {
       console.error('Failed to update UI preferences:', e)
+      throw e
+    }
+  }
+
+  async function fetchPreviewSettings(): Promise<PreviewSettings> {
+    try {
+      const settings = await api.getPreviewSettings()
+      previewSettings.value = settings
+      return settings
+    } catch (e) {
+      console.error('Failed to fetch preview settings:', e)
       throw e
     }
   }
@@ -897,7 +910,8 @@ export const useAppStore = defineStore('app', () => {
         fetchQueue(),
         fetchOptions(),
         fetchGenerationDefaults(),
-        fetchUIPreferences()
+        fetchUIPreferences(),
+        fetchPreviewSettings()
       ])
 
       // Setup WebSocket handlers and connect using port from health response
@@ -1023,10 +1037,13 @@ export const useAppStore = defineStore('app', () => {
     // Settings
     generationDefaults,
     uiPreferences,
+    previewSettings,
+    previewEnabled,
     fetchGenerationDefaults,
     updateGenerationDefaults,
     fetchUIPreferences,
     updateUIPreferences,
+    fetchPreviewSettings,
     resetAllSettings,
 
     // Desktop notifications
