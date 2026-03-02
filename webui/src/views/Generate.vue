@@ -601,13 +601,16 @@ const currentArchPreset = computed(() => {
     }
   }
 
-  // Try partial match (e.g., "Qwen Image Edit" matches "Qwen")
+  // Try partial match - prefer longest (most specific) key match
   if (!archData) {
+    let bestMatchLen = 0
     for (const [key, value] of Object.entries(store.architectures.architectures)) {
       if (archName.toLowerCase().includes(key.toLowerCase()) ||
           key.toLowerCase().includes(archName.toLowerCase())) {
-        archData = value
-        break
+        if (key.length > bestMatchLen) {
+          archData = value
+          bestMatchLen = key.length
+        }
       }
     }
   }
