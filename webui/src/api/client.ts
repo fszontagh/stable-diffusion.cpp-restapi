@@ -348,12 +348,12 @@ export interface JobModelSettings {
     chroma_use_t5_mask?: boolean
     chroma_t5_mask_pad?: number
     // Dynamic VRAM offloading settings
-    offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive'
+    offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive' | 'layer_streaming'
     vram_estimation?: 'dryrun' | 'formula'
     offload_cond_stage?: boolean
     offload_diffusion?: boolean
     reload_cond_stage?: boolean
-  reload_diffusion?: boolean
+    reload_diffusion?: boolean
     log_offload_events?: boolean
     min_offload_size_mb?: number
   }
