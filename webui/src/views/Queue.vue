@@ -297,7 +297,12 @@ function formatDuration(startStr: string, endStr: string): string {
   return `${min}m ${sec}s`
 }
 
-function getTypeIcon(type: string): string {
+function isRefImagesJob(job: Job): boolean {
+  return job.type === 'txt2img' && Array.isArray(job.params?.ref_images) && (job.params.ref_images as unknown[]).length > 0
+}
+
+function getTypeIcon(type: string, job?: Job): string {
+  if (job && isRefImagesJob(job)) return '&#128247;'
   const icons: Record<string, string> = {
     txt2img: '&#127912;',
     img2img: '&#128247;',
@@ -310,7 +315,8 @@ function getTypeIcon(type: string): string {
   return icons[type] || '&#10067;'
 }
 
-function getTypeName(type: string): string {
+function getTypeName(type: string, job?: Job): string {
+  if (job && isRefImagesJob(job)) return 'Image Edit'
   const names: Record<string, string> = {
     txt2img: 'Text to Image',
     img2img: 'Image to Image',
@@ -896,8 +902,8 @@ async function sendImageToUpscale(outputPath: string) {
         <!-- Job Header -->
         <div class="job-header">
           <div class="job-type">
-            <span class="job-icon" v-html="getTypeIcon(job.type)"></span>
-            <span class="job-type-label">{{ getTypeName(job.type) }}</span>
+            <span class="job-icon" v-html="getTypeIcon(job.type, job)"></span>
+            <span class="job-type-label">{{ getTypeName(job.type, job) }}</span>
           </div>
           <div class="job-header-right">
             <span class="job-time-relative" :title="formatDate(job.created_at)">{{ formatRelativeTime(job.created_at) }}</span>
@@ -1133,8 +1139,8 @@ async function sendImageToUpscale(outputPath: string) {
             <!-- Job Header -->
             <div class="job-header">
               <div class="job-type">
-                <span class="job-icon" v-html="getTypeIcon(job.type)"></span>
-                <span class="job-type-label">{{ getTypeName(job.type) }}</span>
+                <span class="job-icon" v-html="getTypeIcon(job.type, job)"></span>
+                <span class="job-type-label">{{ getTypeName(job.type, job) }}</span>
               </div>
               <div class="job-header-right">
                 <span class="job-time-relative" :title="formatDate(job.created_at)">{{ formatRelativeTime(job.created_at) }}</span>

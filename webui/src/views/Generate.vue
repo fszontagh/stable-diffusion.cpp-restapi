@@ -21,9 +21,9 @@ const submitting = ref(false)
 const cooldown = ref(false)
 let cooldownTimer: ReturnType<typeof setTimeout> | null = null
 
-// Prompt persistence keys
-const PROMPT_STORAGE_KEY = 'generateSettings_prompt'
-const NEGATIVE_PROMPT_STORAGE_KEY = 'generateSettings_negativePrompt'
+// Prompt persistence keys (per-mode to keep prompts separate across tabs)
+function getPromptStorageKey(m: string) { return `generateSettings_prompt_${m}` }
+function getNegativePromptStorageKey(m: string) { return `generateSettings_negativePrompt_${m}` }
 const INIT_IMAGE_STORAGE_KEY = 'generateSettings_initImage'
 const MASK_IMAGE_STORAGE_KEY = 'generateSettings_maskImage'
 const CONTROL_IMAGE_STORAGE_KEY = 'generateSettings_controlImage'
@@ -65,6 +65,9 @@ const vaeTiling = ref(false)
 const vaeTileSizeX = ref(0)
 const vaeTileSizeY = ref(0)
 const vaeTileOverlap = ref(0.5)
+
+// Flag to suppress prompt restoration during queue reload
+let suppressPromptRestore = false
 
 // Copy settings dropdown
 const showCopyMenu = ref(false)
@@ -210,13 +213,13 @@ watch(availableLoras, (newLoras) => {
   }
 })
 
-// Debounced prompt persistence to localStorage
+// Debounced prompt persistence to localStorage (per-mode)
 const debouncedSavePrompt = useDebounceFn(() => {
-  localStorage.setItem(PROMPT_STORAGE_KEY, prompt.value)
+  localStorage.setItem(getPromptStorageKey(mode.value), prompt.value)
 }, 500)
 
 const debouncedSaveNegativePrompt = useDebounceFn(() => {
-  localStorage.setItem(NEGATIVE_PROMPT_STORAGE_KEY, negativePrompt.value)
+  localStorage.setItem(getNegativePromptStorageKey(mode.value), negativePrompt.value)
 }, 500)
 
 // Watch prompts for localStorage persistence
@@ -439,13 +442,22 @@ const otherModes = computed(() => {
 // Watch for mode changes - save current, load new
 watch(mode, async (newMode, oldMode) => {
   if (oldMode) {
-    // Save settings for old mode before switching
+    // Save prompts and settings for old mode before switching
+    localStorage.setItem(getPromptStorageKey(oldMode), prompt.value)
+    localStorage.setItem(getNegativePromptStorageKey(oldMode), negativePrompt.value)
     await saveSettings()
     await saveLoraSettings()
   }
   // Load settings for new mode
   await loadSettingsForMode(newMode)
   loadLoraSettingsForMode(newMode)
+  // Restore prompts for new mode (skip during queue reload - loadJobParams handles it)
+  if (!suppressPromptRestore) {
+    const savedPrompt = localStorage.getItem(getPromptStorageKey(newMode))
+    const savedNegativePrompt = localStorage.getItem(getNegativePromptStorageKey(newMode))
+    prompt.value = savedPrompt ?? ''
+    negativePrompt.value = savedNegativePrompt ?? ''
+  }
 })
 
 // Debounced save for settings (500ms delay)
@@ -540,8 +552,8 @@ interface RecommendedSettings {
   easycache?: boolean
 }
 
-// Get recommended settings for current model from architecture JSON
-const recommended = computed((): RecommendedSettings | null => {
+// Resolve current architecture preset from store (exact → case-insensitive → partial match)
+const currentArchPreset = computed(() => {
   const archName = store.modelArchitecture
   if (!archName || !store.architectures?.architectures) return null
 
@@ -569,6 +581,15 @@ const recommended = computed((): RecommendedSettings | null => {
     }
   }
 
+  return archData ?? null
+})
+
+// Image edit mode for current architecture (ref_images = reference-based, null = traditional/none)
+const imageEditMode = computed(() => currentArchPreset.value?.imageEditMode ?? null)
+
+// Get recommended settings for current model from architecture JSON
+const recommended = computed((): RecommendedSettings | null => {
+  const archData = currentArchPreset.value
   if (!archData?.generationDefaults) return null
 
   const defaults = archData.generationDefaults as {
@@ -777,11 +798,13 @@ onMounted(async () => {
   if (savedParams) {
     try {
       const data = JSON.parse(savedParams)
-      // Set mode first without triggering watch (to avoid loading old settings)
+      // Set mode first - suppress prompt restore since loadJobParams will set the prompt
+      suppressPromptRestore = true
       if (data.type === 'txt2img' || data.type === 'img2img' || data.type === 'txt2vid') {
         mode.value = data.type
       }
       loadJobParams(data.type, data.params)
+      suppressPromptRestore = false
       sessionStorage.removeItem('reloadJobParams')
       // Save these as the current settings for this mode
       saveSettings()
@@ -822,14 +845,35 @@ onMounted(async () => {
     // Load LoRA settings
     loadLoraSettingsForMode(mode.value)
 
-    // Restore prompts from localStorage (only when NOT reloading job params)
-    const savedPrompt = localStorage.getItem(PROMPT_STORAGE_KEY)
-    const savedNegativePrompt = localStorage.getItem(NEGATIVE_PROMPT_STORAGE_KEY)
+    // Restore prompts from localStorage for current mode (only when NOT reloading job params)
+    const savedPrompt = localStorage.getItem(getPromptStorageKey(mode.value))
+    const savedNegativePrompt = localStorage.getItem(getNegativePromptStorageKey(mode.value))
     if (savedPrompt !== null) {
       prompt.value = savedPrompt
     }
     if (savedNegativePrompt !== null) {
       negativePrompt.value = savedNegativePrompt
+    }
+
+    // Migrate old single-key prompts to per-mode keys (one-time migration)
+    const oldPrompt = localStorage.getItem('generateSettings_prompt')
+    const oldNegativePrompt = localStorage.getItem('generateSettings_negativePrompt')
+    if (oldPrompt !== null) {
+      // Only migrate to modes that don't have prompts yet
+      for (const m of ['txt2img', 'img2img', 'txt2vid']) {
+        if (localStorage.getItem(getPromptStorageKey(m)) === null) {
+          localStorage.setItem(getPromptStorageKey(m), oldPrompt)
+        }
+      }
+      localStorage.removeItem('generateSettings_prompt')
+    }
+    if (oldNegativePrompt !== null) {
+      for (const m of ['txt2img', 'img2img', 'txt2vid']) {
+        if (localStorage.getItem(getNegativePromptStorageKey(m)) === null) {
+          localStorage.setItem(getNegativePromptStorageKey(m), oldNegativePrompt)
+        }
+      }
+      localStorage.removeItem('generateSettings_negativePrompt')
     }
 
     // Restore images from sessionStorage
@@ -857,14 +901,16 @@ onBeforeUnmount(() => {
   if (cooldownTimer) clearTimeout(cooldownTimer)
   if (highlightTimeout) clearTimeout(highlightTimeout)
 
-  // Save prompts to localStorage for persistence across navigation
-  localStorage.setItem(PROMPT_STORAGE_KEY, prompt.value)
-  localStorage.setItem(NEGATIVE_PROMPT_STORAGE_KEY, negativePrompt.value)
+  // Save prompts to localStorage for persistence across navigation (per-mode)
+  localStorage.setItem(getPromptStorageKey(mode.value), prompt.value)
+  localStorage.setItem(getNegativePromptStorageKey(mode.value), negativePrompt.value)
 })
 
 function loadJobParams(type: string, params: Record<string, unknown>) {
-  // Set mode based on job type
-  if (type === 'txt2img' || type === 'img2img' || type === 'txt2vid') {
+  // Set mode based on job type — detect ref_images jobs as image edit
+  if (type === 'txt2img' && params.ref_images) {
+    mode.value = 'img2img'
+  } else if (type === 'txt2img' || type === 'img2img' || type === 'txt2vid') {
     mode.value = type
   }
 
@@ -1006,15 +1052,24 @@ async function handleSubmit() {
         submitting.value = false
         return
       }
-      const params: Img2ImgParams = {
-        ...baseParams,
-        init_image_base64: initImage.value,
-        strength: strength.value
+      if (imageEditMode.value === 'ref_images') {
+        // Reference-based editing → txt2img endpoint with ref_images
+        const imgData = initImage.value.includes(',')
+          ? initImage.value.split(',')[1]
+          : initImage.value
+        result = await api.txt2img({ ...baseParams, ref_images: [imgData] })
+      } else {
+        // Traditional img2img → img2img endpoint
+        const params: Img2ImgParams = {
+          ...baseParams,
+          init_image_base64: initImage.value,
+          strength: strength.value
+        }
+        if (maskImage.value) {
+          params.mask_image_base64 = maskImage.value
+        }
+        result = await api.img2img(params)
       }
-      if (maskImage.value) {
-        params.mask_image_base64 = maskImage.value
-      }
-      result = await api.img2img(params)
     } else {
       const params: Txt2VidParams = {
         ...baseParams,
@@ -1056,7 +1111,7 @@ async function handleSubmit() {
           Text to Image
         </button>
         <button :class="['tab', { active: mode === 'img2img' }]" @click="mode = 'img2img'">
-          Image to Image
+          {{ imageEditMode === 'ref_images' ? 'Image Edit' : 'Image to Image' }}
         </button>
         <button :class="['tab', { active: mode === 'txt2vid' }]" @click="mode = 'txt2vid'">
           Text to Video
@@ -1129,17 +1184,22 @@ async function handleSubmit() {
         @update:settings="loraSettings = $event"
       />
 
-      <!-- img2img Input -->
+      <!-- img2img / Image Edit Input -->
       <div v-if="mode === 'img2img'" class="card">
         <div class="card-header">
-          <h3 class="card-title">Input Image</h3>
+          <h3 class="card-title">{{ imageEditMode === 'ref_images' ? 'Image Edit' : 'Source Image' }}</h3>
         </div>
-        <ImageUploader v-model="initImage" label="Initial Image" />
-        <div class="form-group">
-          <label class="form-label">Strength: {{ strength.toFixed(2) }}</label>
-          <input v-model.number="strength" type="range" class="form-range" min="0" max="1" step="0.05" />
+        <div v-if="imageEditMode === 'ref_images'" class="info-hint">
+          This model uses reference-based editing. Describe changes in the prompt.
         </div>
-        <ImageUploader v-model="maskImage" label="Mask Image (optional - white = repaint)" />
+        <ImageUploader v-model="initImage" :label="imageEditMode === 'ref_images' ? 'Reference Image' : 'Initial Image'" />
+        <template v-if="imageEditMode !== 'ref_images'">
+          <div class="form-group">
+            <label class="form-label">Strength: {{ strength.toFixed(2) }}</label>
+            <input v-model.number="strength" type="range" class="form-range" min="0" max="1" step="0.05" />
+          </div>
+          <ImageUploader v-model="maskImage" label="Mask Image (optional - white = repaint)" />
+        </template>
       </div>
 
       <!-- ControlNet Section -->
@@ -1633,6 +1693,16 @@ async function handleSubmit() {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+.info-hint {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #888);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-left: 3px solid var(--primary, #6366f1);
+  background: var(--surface-alt, rgba(99, 102, 241, 0.05));
+  border-radius: 4px;
 }
 
 /* Preview Mode Selector */

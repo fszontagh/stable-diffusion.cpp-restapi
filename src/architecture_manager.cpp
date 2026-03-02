@@ -7,7 +7,7 @@
 namespace sdcpp {
 
 nlohmann::json ArchitecturePreset::to_json() const {
-    return {
+    nlohmann::json j = {
         {"id", id},
         {"name", name},
         {"description", description},
@@ -17,6 +17,10 @@ nlohmann::json ArchitecturePreset::to_json() const {
         {"loadOptions", loadOptions},
         {"generationDefaults", generationDefaults}
     };
+    if (!imageEditMode.empty()) {
+        j["imageEditMode"] = imageEditMode;
+    }
+    return j;
 }
 
 ArchitectureManager::ArchitectureManager(const std::string& data_dir) {
@@ -119,8 +123,9 @@ void ArchitectureManager::load_from_file() {
                 }
             }
 
-            // Load options and generation defaults as-is
+            // Load options, image edit mode, and generation defaults
             preset.loadOptions = value.value("loadOptions", nlohmann::json::object());
+            preset.imageEditMode = value.value("imageEditMode", std::string(""));
             preset.generationDefaults = value.value("generationDefaults", nlohmann::json::object());
 
             presets_[key] = preset;

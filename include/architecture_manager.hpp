@@ -22,6 +22,7 @@ struct ArchitecturePreset {
     std::map<std::string, std::string> requiredComponents;   // component -> description
     std::map<std::string, std::string> optionalComponents;   // component -> description
     nlohmann::json loadOptions;                          // Options for loading
+    std::string imageEditMode;                           // "ref_images" for reference-based editing
     nlohmann::json generationDefaults;                   // Default generation params
 
     nlohmann::json to_json() const;

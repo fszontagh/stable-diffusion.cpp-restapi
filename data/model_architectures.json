@@ -9,7 +9,7 @@
         "vae": "Improves color accuracy"
       },
       "loadOptions": {
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 7.0,
@@ -29,7 +29,7 @@
         "vae": "Improves color accuracy"
       },
       "loadOptions": {
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 7.0,
@@ -49,7 +49,7 @@
         "vae": "Improves color accuracy"
       },
       "loadOptions": {
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 1.0,
@@ -67,7 +67,7 @@
       "requiredComponents": {},
       "optionalComponents": {},
       "loadOptions": {
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 1.0,
@@ -88,7 +88,7 @@
       },
       "loadOptions": {
         "flash_attn": true,
-        "vae_decode_only": true,
+        "vae_decode_only": false,
         "force_sdxl_vae_conv_scale": true
       },
       "generationDefaults": {
@@ -110,7 +110,7 @@
       },
       "loadOptions": {
         "flash_attn": true,
-        "vae_decode_only": true,
+        "vae_decode_only": false,
         "force_sdxl_vae_conv_scale": true
       },
       "generationDefaults": {
@@ -132,7 +132,7 @@
       },
       "loadOptions": {
         "flash_attn": true,
-        "vae_decode_only": true,
+        "vae_decode_only": false,
         "force_sdxl_vae_conv_scale": true
       },
       "generationDefaults": {
@@ -154,7 +154,7 @@
       },
       "loadOptions": {
         "flash_attn": true,
-        "vae_decode_only": true,
+        "vae_decode_only": false,
         "force_sdxl_vae_conv_scale": true
       },
       "generationDefaults": {
@@ -179,7 +179,7 @@
       "loadOptions": {
         "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 4.5,
@@ -203,7 +203,7 @@
       "loadOptions": {
         "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 1.0,
@@ -228,7 +228,7 @@
       "loadOptions": {
         "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 1.0,
@@ -253,8 +253,9 @@
       "loadOptions": {
         "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
+      "imageEditMode": "ref_images",
       "generationDefaults": {
         "cfg_scale": 1.0,
         "steps": 20,
@@ -276,8 +277,9 @@
       "loadOptions": {
         "flash_attn": true,
         "offload_to_cpu": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
+      "imageEditMode": "ref_images",
       "generationDefaults": {
         "cfg_scale": 1.0,
         "steps": 20,
@@ -299,8 +301,9 @@
       "loadOptions": {
         "flash_attn": true,
         "offload_to_cpu": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
+      "imageEditMode": "ref_images",
       "generationDefaults": {
         "cfg_scale": 1.0,
         "steps": 4,
@@ -322,8 +325,9 @@
       "loadOptions": {
         "flash_attn": true,
         "offload_to_cpu": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
+      "imageEditMode": "ref_images",
       "generationDefaults": {
         "cfg_scale": 4.0,
         "steps": 20,
@@ -345,8 +349,9 @@
       "loadOptions": {
         "flash_attn": true,
         "offload_to_cpu": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
+      "imageEditMode": "ref_images",
       "generationDefaults": {
         "cfg_scale": 1.0,
         "steps": 4,
@@ -368,8 +373,9 @@
       "loadOptions": {
         "flash_attn": true,
         "offload_to_cpu": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
+      "imageEditMode": "ref_images",
       "generationDefaults": {
         "cfg_scale": 4.0,
         "steps": 20,
@@ -390,13 +396,14 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "vae_decode_only": true,
+        "vae_decode_only": false,
         "vae_conv_direct": true,
         "offload_mode": "cond_only",
         "offload_cond_stage": true,
         "reload_cond_stage": true,
         "reload_diffusion": true
       },
+      "imageEditMode": "ref_images",
       "generationDefaults": {
         "cfg_scale": 1.0,
         "distilled_guidance": 3.5,
@@ -420,7 +427,7 @@
       "loadOptions": {
         "flash_attn": true,
         "offload_to_cpu": true,
-        "vae_decode_only": true,
+        "vae_decode_only": false,
         "flow_shift": 3.0
       },
       "generationDefaults": {
@@ -444,9 +451,10 @@
       "loadOptions": {
         "flash_attn": true,
         "offload_to_cpu": true,
-        "vae_decode_only": true,
+        "vae_decode_only": false,
         "flow_shift": 3.0
       },
+      "imageEditMode": "ref_images",
       "generationDefaults": {
         "cfg_scale": 2.5,
         "steps": 20,
@@ -468,7 +476,7 @@
       "loadOptions": {
         "flash_attn": true,
         "offload_to_cpu": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 5.0,
@@ -491,7 +499,7 @@
       "loadOptions": {
         "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 4.0,
@@ -513,7 +521,7 @@
       "loadOptions": {
         "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 4.0,
@@ -536,7 +544,7 @@
       "loadOptions": {
         "flash_attn": true,
         "offload_to_cpu": true,
-        "vae_decode_only": true,
+        "vae_decode_only": false,
         "flow_shift": 3.0
       },
       "generationDefaults": {
@@ -560,7 +568,7 @@
       "loadOptions": {
         "flash_attn": true,
         "offload_to_cpu": true,
-        "vae_decode_only": true
+        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 6.0,
