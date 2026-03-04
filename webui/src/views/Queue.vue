@@ -510,7 +510,8 @@ function reloadSettings(job: Job) {
 function navigateWithSettings(job: Job) {
   sessionStorage.setItem('reloadJobParams', JSON.stringify({
     type: job.type,
-    params: job.params
+    params: job.params,
+    job_id: job.job_id
   }))
 
   router.push('/generate')
@@ -1030,7 +1031,7 @@ async function sendImageToUpscale(outputPath: string) {
                   <span class="source-label">Source</span>
                   <button
                     class="output-thumb source-thumb"
-                    @click="openLightbox([getOutputUrl(job.job_id + '/source.png')], 0)"
+                    @click="openLightbox([job.job_id + '/source.png'], 0)"
                     title="View source image"
                   >
                     <img :src="getThumbUrl(job.job_id + '/source.png')" alt="Source" />
@@ -1251,7 +1252,7 @@ async function sendImageToUpscale(outputPath: string) {
                       <span class="source-label">Source</span>
                       <button
                         class="output-thumb source-thumb"
-                        @click="openLightbox([getOutputUrl(job.job_id + '/source.png')], 0)"
+                        @click="openLightbox([job.job_id + '/source.png'], 0)"
                         title="View source image"
                       >
                         <img :src="getThumbUrl(job.job_id + '/source.png')" alt="Source" />
