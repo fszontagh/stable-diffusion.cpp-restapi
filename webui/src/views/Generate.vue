@@ -465,7 +465,14 @@ const otherModes = computed(() => {
 })
 
 // Watch for mode changes - save current, load new
+// During queue reload (suppressPromptRestore=true), loadJobParams handles all settings
+// so we skip both saving old-mode values and loading new-mode values
 watch(mode, async (newMode, oldMode) => {
+  // Persist selected mode always
+  localStorage.setItem('generateSettings_lastMode', newMode)
+
+  if (suppressPromptRestore) return
+
   if (oldMode) {
     // Save prompts and settings for old mode before switching
     localStorage.setItem(getPromptStorageKey(oldMode), prompt.value)
@@ -473,20 +480,16 @@ watch(mode, async (newMode, oldMode) => {
     await saveSettings()
     await saveLoraSettings()
   }
-  // Persist selected mode
-  localStorage.setItem('generateSettings_lastMode', newMode)
   // Load settings for new mode
   await loadSettingsForMode(newMode)
   // img_edit shares txt2img LoRA settings
   const loraMode = newMode === 'img_edit' ? 'txt2img' : newMode
   loadLoraSettingsForMode(loraMode)
-  // Restore prompts for new mode (skip during queue reload - loadJobParams handles it)
-  if (!suppressPromptRestore) {
-    const savedPrompt = localStorage.getItem(getPromptStorageKey(newMode))
-    const savedNegativePrompt = localStorage.getItem(getNegativePromptStorageKey(newMode))
-    prompt.value = savedPrompt ?? ''
-    negativePrompt.value = savedNegativePrompt ?? ''
-  }
+  // Restore prompts for new mode
+  const savedPrompt = localStorage.getItem(getPromptStorageKey(newMode))
+  const savedNegativePrompt = localStorage.getItem(getNegativePromptStorageKey(newMode))
+  prompt.value = savedPrompt ?? ''
+  negativePrompt.value = savedNegativePrompt ?? ''
 })
 
 // Debounced save for settings (500ms delay)
@@ -681,6 +684,31 @@ function applyRecommendedSettings() {
   store.showToast('Applied recommended settings', 'success')
 }
 
+// Apply a single recommended setting by field name
+function applyRecommendedSetting(field: keyof RecommendedSettings) {
+  if (!recommended.value) return
+  const val = recommended.value[field]
+  if (val === undefined) return
+  const setters: Record<string, () => void> = {
+    sampler: () => { sampler.value = val as string },
+    scheduler: () => { scheduler.value = val as string },
+    steps: () => { steps.value = val as number },
+    cfgScale: () => { cfgScale.value = val as number },
+    distilledGuidance: () => { distilledGuidance.value = val as number },
+    clipSkip: () => { clipSkip.value = val as number },
+    slgScale: () => { slgScale.value = val as number },
+    easycache: () => { easycache.value = val as boolean },
+  }
+  setters[field]?.()
+}
+
+// Apply recommended width and height together
+function applyRecommendedSize() {
+  if (!recommended.value) return
+  width.value = recommended.value.width
+  height.value = recommended.value.height
+}
+
 const presets = [
   { w: 512, h: 512, label: '512x512' },
   { w: 768, h: 768, label: '768x768' },
@@ -838,7 +866,6 @@ onMounted(async () => {
         mode.value = data.type as 'txt2img' | 'img2img' | 'txt2vid'
       }
       loadJobParams(data.type, data.params)
-      suppressPromptRestore = false
       sessionStorage.removeItem('reloadJobParams')
       // Save these as the current settings for this mode
       saveSettings()
@@ -865,8 +892,28 @@ onMounted(async () => {
         // Models not loaded yet - set flag to retry when they become available
         pendingLoraParseFromJobReload.value = true
       }
+
+      // For image edit jobs reloaded from queue, fetch the saved source image
+      if (mode.value === 'img_edit' && data.job_id) {
+        try {
+          const sourceUrl = `/output/${data.job_id}/source.png`
+          const response = await fetch(sourceUrl)
+          if (response.ok) {
+            const blob = await response.blob()
+            const reader = new FileReader()
+            reader.onload = () => { refImage.value = reader.result as string }
+            reader.readAsDataURL(blob)
+          }
+        } catch {
+          // Source image not available - user can re-upload
+        }
+      }
+      // Reset suppress flag after Vue's deferred watchers have executed
+      await nextTick()
+      suppressPromptRestore = false
     } catch (e) {
       console.error('Failed to load job params:', e)
+      suppressPromptRestore = false
     }
   } else {
     // Restore last used mode from local storage
@@ -943,6 +990,22 @@ onBeforeUnmount(() => {
   // Save prompts to localStorage for persistence across navigation (per-mode)
   localStorage.setItem(getPromptStorageKey(mode.value), prompt.value)
   localStorage.setItem(getNegativePromptStorageKey(mode.value), negativePrompt.value)
+
+  // Force-save LoRA settings immediately before unmount (debounce may not have fired yet)
+  saveLoraSettings()
+
+  // Force-save generation settings immediately before unmount
+  saveSettings()
+
+  // Force-save images immediately before unmount (debounce may not have fired yet)
+  try {
+    if (initImage.value) sessionStorage.setItem(INIT_IMAGE_STORAGE_KEY, initImage.value)
+    if (maskImage.value) sessionStorage.setItem(MASK_IMAGE_STORAGE_KEY, maskImage.value)
+    if (controlImage.value) sessionStorage.setItem(CONTROL_IMAGE_STORAGE_KEY, controlImage.value)
+    if (refImage.value) sessionStorage.setItem(REF_IMAGE_STORAGE_KEY, refImage.value)
+  } catch {
+    // Storage quota exceeded - skip silently
+  }
 })
 
 function loadJobParams(type: string, params: Record<string, unknown>) {
@@ -1273,27 +1336,27 @@ async function handleSubmit() {
               <span class="recommended-title">Recommended for {{ store.modelArchitecture }}</span>
             </div>
             <div class="recommended-items">
-              <span class="rec-item">
+              <span class="rec-item rec-clickable" @click="applyRecommendedSetting('sampler')" title="Click to apply">
                 <span class="rec-label">Sampler:</span>
                 <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('sampler', sampler) }">{{ recommended.sampler }}</span>
               </span>
-              <span class="rec-item">
+              <span class="rec-item rec-clickable" @click="applyRecommendedSetting('scheduler')" title="Click to apply">
                 <span class="rec-label">Scheduler:</span>
                 <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('scheduler', scheduler) }">{{ recommended.scheduler }}</span>
               </span>
-              <span class="rec-item">
+              <span class="rec-item rec-clickable" @click="applyRecommendedSetting('steps')" title="Click to apply">
                 <span class="rec-label">Steps:</span>
                 <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('steps', steps) }">{{ recommended.steps }}</span>
               </span>
-              <span class="rec-item">
+              <span class="rec-item rec-clickable" @click="applyRecommendedSetting('cfgScale')" title="Click to apply">
                 <span class="rec-label">CFG:</span>
                 <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('cfgScale', cfgScale) }">{{ recommended.cfgScale }}</span>
               </span>
-              <span class="rec-item">
+              <span class="rec-item rec-clickable" @click="applyRecommendedSize()" title="Click to apply">
                 <span class="rec-label">Size:</span>
                 <span class="rec-value" :class="{ 'rec-different': width !== recommended.width || height !== recommended.height }">{{ recommended.width }}x{{ recommended.height }}</span>
               </span>
-              <span v-if="recommended.distilledGuidance > 0" class="rec-item">
+              <span v-if="recommended.distilledGuidance > 0" class="rec-item rec-clickable" @click="applyRecommendedSetting('distilledGuidance')" title="Click to apply">
                 <span class="rec-label">Dist. Guidance:</span>
                 <span class="rec-value" :class="{ 'rec-different': isDifferentFromRecommended('distilledGuidance', distilledGuidance) }">{{ recommended.distilledGuidance }}</span>
               </span>
@@ -1330,7 +1393,7 @@ async function handleSubmit() {
             <div class="form-group" data-setting="steps" :class="{ 'setting-highlighted': highlightedSetting === 'steps' }">
               <label class="form-label">
                 Steps: {{ steps }}
-                <span v-if="recommended && isDifferentFromRecommended('steps', steps)" class="rec-hint">
+                <span v-if="recommended && isDifferentFromRecommended('steps', steps)" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('steps')" title="Click to apply">
                   (rec: {{ recommended.steps }})
                 </span>
               </label>
@@ -1339,7 +1402,7 @@ async function handleSubmit() {
             <div class="form-group" data-setting="cfg-scale" :class="{ 'setting-highlighted': highlightedSetting === 'cfg-scale' }">
               <label class="form-label">
                 CFG Scale: {{ cfgScale.toFixed(1) }}
-                <span v-if="recommended && isDifferentFromRecommended('cfgScale', cfgScale)" class="rec-hint">
+                <span v-if="recommended && isDifferentFromRecommended('cfgScale', cfgScale)" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('cfgScale')" title="Click to apply">
                   (rec: {{ recommended.cfgScale }})
                 </span>
               </label>
@@ -1351,7 +1414,7 @@ async function handleSubmit() {
             <div class="form-group" data-setting="sampler" :class="{ 'setting-highlighted': highlightedSetting === 'sampler' }">
               <label class="form-label">
                 Sampler
-                <span v-if="recommended && isDifferentFromRecommended('sampler', sampler)" class="rec-hint">
+                <span v-if="recommended && isDifferentFromRecommended('sampler', sampler)" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('sampler')" title="Click to apply">
                   (rec: {{ recommended.sampler }})
                 </span>
               </label>
@@ -1362,7 +1425,7 @@ async function handleSubmit() {
             <div class="form-group" data-setting="scheduler" :class="{ 'setting-highlighted': highlightedSetting === 'scheduler' }">
               <label class="form-label">
                 Scheduler
-                <span v-if="recommended && isDifferentFromRecommended('scheduler', scheduler)" class="rec-hint">
+                <span v-if="recommended && isDifferentFromRecommended('scheduler', scheduler)" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('scheduler')" title="Click to apply">
                   (rec: {{ recommended.scheduler }})
                 </span>
               </label>
@@ -1415,7 +1478,7 @@ async function handleSubmit() {
               <div class="form-group" data-setting="clip-skip" :class="{ 'setting-highlighted': highlightedSetting === 'clip-skip' }">
                 <label class="form-label">
                   CLIP Skip (-1 = default)
-                  <span v-if="recommended && isDifferentFromRecommended('clipSkip', clipSkip)" class="rec-hint">
+                  <span v-if="recommended && isDifferentFromRecommended('clipSkip', clipSkip)" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('clipSkip')" title="Click to apply">
                     (rec: {{ recommended.clipSkip }})
                   </span>
                 </label>
@@ -1424,7 +1487,7 @@ async function handleSubmit() {
               <div class="form-group" data-setting="distilled-guidance" :class="{ 'setting-highlighted': highlightedSetting === 'distilled-guidance' }">
                 <label class="form-label">
                   Distilled Guidance
-                  <span v-if="recommended && isDifferentFromRecommended('distilledGuidance', distilledGuidance)" class="rec-hint">
+                  <span v-if="recommended && isDifferentFromRecommended('distilledGuidance', distilledGuidance)" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('distilledGuidance')" title="Click to apply">
                     (rec: {{ recommended.distilledGuidance }})
                   </span>
                 </label>
@@ -1435,7 +1498,7 @@ async function handleSubmit() {
             <div class="form-group" data-setting="slg-scale" :class="{ 'setting-highlighted': highlightedSetting === 'slg-scale' }">
               <label class="form-label">
                 SLG Scale (Skip Layer Guidance)
-                <span v-if="recommended?.slgScale !== undefined && isDifferentFromRecommended('slgScale', slgScale)" class="rec-hint">
+                <span v-if="recommended?.slgScale !== undefined && isDifferentFromRecommended('slgScale', slgScale)" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('slgScale')" title="Click to apply">
                   (rec: {{ recommended.slgScale }})
                 </span>
               </label>
@@ -1445,7 +1508,7 @@ async function handleSubmit() {
             <label class="form-checkbox" data-setting="easycache" :class="{ 'setting-highlighted': highlightedSetting === 'easycache' }">
               <input v-model="easycache" type="checkbox" />
               Enable EasyCache (faster DiT models)
-              <span v-if="recommended?.easycache !== undefined && recommended.easycache !== easycache" class="rec-hint">
+              <span v-if="recommended?.easycache !== undefined && recommended.easycache !== easycache" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('easycache')" title="Click to apply">
                 (rec: {{ recommended.easycache ? 'enabled' : 'disabled' }})
               </span>
             </label>
@@ -1765,6 +1828,14 @@ async function handleSubmit() {
   font-size: 11px;
   font-weight: normal;
   margin-left: 6px;
+}
+
+.rec-clickable {
+  cursor: pointer;
+}
+
+.rec-clickable:hover {
+  text-decoration: underline;
 }
 
 .card-header {
