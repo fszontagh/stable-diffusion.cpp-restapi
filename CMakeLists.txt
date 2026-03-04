@@ -89,14 +89,17 @@ if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
-# cpp-httplib (header-only HTTP library)
+# cpp-httplib v0.36.0 (header-only HTTP library with WebSocket support)
+# We fetch content but DON'T use MakeAvailable/httplib::httplib target because
+# sd.cpp's thirdparty bundles an older httplib without WebSocket support, and CMake's
+# include path deduplication causes the old version to take priority.
+# Instead, we add the include path manually with BEFORE to ensure correct version.
 FetchContent_Declare(
     httplib
     GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-    GIT_TAG        v0.30.1
+    GIT_TAG        v0.36.0
     GIT_SHALLOW    TRUE
 )
-set(HTTPLIB_COMPILE OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(httplib)
 
 # nlohmann/json (single header download - much faster than cloning repo)
@@ -118,42 +121,8 @@ endif()
 add_library(nlohmann_json INTERFACE)
 target_include_directories(nlohmann_json INTERFACE "${JSON_HEADER_DIR}")
 
-# uSockets and uWebSockets (only if WebSocket enabled)
-if(SDCPP_WEBSOCKET)
-    # uSockets (C library for uWebSockets)
-    FetchContent_Declare(
-        usockets
-        GIT_REPOSITORY https://github.com/uNetworking/uSockets.git
-        GIT_TAG        v0.8.8
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_MakeAvailable(usockets)
-
-    # uWebSockets (header-only WebSocket library)
-    FetchContent_Declare(
-        uwebsockets
-        GIT_REPOSITORY https://github.com/uNetworking/uWebSockets.git
-        GIT_TAG        v20.74.0
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_MakeAvailable(uwebsockets)
-
-    # Build uSockets as a static library (without SSL for simplicity)
-    add_library(uSockets STATIC
-        ${usockets_SOURCE_DIR}/src/eventing/epoll_kqueue.c
-        ${usockets_SOURCE_DIR}/src/context.c
-        ${usockets_SOURCE_DIR}/src/loop.c
-        ${usockets_SOURCE_DIR}/src/socket.c
-        ${usockets_SOURCE_DIR}/src/bsd.c
-    )
-    target_include_directories(uSockets PUBLIC ${usockets_SOURCE_DIR}/src)
-    target_compile_definitions(uSockets PRIVATE LIBUS_NO_SSL=1)
-endif()
-
-# Find zlib for uWebSockets compression support (if WebSocket is enabled)
-if(SDCPP_WEBSOCKET)
-    find_package(ZLIB REQUIRED)
-endif()
+# WebSocket support is now built-in to cpp-httplib v0.33+
+# No additional dependencies needed for WebSocket
 
 #
 # stable-diffusion.cpp via FetchContent or local source
@@ -311,13 +280,17 @@ target_include_directories(sdcpp-restapi PRIVATE
     ${stable-diffusion_SOURCE_DIR}/thirdparty
 )
 
-# Add WebSocket includes only if enabled
-if(SDCPP_WEBSOCKET)
-    target_include_directories(sdcpp-restapi PRIVATE
-        ${uwebsockets_SOURCE_DIR}/src
-        ${usockets_SOURCE_DIR}/src
-    )
-endif()
+# Ensure our httplib v0.36.0 (with WebSocket support) takes priority over
+# stable-diffusion.cpp's bundled httplib v0.28.0 (without WebSocket).
+# sd.cpp's thirdparty/ propagates an old httplib.h via PUBLIC includes.
+# httplib::httplib adds its path as -isystem, which CMake deduplicates against -I.
+# Solution: strip httplib's system include from the target and add it as a BEFORE
+# non-system include on our target. This way our path comes first in the -I list.
+set_target_properties(httplib PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
+set_target_properties(httplib PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "")
+target_include_directories(sdcpp-restapi BEFORE PRIVATE ${httplib_SOURCE_DIR})
+
+# WebSocket includes are provided by httplib (built-in since v0.33)
 
 target_link_libraries(sdcpp-restapi PRIVATE
     stable-diffusion
@@ -327,13 +300,7 @@ target_link_libraries(sdcpp-restapi PRIVATE
     OpenSSL::Crypto
 )
 
-# Add WebSocket libraries only if enabled
-if(SDCPP_WEBSOCKET)
-    target_link_libraries(sdcpp-restapi PRIVATE
-        uSockets
-        ZLIB::ZLIB
-    )
-endif()
+# WebSocket support is built into httplib - no additional link libraries needed
 
 # Link CUDA runtime and set compile definition for scheduling fix
 if(SD_CUDA)

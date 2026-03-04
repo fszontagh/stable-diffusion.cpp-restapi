@@ -31,13 +31,11 @@ public:
      * @param queue_manager Reference to queue manager
      * @param output_dir Output directory path for file browser
      * @param webui_dir Optional webui directory path for serving web UI
-     * @param ws_port WebSocket server port (0 if disabled)
      * @param assistant_config Assistant configuration for LLM helper
      * @param config_file_path Path to config.json for persisting settings (optional)
      */
     RequestHandlers(ModelManager& model_manager, QueueManager& queue_manager,
                     const std::string& output_dir, const std::string& webui_dir = "",
-                    int ws_port = 0,
                     const AssistantConfig& assistant_config = AssistantConfig{},
                     const std::string& config_file_path = "");
 
@@ -157,7 +155,6 @@ private:
     QueueManager& queue_manager_;
     std::string output_dir_;
     std::string webui_dir_;
-    int ws_port_;
     std::unique_ptr<ArchitectureManager> architecture_manager_;
     std::unique_ptr<SettingsManager> settings_manager_;
 

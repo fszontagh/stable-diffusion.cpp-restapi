@@ -249,9 +249,9 @@ export const useAppStore = defineStore('app', () => {
       // If WebSocket is disconnected but server is back, try to reconnect
       // This handles the case where server restarted after being down
       // Skip during initial loading - WebSocket setup handles that explicitly
-      if (!isInitialLoading.value && wsState.value === 'disconnected' && newHealth.ws_port) {
+      if (!isInitialLoading.value && wsState.value === 'disconnected' && newHealth.ws_enabled) {
         console.log('[AppStore] Server is back online, triggering WebSocket reconnect')
-        wsService.connect(newHealth.ws_port)
+        wsService.connect()
       }
     } catch (e) {
       connected.value = false
@@ -891,7 +891,7 @@ export const useAppStore = defineStore('app', () => {
             },
             upscaler_loaded: data.upscaler_loaded ?? false,
             upscaler_name: data.upscaler_name ?? null,
-            ws_port: null
+            ws_enabled: false
           }
         }
       })
@@ -902,7 +902,7 @@ export const useAppStore = defineStore('app', () => {
     isInitialLoading.value = true
     
     try {
-      // Initial data fetch - fetch health first to get ws_port
+      // Initial data fetch - fetch health first to check ws_enabled
       await fetchHealth()
       
       // Fetch initial data in parallel
@@ -914,10 +914,11 @@ export const useAppStore = defineStore('app', () => {
         fetchPreviewSettings()
       ])
 
-      // Setup WebSocket handlers and connect using port from health response
+      // Setup WebSocket handlers and connect (same port as HTTP, /ws path)
       setupWebSocketHandlers()
-      const wsPort = health.value?.ws_port ?? undefined
-      wsService.connect(wsPort)
+      if (health.value?.ws_enabled) {
+        wsService.connect()
+      }
 
       // Start fallback polling until WebSocket connects
       // (will be stopped by onStateChange handler when WS connects)

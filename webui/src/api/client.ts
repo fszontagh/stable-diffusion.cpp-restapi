@@ -110,7 +110,7 @@ export interface HealthResponse {
   load_options?: LoadOptions
   upscaler_loaded: boolean
   upscaler_name: string | null
-  ws_port: number | null
+  ws_enabled?: boolean
   memory?: MemoryResponse
   features?: {
     experimental_offload: boolean

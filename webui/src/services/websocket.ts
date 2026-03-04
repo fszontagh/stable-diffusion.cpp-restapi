@@ -162,7 +162,6 @@ export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'rec
 class WebSocketService {
   private ws: WebSocket | null = null
   private url: string = ''
-  private wsPort: number | null = null  // Store port for reconnection
   private reconnectAttempts = 0
   private maxReconnectAttempts = 10
   private reconnectDelay = 1000
@@ -177,29 +176,17 @@ class WebSocketService {
   private stateChangeHandlers: Set<(state: ConnectionState) => void> = new Set()
 
   /**
-   * Connect to WebSocket server
-   * @param wsPort WebSocket port from server's /health endpoint. If not provided, uses stored port from previous connection.
+   * Connect to WebSocket server on the same host/port as HTTP, at /ws path
    */
-  connect(wsPort?: number): void {
-    // Store port for reconnection, or use stored port if not provided
-    if (wsPort !== undefined && wsPort !== null) {
-      this.wsPort = wsPort
-    }
-
-    if (this.wsPort === null) {
-      console.log('[WebSocket] No WebSocket port provided, server may have WebSocket disabled')
-      return
-    }
-
+  connect(): void {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       console.log('[WebSocket] Already connected or connecting')
       return
     }
 
-    // Build WebSocket URL using stored port
+    // Build WebSocket URL using same host:port as the page, with /ws path
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.hostname
-    this.url = `${protocol}//${host}:${this.wsPort}`
+    this.url = `${protocol}//${window.location.host}/ws`
 
     this.updateState('connecting')
     console.log(`[WebSocket] Connecting to ${this.url}...`)

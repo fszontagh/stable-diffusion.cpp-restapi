@@ -1,6 +1,7 @@
 #include "config.hpp"
 
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <filesystem>
 
@@ -21,7 +22,7 @@ void to_json(nlohmann::json& j, const ServerConfig& c) {
 void from_json(const nlohmann::json& j, ServerConfig& c) {
     c.host = j.value("host", "0.0.0.0");
     c.port = j.value("port", 8080);
-    c.ws_port = j.value("ws_port", 8081);
+    c.ws_port = j.value("ws_port", 0);  // deprecated, kept for backward compat
     c.threads = j.value("threads", 8);
 }
 
@@ -231,11 +232,11 @@ void Config::validate() const {
     if (server.port < 1 || server.port > 65535) {
         throw std::runtime_error("Invalid server port: " + std::to_string(server.port));
     }
-    if (server.ws_port < 0 || server.ws_port > 65535) {
-        throw std::runtime_error("Invalid WebSocket port: " + std::to_string(server.ws_port));
-    }
-    if (server.ws_port > 0 && server.ws_port == server.port) {
-        throw std::runtime_error("WebSocket port must be different from HTTP port");
+    // ws_port is deprecated - WebSocket now uses the same port as HTTP
+    if (server.ws_port > 0) {
+        std::cerr << "Warning: 'ws_port' config option is deprecated. "
+                  << "WebSocket now runs on the same port as HTTP (" << server.port << "). "
+                  << "You can remove 'ws_port' from your configuration." << std::endl;
     }
     if (server.threads < 1) {
         throw std::runtime_error("Server threads must be at least 1");

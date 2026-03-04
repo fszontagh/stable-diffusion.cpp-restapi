@@ -23,7 +23,7 @@ function handleReconnect() {
 
 // Check if WebSocket is available at build time
 const wsAvailable = computed(() => {
-  return store.health?.ws_port !== null && store.health?.ws_port !== undefined
+  return store.health?.ws_enabled === true
 })
 
 // Connection status text

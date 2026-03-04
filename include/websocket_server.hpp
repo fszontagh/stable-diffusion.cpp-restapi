@@ -2,13 +2,16 @@
 
 #include <string>
 #include <atomic>
-#include <thread>
 #include <mutex>
-#include <queue>
 #include <vector>
 #include <chrono>
 #include <functional>
 #include <nlohmann/json.hpp>
+
+// Forward declare httplib types
+namespace httplib {
+class Server;
+}
 
 namespace sdcpp {
 
@@ -52,20 +55,23 @@ struct WSEvent {
     std::chrono::system_clock::time_point timestamp;
 };
 
+// Forward declare internal client connection type (defined in .cpp)
+struct ClientConnection;
+
 /**
  * WebSocket Server for real-time communication with WebUI
  *
- * Uses uWebSockets for high-performance, non-blocking WebSocket handling.
- * Runs in a dedicated thread with its own event loop.
- * Thread-safe broadcasting from other threads via event queue.
+ * Uses cpp-httplib's built-in WebSocket support (v0.33+).
+ * Runs on the same port as HTTP via server.WebSocket("/ws", handler).
+ * Each client connection runs in its own thread (httplib's thread pool).
+ * Thread-safe broadcasting via per-client send mutexes.
  */
 class WebSocketServer {
 public:
     /**
-     * Create a WebSocket server on the specified port
-     * @param port Port to listen on
+     * Create a WebSocket server (no port needed - uses httplib's port)
      */
-    explicit WebSocketServer(int port);
+    WebSocketServer();
 
     /**
      * Destructor - stops the server if running
@@ -79,18 +85,24 @@ public:
     WebSocketServer& operator=(WebSocketServer&&) = delete;
 
     /**
-     * Start the WebSocket server (spawns a new thread)
+     * Register the /ws WebSocket endpoint with the httplib server
+     * Must be called BEFORE server.listen()
+     * @param server The httplib::Server to register the endpoint on
+     */
+    void setup_endpoint(httplib::Server& server);
+
+    /**
+     * Mark the WebSocket server as running
      */
     void start();
 
     /**
-     * Stop the WebSocket server and wait for thread to finish
+     * Stop the WebSocket server - closes all client connections
      */
     void stop();
 
     /**
-     * Request the server to stop (async-signal-safe, doesn't join thread)
-     * Call stop() afterwards from main thread to complete shutdown
+     * Request the server to stop (async-signal-safe)
      */
     void request_stop();
 
@@ -114,59 +126,36 @@ public:
      */
     size_t get_client_count() const { return client_count_.load(); }
 
-    /**
-     * Get the port the server is listening on
-     * @return Port number
-     */
-    int get_port() const { return port_; }
-
 private:
     /**
-     * Main server thread function
+     * Handle a new WebSocket connection (runs in httplib's thread per connection)
+     * @param ws The WebSocket connection (type-erased, actual type is httplib::ws::WebSocket)
      */
-    void server_thread();
-
-    /**
-     * Process pending events from the queue and broadcast to clients
-     */
-    void process_event_queue();
+    void handle_connection(void* ws);
 
     /**
      * Convert event type to string for JSON serialization
-     * @param type Event type
-     * @return String representation of event type
      */
     static std::string event_type_to_string(WSEventType type);
 
     /**
      * Format timestamp as ISO 8601 string
-     * @param tp Time point
-     * @return ISO 8601 formatted string
      */
     static std::string format_timestamp(const std::chrono::system_clock::time_point& tp);
 
-    // Server configuration
-    int port_;
-
-    // Thread management
+    // State
     std::atomic<bool> running_{false};
     std::atomic<bool> should_stop_{false};
-    std::thread server_thread_;
 
-    // Event queue for thread-safe broadcasting
-    mutable std::mutex event_queue_mutex_;
-    std::queue<WSEvent> event_queue_;
-
-    // Connection tracking
+    // Client registry
+    mutable std::mutex clients_mutex_;
+    std::vector<ClientConnection*> clients_;
     std::atomic<size_t> client_count_{0};
+    size_t next_client_id_{0};
 
     // Rate limiting for progress events
     std::chrono::steady_clock::time_point last_progress_broadcast_;
     static constexpr std::chrono::milliseconds PROGRESS_THROTTLE_MS{100};
-
-    // uWebSockets internals (stored as void* to avoid header dependency in public API)
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
 };
 
 /**

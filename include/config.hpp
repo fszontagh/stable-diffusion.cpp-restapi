@@ -11,7 +11,7 @@ namespace sdcpp {
 struct ServerConfig {
     std::string host = "0.0.0.0";
     int port = 8080;
-    int ws_port = 8081;  // WebSocket port, 0 to disable
+    int ws_port = 0;  // DEPRECATED: WebSocket now uses same port as HTTP. Ignored if set.
     int threads = 8;
 };
 
