@@ -309,12 +309,7 @@ int main(int argc, char* argv[]) {
 
         // Initialize Request Handlers and register routes
         std::cout << "Registering API routes..." << std::endl;
-#ifdef SDCPP_WEBSOCKET_ENABLED
-        int ws_port_to_use = config.server.ws_port;
-#else
-        int ws_port_to_use = 0;  // WebSocket disabled at build time
-#endif
-        sdcpp::RequestHandlers handlers(model_manager, queue_manager, config.paths.output, webui_path, ws_port_to_use, config.assistant, config_path);
+        sdcpp::RequestHandlers handlers(model_manager, queue_manager, config.paths.output, webui_path, config.assistant, config_path);
         handlers.register_routes(server);
 
         // Set error handler for HTTP errors (404, etc.)
@@ -353,26 +348,23 @@ int main(int argc, char* argv[]) {
             res.set_content(error_json.dump(), "application/json");
         });
 
-        // Initialize WebSocket server (if enabled at build time and in config)
+        // Initialize WebSocket server (if enabled at build time)
 #ifdef SDCPP_WEBSOCKET_ENABLED
-        std::unique_ptr<sdcpp::WebSocketServer> ws_server;
-        if (config.server.ws_port > 0) {
-            std::cout << "Initializing WebSocket server..." << std::endl;
-            ws_server = std::make_unique<sdcpp::WebSocketServer>(config.server.ws_port);
-            sdcpp::set_websocket_server(ws_server.get());
-            g_ws_server = ws_server.get();
+        std::cout << "Initializing WebSocket server..." << std::endl;
+        auto ws_server = std::make_unique<sdcpp::WebSocketServer>();
+        sdcpp::set_websocket_server(ws_server.get());
+        g_ws_server = ws_server.get();
 
-            // Set up status provider for WebSocket clients
-            sdcpp::set_status_provider([&model_manager]() {
-                auto status = model_manager.get_loaded_models_info();
-                status["memory"] = sdcpp::get_memory_info().to_json();
-                return status;
-            });
+        // Set up status provider for WebSocket clients
+        sdcpp::set_status_provider([&model_manager]() {
+            auto status = model_manager.get_loaded_models_info();
+            status["memory"] = sdcpp::get_memory_info().to_json();
+            return status;
+        });
 
-            ws_server->start();
-        } else {
-            std::cout << "WebSocket server disabled in config (ws_port: 0)" << std::endl;
-        }
+        // Register /ws endpoint on the HTTP server (must be before listen())
+        ws_server->setup_endpoint(server);
+        ws_server->start();
 #else
         std::cout << "WebSocket server disabled at build time" << std::endl;
 #endif
@@ -387,9 +379,7 @@ int main(int argc, char* argv[]) {
         std::cout << "========================================" << std::endl;
         std::cout << "HTTP API:     http://" << config.server.host << ":" << config.server.port << std::endl;
 #ifdef SDCPP_WEBSOCKET_ENABLED
-        if (config.server.ws_port > 0) {
-            std::cout << "WebSocket:    ws://" << config.server.host << ":" << config.server.ws_port << std::endl;
-        }
+        std::cout << "WebSocket:    ws://" << config.server.host << ":" << config.server.port << "/ws" << std::endl;
 #endif
         std::cout << "Output URL:   http://" << config.server.host << ":" << config.server.port << "/output/" << std::endl;
         if (!webui_path.empty()) {

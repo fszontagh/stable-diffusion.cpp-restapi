@@ -30,10 +30,9 @@ namespace sdcpp {
 
 RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queue_manager,
                                  const std::string& output_dir, const std::string& webui_dir,
-                                 int ws_port,
                                  const AssistantConfig& assistant_config,
                                  const std::string& config_file_path)
-    : model_manager_(model_manager), queue_manager_(queue_manager), output_dir_(output_dir), webui_dir_(webui_dir), ws_port_(ws_port)
+    : model_manager_(model_manager), queue_manager_(queue_manager), output_dir_(output_dir), webui_dir_(webui_dir)
     // ArchitectureManager uses config directory (where model_architectures.json lives), not output directory
     , architecture_manager_(std::make_unique<ArchitectureManager>(
           config_file_path.empty() ? output_dir : fs::path(config_file_path).parent_path().string()))
@@ -290,7 +289,11 @@ void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Re
         {"loaded_components", loaded_info["loaded_components"]},
         {"upscaler_loaded", loaded_info["upscaler_loaded"]},
         {"upscaler_name", loaded_info["upscaler_name"]},
-        {"ws_port", ws_port_ > 0 ? nlohmann::json(ws_port_) : nlohmann::json(nullptr)},
+#ifdef SDCPP_WEBSOCKET_ENABLED
+        {"ws_enabled", true},
+#else
+        {"ws_enabled", false},
+#endif
         {"memory", memory_info.to_json()},
         {"features", {
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
