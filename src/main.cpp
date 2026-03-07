@@ -21,6 +21,9 @@
 #ifdef SDCPP_WEBSOCKET_ENABLED
 #include "websocket_server.hpp"
 #endif
+#ifdef SDCPP_MCP_ENABLED
+#include "mcp_server.hpp"
+#endif
 #include "sd_error_capture.hpp"
 #include "stable-diffusion.h"
 
@@ -311,6 +314,15 @@ int main(int argc, char* argv[]) {
         std::cout << "Registering API routes..." << std::endl;
         sdcpp::RequestHandlers handlers(model_manager, queue_manager, config.paths.output, webui_path, config.assistant, config_path);
         handlers.register_routes(server);
+
+        // Initialize MCP server (if enabled at build time)
+#ifdef SDCPP_MCP_ENABLED
+        std::cout << "Initializing MCP server..." << std::endl;
+        sdcpp::McpServer mcp_server(server, model_manager, queue_manager);
+        mcp_server.register_endpoint();
+#else
+        std::cout << "MCP server disabled at build time" << std::endl;
+#endif
 
         // Set error handler for HTTP errors (404, etc.)
         server.set_error_handler([](const httplib::Request& /*req*/, httplib::Response& res) {
