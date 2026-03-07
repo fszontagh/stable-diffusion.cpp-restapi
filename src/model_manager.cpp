@@ -847,10 +847,23 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     sd_set_progress_callback(nullptr, nullptr);
     g_loading_model_manager = nullptr;
 
+    // Validate context integrity.
+    // new_sd_ctx should return nullptr on failure, but in edge cases (CUDA OOM
+    // during multithreaded tensor loading) it may return a partially initialized
+    // context that would crash during generation. Validate with a probe call.
+    if (context_ != nullptr) {
+        const char* probe = sd_get_model_version_name(context_);
+        if (probe == nullptr) {
+            std::cerr << "[ModelManager] Context probe failed - freeing corrupted context" << std::endl;
+            free_sd_ctx(context_);
+            context_ = nullptr;
+        }
+    }
+
     if (context_ == nullptr) {
-        std::string error_msg = "Failed to load model: " + params.model_name;
+        std::string error_msg = "Failed to load model: " + params.model_name +
+            " (insufficient memory - try a quantized model or enable offloading)";
         last_load_error_ = error_msg;
-        // Clear stale model info on failure
         loaded_model_name_.clear();
         loaded_model_architecture_.clear();
         loaded_model_type_ = ModelType::Checkpoint;
@@ -863,7 +876,6 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         loaded_llm_vision_.clear();
         clear_loading();
 
-        // Broadcast model load failure via WebSocket
         if (auto* ws = get_websocket_server()) {
             ws->broadcast(WSEventType::ModelLoadFailed, {
                 {"model_name", params.model_name},
