@@ -12,7 +12,7 @@
 #include <filesystem>
 #include <unistd.h>
 
-#include "httplib.h"
+#include "httplib_compat.h"
 #include "config.hpp"
 #include "model_manager.hpp"
 #include "queue_manager.hpp"
@@ -86,7 +86,7 @@ void signal_handler(int signal) {
         // First signal - try graceful shutdown
         // Use write() instead of cout for async-signal-safety
         const char* msg = "\nReceived signal, shutting down gracefully... (press Ctrl+C again to force quit)\n";
-        write(STDERR_FILENO, msg, strlen(msg));
+        if (write(STDERR_FILENO, msg, strlen(msg)) < 0) { /* ignore in signal handler */ }
 
         g_running = false;
 
@@ -105,7 +105,7 @@ void signal_handler(int signal) {
     } else {
         // Second signal - force immediate exit
         const char* msg = "\nForce quit!\n";
-        write(STDERR_FILENO, msg, strlen(msg));
+        if (write(STDERR_FILENO, msg, strlen(msg)) < 0) { /* ignore in signal handler */ }
         _exit(128 + signal);
     }
 }

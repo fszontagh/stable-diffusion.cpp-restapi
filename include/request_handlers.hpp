@@ -1,6 +1,6 @@
 #pragma once
 
-#include "httplib.h"
+#include "httplib_compat.h"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <memory>
@@ -8,6 +8,8 @@
 #include "config.hpp"
 #include "architecture_manager.hpp"
 #include "settings_manager.hpp"
+#include "api_registry.hpp"
+#include "api_schemas.hpp"
 
 #ifdef SDCPP_ASSISTANT_ENABLED
 #include "assistant_client.hpp"
@@ -157,6 +159,7 @@ private:
     std::string webui_dir_;
     std::unique_ptr<ArchitectureManager> architecture_manager_;
     std::unique_ptr<SettingsManager> settings_manager_;
+    std::unique_ptr<ApiRegistry> api_registry_;
 
 #ifdef SDCPP_ASSISTANT_ENABLED
     std::unique_ptr<ToolExecutor> tool_executor_;

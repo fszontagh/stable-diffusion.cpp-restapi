@@ -3,7 +3,7 @@
 #include "utils.hpp"
 #include "queue_item_fields.hpp"
 
-#include <httplib.h>
+#include "httplib_compat.h"
 
 #include <fstream>
 #include <iostream>
@@ -207,7 +207,7 @@ std::string AssistantClient::build_system_prompt() const {
 }
 
 nlohmann::json AssistantClient::build_messages(const std::string& user_message,
-                                                const nlohmann::json& context) const {
+                                                const nlohmann::json& /*context*/) const {
     nlohmann::json messages = nlohmann::json::array();
 
     // Add system prompt

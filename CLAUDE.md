@@ -14,11 +14,23 @@
 /data/sdcpp-restapi/
 ├── src/                    # C++ backend source
 │   ├── main.cpp           # Entry point, server setup
-│   ├── request_handlers.cpp # HTTP route handlers
+│   ├── request_handlers.cpp # HTTP route handlers + API registry setup
+│   ├── api_registry.cpp   # OpenAPI 3.1 schema generator
 │   ├── queue_manager.cpp  # Job queue with recycle bin
 │   ├── model_manager.cpp  # Model loading/unloading
 │   └── sd_wrapper.cpp     # sd.cpp integration
 ├── include/               # C++ headers
+│   ├── api_schema.hpp     # Schema field types, SchemaBuilder fluent API
+│   ├── api_registry.hpp   # ApiRegistry class (route + schema registration)
+│   ├── api_schemas.hpp    # Master include for all schema structs
+│   └── api_schemas/       # Schema struct definitions by domain
+│       ├── common.hpp     # Shared enums, SuccessResponse, JobCreatedResponse
+│       ├── generation.hpp # GenerationRequestBase, Txt2Img/Img2Img/Txt2Vid/Upscale
+│       ├── models.hpp     # LoadModelRequest, LoadOptions, download schemas
+│       ├── queue.hpp      # Queue listing, job status, recycle bin schemas
+│       ├── health.hpp     # Health, memory, options response schemas
+│       ├── settings.hpp   # Preview, architecture, settings schemas
+│       └── assistant.hpp  # Assistant chat/status schemas
 ├── webui/                 # Vue.js frontend
 │   ├── src/views/         # Page components
 │   ├── src/components/    # Reusable components
@@ -98,15 +110,44 @@ cmake -DSD_EXPERIMENTAL_OFFLOAD=ON ..
 
 ## Key Patterns
 
+### OpenAPI Schema System (Auto-Generated)
+
+The server generates an OpenAPI 3.1 specification at `GET /openapi.json` that is always in sync with the code. The schema is built from:
+
+1. **Schema structs** in `include/api_schemas/*.hpp` using `SchemaBuilder` fluent API
+2. **ApiRegistry** in `include/api_registry.hpp` that registers routes + schemas together
+3. **`addEndpoint<ReqType, ResType>()`** in `register_routes()` replaces direct `server.Get/Post` calls
+
+**Adding a new endpoint:**
+1. Define request/response schema structs in `include/api_schemas/` (use `SchemaBuilder`)
+2. Use `api.addEndpoint<MyRequest, MyResponse>(server, "POST", "/path", ...)` in `register_routes()`
+3. The OpenAPI spec automatically includes the new endpoint and its schemas
+
+**Schema features:**
+- **Inheritance via `allOf`**: e.g., `Txt2ImgRequest` inherits `GenerationRequestBase`
+- **`x-architecture-default: true`**: Marks fields whose defaults come from `data/model_architectures.json`
+- **Conditional compilation**: `#ifdef SDCPP_EXPERIMENTAL_OFFLOAD` includes/excludes offload fields
+- **`$ref` schemas**: Shared schemas like `LoadOptions` need explicit `api.registerSchema()` call
+- **Query/path params**: Use `.query()` / `.path_param()` fluent methods on the endpoint builder
+
+**Example:**
+```cpp
+api.addEndpoint<Txt2ImgRequest, JobCreatedResponse>(
+    server, "POST", "/txt2img",
+    "Generate image from text prompt", "Generation", 202,
+    [this](auto& req, auto& res) { handle_txt2img(req, res); });
+```
+
 ### Adding New Model Load Options
 
 1. Add to `ModelLoadParams` struct in `include/model_manager.hpp`
 2. Parse from JSON in `ModelLoadParams::from_json()` in `src/model_manager.cpp`
 3. Apply in `load_model()` function
 4. Store in `loaded_options_` for health endpoint
-5. Add TypeScript types in `webui/src/api/client.ts` (LoadOptions, LoadModelParams)
-6. Add UI controls in `webui/src/views/ModelLoad.vue`
-7. Add display label in `webui/src/views/Dashboard.vue` formatOptionLabel()
+5. Add field to `LoadOptions::schema()` in `include/api_schemas/models.hpp` (for OpenAPI)
+6. Add TypeScript types in `webui/src/api/client.ts` (LoadOptions, LoadModelParams)
+7. Add UI controls in `webui/src/views/ModelLoad.vue`
+8. Add display label in `webui/src/views/Dashboard.vue` formatOptionLabel()
 
 ### WebSocket Events
 
@@ -128,6 +169,10 @@ Jobs are soft-deleted with `status=deleted` and `deleted_at` timestamp. Auto-pur
 
 # Health check
 curl http://localhost:8080/health
+
+# OpenAPI schema (auto-generated, always current)
+curl http://localhost:8080/openapi.json | jq '.paths | keys | length'  # endpoint count
+curl http://localhost:8080/openapi.json | jq '.components.schemas | keys'  # schema names
 
 # Check if experimental offload is enabled
 curl -s http://localhost:8080/health | jq '.features.experimental_offload'

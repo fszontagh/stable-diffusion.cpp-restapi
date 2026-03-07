@@ -6,7 +6,7 @@
 #include <ctime>
 #include <algorithm>
 
-#include <httplib.h>
+#include "httplib_compat.h"
 
 namespace sdcpp {
 
@@ -52,10 +52,13 @@ WebSocketServer::~WebSocketServer() {
 }
 
 void WebSocketServer::setup_endpoint(httplib::Server& server) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
     server.WebSocket("/ws", [this](const httplib::Request& /*req*/,
                                     httplib::ws::WebSocket& ws) {
         handle_connection(static_cast<void*>(&ws));
     });
+#pragma GCC diagnostic pop
     std::cout << "[WebSocket] Registered /ws endpoint" << std::endl;
 }
 

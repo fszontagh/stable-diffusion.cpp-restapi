@@ -253,6 +253,7 @@ set(SDCPP_SOURCES
     src/queue_manager.cpp
     src/sd_wrapper.cpp
     src/request_handlers.cpp
+    src/api_registry.cpp
     src/stb_impl.cpp
     src/memory_utils.cpp
     src/architecture_manager.cpp
