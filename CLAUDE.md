@@ -18,8 +18,10 @@
 │   ├── api_registry.cpp   # OpenAPI 3.1 schema generator
 │   ├── queue_manager.cpp  # Job queue with recycle bin
 │   ├── model_manager.cpp  # Model loading/unloading
+│   ├── mcp_server.cpp     # MCP (Model Context Protocol) server
 │   └── sd_wrapper.cpp     # sd.cpp integration
 ├── include/               # C++ headers
+│   ├── mcp_server.hpp     # MCP server class declaration
 │   ├── api_schema.hpp     # Schema field types, SchemaBuilder fluent API
 │   ├── api_registry.hpp   # ApiRegistry class (route + schema registration)
 │   ├── api_schemas.hpp    # Master include for all schema structs
@@ -157,6 +159,29 @@ Events broadcast from `src/websocket_server.cpp`:
 - `upscaler_loaded`, `upscaler_unloaded`
 - `server_status`, `server_shutdown`
 
+### MCP Server (Model Context Protocol)
+
+The MCP server at `POST /mcp` implements JSON-RPC 2.0 for Streamable HTTP transport. It's compile-time optional via `SDCPP_MCP` (ON by default).
+
+**Adding a new MCP tool:**
+1. Add method declaration to `include/mcp_server.hpp`
+2. Add tool definition in `handle_list_tools()` in `src/mcp_server.cpp`
+3. Implement tool function (e.g., `tool_my_action()`)
+4. Add dispatch case in `handle_call_tool()`
+
+**Adding a new MCP resource:**
+1. Add method declaration to `include/mcp_server.hpp`
+2. Add resource entry in `handle_list_resources()`
+3. Implement resource function (e.g., `resource_my_data()`)
+4. Add URI dispatch case in `handle_read_resource()`
+
+**Conditional compilation:**
+```cpp
+#ifdef SDCPP_MCP_ENABLED
+    // MCP code here
+#endif
+```
+
 ### Queue Soft-Delete (Recycle Bin)
 
 Jobs are soft-deleted with `status=deleted` and `deleted_at` timestamp. Auto-purged after configurable retention period. See `src/queue_manager.cpp`.
@@ -176,6 +201,11 @@ curl http://localhost:8080/openapi.json | jq '.components.schemas | keys'  # sch
 
 # Check if experimental offload is enabled
 curl -s http://localhost:8080/health | jq '.features.experimental_offload'
+
+# Test MCP endpoint
+curl -s -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | jq .
 ```
 
 ## Supported Model Architectures
