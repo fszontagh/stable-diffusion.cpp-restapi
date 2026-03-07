@@ -51,6 +51,7 @@ option(SDCPP_WEBSOCKET "Build WebSocket server for real-time updates" ON)
 option(FORCE_WEBSOCKET "Force WebSocket even if WebUI is disabled" OFF)
 option(SDCPP_ASSISTANT "Build LLM Assistant feature" ON)
 option(SD_EXPERIMENTAL_OFFLOAD "Enable experimental dynamic tensor offloading (requires forked sd.cpp)" OFF)
+option(SDCPP_MCP "Build MCP (Model Context Protocol) server support" ON)
 set(SDCPP_LOCAL_SOURCE "" CACHE PATH "Path to local stable-diffusion.cpp source (for development/testing)")
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
@@ -271,6 +272,11 @@ if(SDCPP_WEBSOCKET)
     list(APPEND SDCPP_SOURCES src/websocket_server.cpp)
 endif()
 
+# Add MCP server source only if enabled
+if(SDCPP_MCP)
+    list(APPEND SDCPP_SOURCES src/mcp_server.cpp)
+endif()
+
 add_executable(sdcpp-restapi ${SDCPP_SOURCES})
 
 target_include_directories(sdcpp-restapi PRIVATE
@@ -347,6 +353,11 @@ if(SD_EXPERIMENTAL_OFFLOAD)
     target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_EXPERIMENTAL_OFFLOAD=1)
 endif()
 
+# MCP compile definition
+if(SDCPP_MCP)
+    target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_MCP_ENABLED=1)
+endif()
+
 #
 # Web UI (optional)
 #
@@ -383,5 +394,6 @@ message(STATUS "Web UI:          ${SDCPP_WEBUI}")
 message(STATUS "WebSocket:       ${SDCPP_WEBSOCKET}")
 message(STATUS "LLM Assistant:   ${SDCPP_ASSISTANT}")
 message(STATUS "Exp. Offload:    ${SD_EXPERIMENTAL_OFFLOAD}")
+message(STATUS "MCP Server:      ${SDCPP_MCP}")
 message(STATUS "===================================")
 message(STATUS "")
