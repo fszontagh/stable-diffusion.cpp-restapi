@@ -46,6 +46,7 @@ cmake --build build
 - `-DSDCPP_WEBUI=OFF` - Disable Web UI (default: ON)
 - `-DSDCPP_WEBSOCKET=OFF` - Disable WebSocket server (default: ON)
 - `-DSDCPP_ASSISTANT=OFF` - Disable LLM Assistant (default: ON)
+- `-DSDCPP_MCP=OFF` - Disable MCP server (default: ON)
 - `-DSD_EXPERIMENTAL_OFFLOAD=ON` - Enable experimental dynamic tensor offloading (default: OFF)
 
 ### Configure
@@ -164,6 +165,7 @@ Fields with architecture-dependent defaults (width, height, steps, sampler, etc.
 | `POST /upscale` | Image upscaling (ESRGAN) |
 | `GET /queue/{id}` | Get job status |
 | `GET /architectures` | Get model architecture presets |
+| `POST /mcp` | MCP (Model Context Protocol) JSON-RPC endpoint |
 
 ### WebSocket
 
@@ -171,6 +173,20 @@ Real-time updates via `ws://<host>:<port>/ws`:
 - Job progress and previews
 - Model loading status
 - Server heartbeat
+
+### MCP (Model Context Protocol)
+
+MCP support enables any MCP-compatible AI client to use the server's tools:
+
+```
+POST /mcp
+```
+
+**Available tools:** generate_image, generate_image_from_image, generate_video, upscale_image, load_model, unload_model, list_models, get_job_status, cancel_job
+
+**Available resources:** sdcpp://health, sdcpp://memory, sdcpp://models, sdcpp://models/loaded, sdcpp://queue, sdcpp://queue/{job_id}, sdcpp://architectures
+
+Disable at build time with `-DSDCPP_MCP=OFF`.
 
 ## Web UI
 
