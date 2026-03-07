@@ -702,8 +702,9 @@ CONFIGEOF
             .paths.webui = ($old.paths.webui // .paths.webui // "") |
             .sd_defaults = ($old.sd_defaults // .sd_defaults // {}) |
             .preview = ($old.preview // .preview // {}) |
-            # Remove deprecated ollama config if present
-            del(.ollama)
+            # Remove deprecated config entries
+            del(.ollama) |
+            del(.server.ws_port)
         ' "${CONFIG_FILE}" "${TEMP_NEW_CONFIG}" > "${CONFIG_FILE}.new"
 
         mv "${CONFIG_FILE}.new" "${CONFIG_FILE}"

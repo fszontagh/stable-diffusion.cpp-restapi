@@ -133,10 +133,26 @@ See `config.example.json` for all options.
 
 Full API documentation: [docs/API.md](docs/API.md)
 
+### OpenAPI Schema
+
+The server auto-generates an **OpenAPI 3.1** specification at runtime:
+
+```
+GET /openapi.json
+```
+
+The schema is always in sync with the actual API — it's generated from the same code that registers the routes. You can use it with Swagger UI, Postman, or any OpenAPI-compatible tool for:
+- Interactive API documentation
+- Client SDK generation
+- Request/response validation
+
+Fields with architecture-dependent defaults (width, height, steps, sampler, etc.) are marked with `x-architecture-default: true` — actual defaults come from the loaded model's architecture preset (see `GET /architectures`).
+
 ### Key Endpoints
 
 | Endpoint | Description |
 |----------|-------------|
+| `GET /openapi.json` | Auto-generated OpenAPI 3.1 specification |
 | `GET /health` | Server status, loaded model info, and feature flags |
 | `GET /memory` | System and GPU memory usage |
 | `GET /models` | List available models |
@@ -151,7 +167,7 @@ Full API documentation: [docs/API.md](docs/API.md)
 
 ### WebSocket
 
-Real-time updates on port 8081:
+Real-time updates via `ws://<host>:<port>/ws`:
 - Job progress and previews
 - Model loading status
 - Server heartbeat

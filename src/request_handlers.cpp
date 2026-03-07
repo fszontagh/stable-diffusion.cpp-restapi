@@ -59,121 +59,242 @@ RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queu
 }
 
 void RequestHandlers::register_routes(httplib::Server& server) {
-    // Health check
-    server.Get("/health", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_health(req, res);
-    });
+    using namespace api;
+    using FT = schema::FieldType;
 
-    // Memory status
-    server.Get("/memory", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_memory(req, res);
-    });
+    // Create API registry
+    api_registry_ = std::make_unique<ApiRegistry>(
+        "sdcpp-restapi",
+        sdcpp::get_version(),
+        "REST API for stable-diffusion.cpp image and video generation"
+    );
+    auto& api = *api_registry_;
 
-    // Options (samplers, schedulers)
-    server.Get("/options", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_options(req, res);
-    });
+    // Register shared schemas that are referenced by $ref but not directly as endpoint types
+    api.registerSchema("LoadOptions", LoadOptions::schema());
 
-    // Model routes
-    server.Get("/models", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_models(req, res);
-    });
-    server.Post("/models/refresh", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_refresh_models(req, res);
-    });
-    server.Post("/models/load", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_load_model(req, res);
-    });
-    server.Post("/models/unload", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_unload_model(req, res);
-    });
-    server.Get(R"(/models/hash/([^/]+)/(.+))", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_model_hash(req, res);
-    });
-    
-    // Generation routes
-    server.Post("/txt2img", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_txt2img(req, res);
-    });
-    server.Post("/img2img", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_img2img(req, res);
-    });
-    server.Post("/txt2vid", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_txt2vid(req, res);
-    });
-    server.Post("/upscale", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_upscale(req, res);
-    });
-    server.Post("/convert", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_convert(req, res);
-    });
+    // ── Health & Status ──────────────────────────────────────────────
+    api.addEndpoint<void, HealthResponse>(
+        server, "GET", "/health",
+        "Server health check", "Status", 200,
+        [this](auto& req, auto& res) { handle_health(req, res); });
 
-    // Upscaler routes
-    server.Post("/upscaler/load", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_load_upscaler(req, res);
-    });
-    server.Post("/upscaler/unload", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_unload_upscaler(req, res);
-    });
-    
-    // Queue routes
-    server.Get("/queue", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_queue(req, res);
-    });
-    server.Get(R"(/queue/([a-f0-9\-]+))", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_job(req, res);
-    });
-    server.Delete(R"(/queue/([a-f0-9\-]+))", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_cancel_job(req, res);
-    });
-    server.Delete("/queue/jobs", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_delete_jobs(req, res);
-    });
+    api.addEndpoint<void, MemoryResponse>(
+        server, "GET", "/memory",
+        "System and GPU memory status", "Status", 200,
+        [this](auto& req, auto& res) { handle_memory(req, res); });
 
-    // Recycle bin routes
-    server.Get("/queue/recycle-bin", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_recycle_bin(req, res);
-    });
-    server.Post(R"(/queue/([a-f0-9\-]+)/restore)", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_restore_job(req, res);
-    });
-    server.Delete(R"(/queue/([a-f0-9\-]+)/purge)", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_purge_job(req, res);
-    });
-    server.Delete("/queue/recycle-bin", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_clear_recycle_bin(req, res);
-    });
-    server.Get("/settings/recycle-bin", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_recycle_bin_settings(req, res);
-    });
+    api.addEndpoint<void, OptionsResponse>(
+        server, "GET", "/options",
+        "Available samplers, schedulers, quantization types", "Status", 200,
+        [this](auto& req, auto& res) { handle_get_options(req, res); });
 
-    // Job preview endpoint - serves in-memory preview JPEG
-    server.Get(R"(/jobs/([a-f0-9\-]+)/preview)", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_job_preview(req, res);
-    });
+    api.addEndpoint<void, OptionDescriptionsResponse>(
+        server, "GET", "/options/descriptions",
+        "Descriptions of all available options", "Status", 200,
+        [this](auto& req, auto& res) { handle_get_option_descriptions(req, res); });
 
-    // Thumbnail endpoint - must be before file browser
-    server.Get(R"(/thumb/(.*))", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_thumbnail(req, res);
-    });
+    // ── Models ───────────────────────────────────────────────────────
+    api.addEndpoint<void, ModelListResponse>(
+        server, "GET", "/models",
+        "List all available models", "Models", 200,
+        [this](auto& req, auto& res) { handle_get_models(req, res); })
+        .query_enum("type", "Filter by model type", MODEL_TYPE_VALUES)
+        .query("extension", FT::String, "Filter by file extension")
+        .query("search", FT::String, "Search in model name")
+        .query("name", FT::String, "Search alias for 'search' parameter");
 
-    // File browser - handles both /output and /output/...
-    server.Get("/output", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_file_browser(req, res);
-    });
-    server.Get(R"(/output/(.*))", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_file_browser(req, res);
-    });
+    api.addEndpoint<void, ModelRefreshResponse>(
+        server, "POST", "/models/refresh",
+        "Rescan model directories", "Models", 200,
+        [this](auto& req, auto& res) { handle_refresh_models(req, res); });
 
-    // Web UI routes (only if webui_dir is set)
+    api.addEndpoint<LoadModelRequest, LoadModelResponse>(
+        server, "POST", "/models/load",
+        "Load a model into memory", "Models", 200,
+        [this](auto& req, auto& res) { handle_load_model(req, res); });
+
+    api.addEndpoint<void, SuccessResponse>(
+        server, "POST", "/models/unload",
+        "Unload the current model", "Models", 200,
+        [this](auto& req, auto& res) { handle_unload_model(req, res); });
+
+    api.addEndpointRaw(
+        server, "GET", "/models/hash/{model_type}/{model_name}",
+        R"(/models/hash/([^/]+)/(.+))",
+        "Compute model SHA256 hash", "Models", 200,
+        [this](auto& req, auto& res) { handle_get_model_hash(req, res); })
+        .path_param("model_type", FT::String, "Model type category")
+        .path_param("model_name", FT::String, "Model filename");
+
+    api.addEndpoint<void, ModelPathsResponse>(
+        server, "GET", "/models/paths",
+        "Get configured model storage paths", "Models", 200,
+        [this](auto& req, auto& res) { handle_get_model_paths(req, res); });
+
+    // ── Model Downloads ──────────────────────────────────────────────
+    api.addEndpoint<DownloadModelRequest, DownloadModelResponse>(
+        server, "POST", "/models/download",
+        "Download model from URL, CivitAI, or HuggingFace", "Downloads", 202,
+        [this](auto& req, auto& res) { handle_download_model(req, res); });
+
+    api.addEndpointRaw(
+        server, "GET", "/models/civitai/{id}",
+        R"(/models/civitai/(\d+(?:(?::|%3A)\d+)?))",
+        "Get CivitAI model metadata", "Downloads", 200,
+        [this](auto& req, auto& res) { handle_get_civitai_info(req, res); })
+        .path_param("id", FT::String, "CivitAI model ID (format: id or id:version)");
+
+    api.addEndpoint<void, HuggingfaceInfoResponse>(
+        server, "GET", "/models/huggingface",
+        "Get HuggingFace model file metadata", "Downloads", 200,
+        [this](auto& req, auto& res) { handle_get_huggingface_info(req, res); })
+        .query("repo_id", FT::String, "HuggingFace repository ID", true)
+        .query("filename", FT::String, "File name in repository", true)
+        .query("revision", FT::String, "Git revision", false, "main");
+
+    // ── Generation ───────────────────────────────────────────────────
+    api.addEndpoint<Txt2ImgRequest, JobCreatedResponse>(
+        server, "POST", "/txt2img",
+        "Generate image from text prompt", "Generation", 202,
+        [this](auto& req, auto& res) { handle_txt2img(req, res); });
+
+    api.addEndpoint<Img2ImgRequest, JobCreatedResponse>(
+        server, "POST", "/img2img",
+        "Generate image from source image and text", "Generation", 202,
+        [this](auto& req, auto& res) { handle_img2img(req, res); });
+
+    api.addEndpoint<Txt2VidRequest, JobCreatedResponse>(
+        server, "POST", "/txt2vid",
+        "Generate video from text prompt", "Generation", 202,
+        [this](auto& req, auto& res) { handle_txt2vid(req, res); });
+
+    api.addEndpoint<UpscaleRequest, JobCreatedResponse>(
+        server, "POST", "/upscale",
+        "Upscale image using ESRGAN", "Generation", 202,
+        [this](auto& req, auto& res) { handle_upscale(req, res); });
+
+    api.addEndpoint<ConvertRequest, JobCreatedResponse>(
+        server, "POST", "/convert",
+        "Convert model format (safetensors to GGUF)", "Generation", 202,
+        [this](auto& req, auto& res) { handle_convert(req, res); });
+
+    // ── Upscaler ─────────────────────────────────────────────────────
+    api.addEndpoint<LoadUpscalerRequest, SuccessResponse>(
+        server, "POST", "/upscaler/load",
+        "Load an ESRGAN upscaler model", "Upscaler", 200,
+        [this](auto& req, auto& res) { handle_load_upscaler(req, res); });
+
+    api.addEndpoint<void, SuccessResponse>(
+        server, "POST", "/upscaler/unload",
+        "Unload the current upscaler", "Upscaler", 200,
+        [this](auto& req, auto& res) { handle_unload_upscaler(req, res); });
+
+    // ── Queue ────────────────────────────────────────────────────────
+    api.addEndpoint<void, QueueListResponse>(
+        server, "GET", "/queue",
+        "List jobs with filtering and pagination", "Queue", 200,
+        [this](auto& req, auto& res) { handle_get_queue(req, res); })
+        .query_enum("status", "Filter by job status", JOB_STATUS_VALUES)
+        .query_enum("type", "Filter by job type", JOB_TYPE_VALUES)
+        .query("search", FT::String, "Search in prompt/params")
+        .query("architecture", FT::String, "Filter by model architecture")
+        .query("group_by", FT::String, "Group results (date)")
+        .query("limit", FT::Integer, "Results per page", false, 20)
+        .query("page", FT::Integer, "Page number", false, 1)
+        .query("offset", FT::Integer, "Pagination offset")
+        .query("before", FT::Integer, "Get jobs before timestamp (unix)")
+        .query("after", FT::Integer, "Get jobs after timestamp (unix)")
+        .query("sort", FT::String, "Sort field", false, "created_at")
+        .query_enum("order", "Sort order", {"asc", "desc"});
+
+    api.addEndpointRaw(
+        server, "GET", "/queue/{job_id}",
+        R"(/queue/([a-f0-9\-]+))",
+        "Get job status", "Queue", 200,
+        [this](auto& req, auto& res) { handle_get_job(req, res); })
+        .path_param("job_id", FT::String, "Job UUID");
+
+    api.addEndpointRaw(
+        server, "DELETE", "/queue/{job_id}",
+        R"(/queue/([a-f0-9\-]+))",
+        "Cancel a pending job", "Queue", 200,
+        [this](auto& req, auto& res) { handle_cancel_job(req, res); })
+        .path_param("job_id", FT::String, "Job UUID");
+
+    api.addEndpoint<DeleteJobsRequest, DeleteJobsResponse>(
+        server, "DELETE", "/queue/jobs",
+        "Batch delete jobs (soft-delete to recycle bin)", "Queue", 200,
+        [this](auto& req, auto& res) { handle_delete_jobs(req, res); });
+
+    // ── Recycle Bin ──────────────────────────────────────────────────
+    api.addEndpoint<void, RecycleBinResponse>(
+        server, "GET", "/queue/recycle-bin",
+        "List deleted jobs in recycle bin", "Recycle Bin", 200,
+        [this](auto& req, auto& res) { handle_get_recycle_bin(req, res); });
+
+    api.addEndpointRaw(
+        server, "POST", "/queue/{job_id}/restore",
+        R"(/queue/([a-f0-9\-]+)/restore)",
+        "Restore a job from recycle bin", "Recycle Bin", 200,
+        [this](auto& req, auto& res) { handle_restore_job(req, res); })
+        .path_param("job_id", FT::String, "Job UUID");
+
+    api.addEndpointRaw(
+        server, "DELETE", "/queue/{job_id}/purge",
+        R"(/queue/([a-f0-9\-]+)/purge)",
+        "Permanently delete a job", "Recycle Bin", 200,
+        [this](auto& req, auto& res) { handle_purge_job(req, res); })
+        .path_param("job_id", FT::String, "Job UUID");
+
+    api.addEndpoint<void, SuccessResponse>(
+        server, "DELETE", "/queue/recycle-bin",
+        "Clear all items from recycle bin", "Recycle Bin", 200,
+        [this](auto& req, auto& res) { handle_clear_recycle_bin(req, res); });
+
+    api.addEndpoint<void, RecycleBinSettingsResponse>(
+        server, "GET", "/settings/recycle-bin",
+        "Get recycle bin settings", "Recycle Bin", 200,
+        [this](auto& req, auto& res) { handle_get_recycle_bin_settings(req, res); });
+
+    // ── Job Preview ──────────────────────────────────────────────────
+    api.addEndpointRaw(
+        server, "GET", "/jobs/{job_id}/preview",
+        R"(/jobs/([a-f0-9\-]+)/preview)",
+        "Get live preview JPEG for a processing job", "Queue", 200,
+        [this](auto& req, auto& res) { handle_get_job_preview(req, res); })
+        .path_param("job_id", FT::String, "Job UUID")
+        .response_type("image/jpeg");
+
+    // ── File Browser & Thumbnails ────────────────────────────────────
+    api.addEndpointRaw(
+        server, "GET", "/thumb/{path}",
+        R"(/thumb/(.*))",
+        "Get thumbnail for image/video file", "Files", 200,
+        [this](auto& req, auto& res) { handle_thumbnail(req, res); })
+        .path_param("path", FT::String, "File path relative to output directory")
+        .response_type("image/jpeg");
+
+    api.addEndpoint<void, void>(
+        server, "GET", "/output",
+        "Browse output directory (root)", "Files", 200,
+        [this](auto& req, auto& res) { handle_file_browser(req, res); })
+        .query("sort", FT::String, "Sort field (name, size, mtime)")
+        .query_enum("order", "Sort order", {"asc", "desc"});
+
+    api.addEndpointRaw(
+        server, "GET", "/output/{path}",
+        R"(/output/(.*))",
+        "Browse or download output file", "Files", 200,
+        [this](auto& req, auto& res) { handle_file_browser(req, res); })
+        .path_param("path", FT::String, "File or directory path");
+
+    // ── Web UI ───────────────────────────────────────────────────────
     if (!webui_dir_.empty()) {
         std::cout << "[Routes] Registering WebUI routes (webui_dir=" << webui_dir_ << ")" << std::endl;
-        // Redirect /ui to /ui/
         server.Get("/ui", [](const httplib::Request& /*req*/, httplib::Response& res) {
             res.set_redirect("/ui/");
         });
-
-        // Serve /ui/ and /ui/*
         server.Get("/ui/", [this](const httplib::Request& req, httplib::Response& res) {
             handle_webui(req, res);
         });
@@ -184,89 +305,117 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         std::cout << "[Routes] WebUI routes NOT registered (webui_dir is empty)" << std::endl;
     }
 
-    // Preview settings routes
-    server.Get("/preview/settings", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_preview_settings(req, res);
-    });
-    server.Put("/preview/settings", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_update_preview_settings(req, res);
-    });
+    // ── Preview Settings ─────────────────────────────────────────────
+    api.addEndpoint<void, PreviewSettingsResponse>(
+        server, "GET", "/preview/settings",
+        "Get preview generation settings", "Settings", 200,
+        [this](auto& req, auto& res) { handle_get_preview_settings(req, res); });
+
+    api.addEndpoint<UpdatePreviewSettingsRequest, SuccessResponse>(
+        server, "PUT", "/preview/settings",
+        "Update preview settings", "Settings", 200,
+        [this](auto& req, auto& res) { handle_update_preview_settings(req, res); });
 
 #ifdef SDCPP_ASSISTANT_ENABLED
-    // Assistant routes (LLM helper)
-    server.Post("/assistant/chat", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_assistant_chat(req, res);
-    });
-    server.Post("/assistant/chat/stream", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_assistant_chat_stream(req, res);
-    });
-    server.Get("/assistant/history", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_assistant_history(req, res);
-    });
-    server.Delete("/assistant/history", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_assistant_clear_history(req, res);
-    });
-    server.Get("/assistant/status", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_assistant_status(req, res);
-    });
-    server.Get("/assistant/settings", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_assistant_get_settings(req, res);
-    });
-    server.Put("/assistant/settings", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_assistant_update_settings(req, res);
-    });
-    server.Get("/assistant/model-info", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_assistant_model_info(req, res);
-    });
+    // ── Assistant ────────────────────────────────────────────────────
+    api.addEndpoint<AssistantChatRequest, void>(
+        server, "POST", "/assistant/chat",
+        "Chat with assistant LLM", "Assistant", 200,
+        [this](auto& req, auto& res) { handle_assistant_chat(req, res); });
+
+    api.addEndpoint<AssistantChatRequest, void>(
+        server, "POST", "/assistant/chat/stream",
+        "Chat with streaming (SSE)", "Assistant", 200,
+        [this](auto& req, auto& res) { handle_assistant_chat_stream(req, res); })
+        .response_type("text/event-stream");
+
+    api.addEndpoint<void, void>(
+        server, "GET", "/assistant/history",
+        "Get chat history", "Assistant", 200,
+        [this](auto& req, auto& res) { handle_assistant_history(req, res); });
+
+    api.addEndpoint<void, SuccessResponse>(
+        server, "DELETE", "/assistant/history",
+        "Clear chat history", "Assistant", 200,
+        [this](auto& req, auto& res) { handle_assistant_clear_history(req, res); });
+
+    api.addEndpoint<void, AssistantStatusResponse>(
+        server, "GET", "/assistant/status",
+        "Get assistant status", "Assistant", 200,
+        [this](auto& req, auto& res) { handle_assistant_status(req, res); });
+
+    api.addEndpoint<void, void>(
+        server, "GET", "/assistant/settings",
+        "Get assistant settings", "Assistant", 200,
+        [this](auto& req, auto& res) { handle_assistant_get_settings(req, res); });
+
+    api.addEndpoint<void, SuccessResponse>(
+        server, "PUT", "/assistant/settings",
+        "Update assistant settings", "Assistant", 200,
+        [this](auto& req, auto& res) { handle_assistant_update_settings(req, res); });
+
+    api.addEndpoint<void, void>(
+        server, "GET", "/assistant/model-info",
+        "Get loaded assistant LLM info", "Assistant", 200,
+        [this](auto& req, auto& res) { handle_assistant_model_info(req, res); });
 #endif
 
-    // Settings endpoints
-    server.Get("/settings/generation", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_generation_defaults(req, res);
-    });
-    server.Put("/settings/generation", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_update_generation_defaults(req, res);
-    });
-    server.Get(R"(/settings/generation/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_generation_defaults_for_mode(req, res);
-    });
-    server.Put(R"(/settings/generation/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_update_generation_defaults_for_mode(req, res);
-    });
-    server.Get("/settings/preferences", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_ui_preferences(req, res);
-    });
-    server.Put("/settings/preferences", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_update_ui_preferences(req, res);
-    });
-    server.Post("/settings/reset", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_reset_settings(req, res);
-    });
+    // ── Settings ─────────────────────────────────────────────────────
+    api.addEndpoint<void, void>(
+        server, "GET", "/settings/generation",
+        "Get all generation defaults", "Settings", 200,
+        [this](auto& req, auto& res) { handle_get_generation_defaults(req, res); });
 
-    // Architecture presets
-    server.Get("/architectures", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_architectures(req, res);
-    });
-    server.Get("/architectures/detect", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_detect_architecture(req, res);
-    });
-    server.Get("/options/descriptions", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_option_descriptions(req, res);
-    });
+    api.addEndpoint<void, SuccessResponse>(
+        server, "PUT", "/settings/generation",
+        "Update all generation defaults", "Settings", 200,
+        [this](auto& req, auto& res) { handle_update_generation_defaults(req, res); });
 
-    // Model download routes
-    server.Post("/models/download", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_download_model(req, res);
-    });
-    server.Get(R"(/models/civitai/(\d+(?:(?::|%3A)\d+)?))", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_civitai_info(req, res);
-    });
-    server.Get("/models/huggingface", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_huggingface_info(req, res);
-    });
-    server.Get("/models/paths", [this](const httplib::Request& req, httplib::Response& res) {
-        handle_get_model_paths(req, res);
-    });
+    api.addEndpointRaw(
+        server, "GET", "/settings/generation/{mode}",
+        R"(/settings/generation/([^/]+))",
+        "Get generation defaults for a mode", "Settings", 200,
+        [this](auto& req, auto& res) { handle_get_generation_defaults_for_mode(req, res); })
+        .path_param("mode", FT::String, "Generation mode (txt2img, img2img, txt2vid, upscale)");
+
+    api.addEndpointRaw(
+        server, "PUT", "/settings/generation/{mode}",
+        R"(/settings/generation/([^/]+))",
+        "Update generation defaults for a mode", "Settings", 200,
+        [this](auto& req, auto& res) { handle_update_generation_defaults_for_mode(req, res); })
+        .path_param("mode", FT::String, "Generation mode");
+
+    api.addEndpoint<void, void>(
+        server, "GET", "/settings/preferences",
+        "Get UI preferences", "Settings", 200,
+        [this](auto& req, auto& res) { handle_get_ui_preferences(req, res); });
+
+    api.addEndpoint<void, SuccessResponse>(
+        server, "PUT", "/settings/preferences",
+        "Update UI preferences", "Settings", 200,
+        [this](auto& req, auto& res) { handle_update_ui_preferences(req, res); });
+
+    api.addEndpoint<void, SuccessResponse>(
+        server, "POST", "/settings/reset",
+        "Reset all settings to defaults", "Settings", 200,
+        [this](auto& req, auto& res) { handle_reset_settings(req, res); });
+
+    // ── Architectures ────────────────────────────────────────────────
+    api.addEndpoint<void, ArchitecturesResponse>(
+        server, "GET", "/architectures",
+        "Get model architecture presets", "Architectures", 200,
+        [this](auto& req, auto& res) { handle_get_architectures(req, res); });
+
+    api.addEndpoint<void, DetectArchitectureResponse>(
+        server, "GET", "/architectures/detect",
+        "Detect architecture of a model", "Architectures", 200,
+        [this](auto& req, auto& res) { handle_detect_architecture(req, res); })
+        .query("model", FT::String, "Model name to detect", true);
+
+    // ── OpenAPI Schema ───────────────────────────────────────────────
+    api.serveOpenApiSpec(server, "/openapi.json");
+
+    std::cout << "[Routes] All API routes registered. OpenAPI spec available at /openapi.json" << std::endl;
 }
 
 void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Response& res) {

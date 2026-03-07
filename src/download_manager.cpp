@@ -1,5 +1,5 @@
 #include "download_manager.hpp"
-#include "httplib.h"
+#include "httplib_compat.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
