@@ -299,6 +299,25 @@ json McpServer::handle_list_tools() {
         }}
     });
 
+    tools.push_back({
+        {"name", "search_queue"},
+        {"description", "Search and filter the job queue with pagination. Returns max 10 items per page. Use this instead of the queue resource for filtered or paginated access."},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"search", {{"type", "string"}, {"description", "Search in prompt and negative_prompt text (case-insensitive)"}}},
+                {"status", {{"type", "string"}, {"enum", {"pending", "processing", "completed", "failed", "cancelled"}}, {"description", "Filter by job status"}}},
+                {"type", {{"type", "string"}, {"enum", {"txt2img", "img2img", "txt2vid", "upscale"}}, {"description", "Filter by generation type"}}},
+                {"architecture", {{"type", "string"}, {"description", "Filter by model architecture (partial match, e.g. 'flux', 'z-image')"}}},
+                {"model", {{"type", "string"}, {"description", "Filter by model name (partial match)"}}},
+                {"before", {{"type", "integer"}, {"description", "Only jobs created before this Unix timestamp"}}},
+                {"after", {{"type", "integer"}, {"description", "Only jobs created after this Unix timestamp"}}},
+                {"limit", {{"type", "integer"}, {"description", "Max items to return (1-10, default 10)"}}},
+                {"offset", {{"type", "integer"}, {"description", "Number of items to skip for pagination"}}}
+            }}
+        }}
+    });
+
     return {{"tools", tools}};
 }
 
@@ -321,6 +340,7 @@ json McpServer::handle_call_tool(const json& params) {
     if (name == "list_models") return tool_list_models(args);
     if (name == "get_job_status") return tool_get_job_status(args);
     if (name == "cancel_job") return tool_cancel_job(args);
+    if (name == "search_queue") return tool_search_queue(args);
 
     return make_tool_result("Unknown tool: " + name, true);
 }
@@ -495,6 +515,82 @@ json McpServer::tool_cancel_job(const json& args) {
     }
 }
 
+json McpServer::tool_search_queue(const json& args) {
+    QueueFilter filter;
+
+    // Text search in prompts
+    if (args.contains("search") && args["search"].is_string()) {
+        filter.search = args["search"].get<std::string>();
+    }
+
+    // Status filter
+    if (args.contains("status") && args["status"].is_string()) {
+        std::string status_str = args["status"].get<std::string>();
+        if (status_str == "pending") filter.status = QueueStatus::Pending;
+        else if (status_str == "processing") filter.status = QueueStatus::Processing;
+        else if (status_str == "completed") filter.status = QueueStatus::Completed;
+        else if (status_str == "failed") filter.status = QueueStatus::Failed;
+        else if (status_str == "cancelled") filter.status = QueueStatus::Cancelled;
+    }
+
+    // Generation type filter
+    if (args.contains("type") && args["type"].is_string()) {
+        std::string type_str = args["type"].get<std::string>();
+        if (type_str == "txt2img") filter.type = GenerationType::Text2Image;
+        else if (type_str == "img2img") filter.type = GenerationType::Image2Image;
+        else if (type_str == "txt2vid") filter.type = GenerationType::Text2Video;
+        else if (type_str == "upscale") filter.type = GenerationType::Upscale;
+    }
+
+    // Architecture filter (partial match)
+    if (args.contains("architecture") && args["architecture"].is_string()) {
+        filter.architecture = args["architecture"].get<std::string>();
+    }
+
+    // Model name filter (partial match)
+    if (args.contains("model") && args["model"].is_string()) {
+        filter.model = args["model"].get<std::string>();
+    }
+
+    // Date range
+    if (args.contains("before") && args["before"].is_number_integer()) {
+        filter.before_timestamp = args["before"].get<int64_t>();
+    }
+    if (args.contains("after") && args["after"].is_number_integer()) {
+        filter.after_timestamp = args["after"].get<int64_t>();
+    }
+
+    // Pagination (cap at 10)
+    size_t limit = 10;
+    if (args.contains("limit") && args["limit"].is_number_integer()) {
+        limit = std::min(static_cast<size_t>(args["limit"].get<int>()), static_cast<size_t>(10));
+        if (limit < 1) limit = 1;
+    }
+    filter.limit = limit;
+
+    if (args.contains("offset") && args["offset"].is_number_integer()) {
+        filter.offset = std::max(0, args["offset"].get<int>());
+    }
+
+    auto result = queue_manager_.get_jobs_paginated(filter);
+
+    json items = json::array();
+    for (const auto& item : result.items) {
+        items.push_back(item.to_json());
+    }
+
+    json response = {
+        {"items", items},
+        {"total_count", result.total_count},
+        {"returned_count", result.filtered_count},
+        {"offset", result.offset},
+        {"limit", result.limit},
+        {"has_more", result.has_more}
+    };
+
+    return make_tool_result(response.dump());
+}
+
 // ─── Resource Definitions ────────────────────────────────────────────────────
 
 json McpServer::handle_list_resources() {
@@ -649,7 +745,7 @@ json McpServer::resource_models_loaded() {
 
 json McpServer::resource_queue() {
     QueueFilter filter;
-    filter.limit = 20;
+    filter.limit = 10;
     auto result = queue_manager_.get_jobs_paginated(filter);
 
     json items = json::array();
@@ -660,7 +756,8 @@ json McpServer::resource_queue() {
     return {
         {"items", items},
         {"total_count", result.total_count},
-        {"has_more", result.has_more}
+        {"has_more", result.has_more},
+        {"note", "Showing last 10 items. Use the search_queue tool for filtering, search, and pagination."}
     };
 }
 
