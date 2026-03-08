@@ -45,6 +45,7 @@ private:
     nlohmann::json tool_list_models(const nlohmann::json& args);
     nlohmann::json tool_get_job_status(const nlohmann::json& args);
     nlohmann::json tool_cancel_job(const nlohmann::json& args);
+    nlohmann::json tool_search_queue(const nlohmann::json& args);
 
     // Resource implementations
     nlohmann::json resource_health();
