@@ -57,6 +57,30 @@ json McpServer::make_tool_result(const std::string& text, bool is_error) {
     return result;
 }
 
+std::string McpServer::get_base_url(const httplib::Request& req) {
+    // Use the Host header from the actual client request
+    // This correctly resolves even when server listens on 0.0.0.0
+    std::string host = req.get_header_value("Host");
+    if (host.empty()) {
+        host = "localhost";
+    }
+    return "http://" + host;
+}
+
+json McpServer::rewrite_job_outputs(const json& job_json) const {
+    json result = job_json;
+    if (result.contains("outputs") && result["outputs"].is_array()) {
+        json urls = json::array();
+        for (const auto& output : result["outputs"]) {
+            if (output.is_string()) {
+                urls.push_back(base_url_ + "/output/" + output.get<std::string>());
+            }
+        }
+        result["outputs"] = urls;
+    }
+    return result;
+}
+
 // ─── JSON-RPC 2.0 Dispatcher ────────────────────────────────────────────────
 
 void McpServer::handle_request(const httplib::Request& req, httplib::Response& res) {
@@ -93,6 +117,9 @@ void McpServer::handle_request(const httplib::Request& req, httplib::Response& r
 
         std::string method = body["method"].get<std::string>();
         json params = body.value("params", json::object());
+
+        // Extract base URL from request for constructing output file URLs
+        base_url_ = get_base_url(req);
 
         // Notification (no "id" field) → 204 No Content
         if (!body.contains("id")) {
@@ -492,7 +519,7 @@ json McpServer::tool_get_job_status(const json& args) {
         return make_tool_result("Job not found: " + job_id, true);
     }
 
-    return make_tool_result(job->to_json().dump());
+    return make_tool_result(rewrite_job_outputs(job->to_json()).dump());
 }
 
 json McpServer::tool_cancel_job(const json& args) {
@@ -576,7 +603,7 @@ json McpServer::tool_search_queue(const json& args) {
 
     json items = json::array();
     for (const auto& item : result.items) {
-        items.push_back(item.to_json());
+        items.push_back(rewrite_job_outputs(item.to_json()));
     }
 
     json response = {
@@ -760,7 +787,7 @@ json McpServer::resource_queue() {
 
     json items = json::array();
     for (const auto& item : result.items) {
-        items.push_back(item.to_json());
+        items.push_back(rewrite_job_outputs(item.to_json()));
     }
 
     return {
@@ -776,7 +803,7 @@ json McpServer::resource_queue_job(const std::string& job_id) {
     if (!job.has_value()) {
         throw std::runtime_error("Job not found: " + job_id);
     }
-    return job->to_json();
+    return rewrite_job_outputs(job->to_json());
 }
 
 json McpServer::resource_architectures() {
