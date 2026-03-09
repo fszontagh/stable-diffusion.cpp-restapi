@@ -700,13 +700,23 @@ json McpServer::resource_health() {
     auto loaded_info = model_manager_.get_loaded_models_info();
     auto memory_info = get_memory_info();
 
+    // Extract values safely (some fields are null when no model is loaded)
+    bool model_loaded = loaded_info.value("model_loaded", false);
+    std::string model_name = (loaded_info.contains("model_name") && loaded_info["model_name"].is_string())
+        ? loaded_info["model_name"].get<std::string>() : "";
+    std::string architecture = (loaded_info.contains("model_architecture") && loaded_info["model_architecture"].is_string())
+        ? loaded_info["model_architecture"].get<std::string>() : "";
+    bool upscaler_loaded = loaded_info.value("upscaler_loaded", false);
+    std::string upscaler_name = (loaded_info.contains("upscaler_name") && loaded_info["upscaler_name"].is_string())
+        ? loaded_info["upscaler_name"].get<std::string>() : "";
+
     json health = {
         {"status", "ok"},
-        {"model_loaded", loaded_info.value("model_loaded", false)},
-        {"model_name", loaded_info.value("model_name", "")},
-        {"architecture", loaded_info.value("architecture", "")},
-        {"upscaler_loaded", loaded_info.value("upscaler_loaded", false)},
-        {"upscaler_name", loaded_info.value("upscaler_name", "")},
+        {"model_loaded", model_loaded},
+        {"model_name", model_name},
+        {"architecture", architecture},
+        {"upscaler_loaded", upscaler_loaded},
+        {"upscaler_name", upscaler_name},
         {"memory", memory_info.to_json()},
         {"features", {
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
