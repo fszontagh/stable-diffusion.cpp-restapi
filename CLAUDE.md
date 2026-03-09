@@ -163,6 +163,12 @@ Events broadcast from `src/websocket_server.cpp`:
 
 The MCP server at `POST /mcp` implements JSON-RPC 2.0 for Streamable HTTP transport. It's compile-time optional via `SDCPP_MCP` (ON by default).
 
+**Tools (10):** generate_image, generate_image_from_image, generate_video, upscale_image, load_model, unload_model, list_models, get_job_status, cancel_job, search_queue
+
+**Resources (7):** sdcpp://health, sdcpp://memory, sdcpp://models, sdcpp://models/loaded, sdcpp://queue (last 10 items), sdcpp://queue/{job_id}, sdcpp://architectures
+
+**Queue limits:** All MCP queue responses are capped at 10 items max. The `sdcpp://queue` resource returns the last 10 items. The `search_queue` tool supports filtering (prompt text, status, type, architecture, model, date range) with pagination capped at 10 per page.
+
 **Adding a new MCP tool:**
 1. Add method declaration to `include/mcp_server.hpp`
 2. Add tool definition in `handle_list_tools()` in `src/mcp_server.cpp`
