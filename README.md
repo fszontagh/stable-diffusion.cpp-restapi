@@ -182,9 +182,11 @@ MCP support enables any MCP-compatible AI client to use the server's tools:
 POST /mcp
 ```
 
-**Available tools:** generate_image, generate_image_from_image, generate_video, upscale_image, load_model, unload_model, list_models, get_job_status, cancel_job
+**Available tools:** generate_image, generate_image_from_image, generate_video, upscale_image, load_model, unload_model, list_models, get_job_status, cancel_job, search_queue
 
-**Available resources:** sdcpp://health, sdcpp://memory, sdcpp://models, sdcpp://models/loaded, sdcpp://queue, sdcpp://queue/{job_id}, sdcpp://architectures
+**Available resources:** sdcpp://health, sdcpp://memory, sdcpp://models, sdcpp://models/loaded, sdcpp://queue (last 10 items), sdcpp://queue/{job_id}, sdcpp://architectures
+
+**Queue access:** The `sdcpp://queue` resource returns the last 10 items only. Use the `search_queue` tool for filtering by prompt text, status, type, architecture, model name, date range, and paginated access (max 10 items per page).
 
 Disable at build time with `-DSDCPP_MCP=OFF`.
 
