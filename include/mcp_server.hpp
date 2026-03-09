@@ -61,9 +61,14 @@ private:
     nlohmann::json make_error(const nlohmann::json& id, int code, const std::string& message);
     nlohmann::json make_tool_result(const std::string& text, bool is_error = false);
 
+    // URL helpers
+    static std::string get_base_url(const httplib::Request& req);
+    nlohmann::json rewrite_job_outputs(const nlohmann::json& job_json) const;
+
     httplib::Server& server_;
     ModelManager& model_manager_;
     QueueManager& queue_manager_;
+    std::string base_url_;  // Set per-request from Host header
 };
 
 } // namespace sdcpp
