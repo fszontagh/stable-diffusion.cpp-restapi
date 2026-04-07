@@ -608,6 +608,15 @@ do_install() {
         cp -r "${WEBUI_SOURCE}/"* "${WEBUI_DEST}/"
     fi
 
+    # Copy documentation files
+    DOCS_SOURCE="${SOURCE_DIR}/docs"
+    DOCS_DEST="${INSTALL_DIR}/docs"
+    if [[ -d "${DOCS_SOURCE}" ]]; then
+        print_info "Installing documentation..."
+        mkdir -p "${DOCS_DEST}"
+        cp -r "${DOCS_SOURCE}/"* "${DOCS_DEST}/"
+    fi
+
     # Copy data files (model_architectures.json, etc.)
     DATA_SOURCE="${SOURCE_DIR}/data"
     if [[ -d "${DATA_SOURCE}" ]]; then
@@ -815,7 +824,7 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=${OUTPUT_DIR} ${CONFIG_DIR}
-ReadOnlyPaths=${MODELS_DIR} ${INSTALL_DIR}/webui
+ReadOnlyPaths=${MODELS_DIR} ${INSTALL_DIR}/webui ${INSTALL_DIR}/docs
 
 # Resource limits (adjust as needed)
 # LimitNOFILE=65535
@@ -824,6 +833,7 @@ ReadOnlyPaths=${MODELS_DIR} ${INSTALL_DIR}/webui
 # Environment
 Environment=LD_LIBRARY_PATH=${INSTALL_DIR}/lib
 Environment=SDCPP_WEBUI_PATH=${INSTALL_DIR}/webui
+Environment=SDCPP_DOCS_PATH=${INSTALL_DIR}/docs
 
 [Install]
 WantedBy=multi-user.target

@@ -310,9 +310,24 @@ int main(int argc, char* argv[]) {
         }
 #endif
 
+        // Determine docs path
+        std::string docs_path;
+#ifdef SDCPP_DOCS_DEFAULT_PATH
+        docs_path = SDCPP_DOCS_DEFAULT_PATH;
+#endif
+        // Allow environment variable override
+        if (const char* env_path = std::getenv("SDCPP_DOCS_PATH")) {
+            docs_path = env_path;
+        }
+        // Verify docs path exists
+        if (!docs_path.empty() && !fs::exists(docs_path)) {
+            std::cout << "Warning: Docs path does not exist: " << docs_path << std::endl;
+            docs_path.clear();
+        }
+
         // Initialize Request Handlers and register routes
         std::cout << "Registering API routes..." << std::endl;
-        sdcpp::RequestHandlers handlers(model_manager, queue_manager, config.paths.output, webui_path, config.assistant, config_path);
+        sdcpp::RequestHandlers handlers(model_manager, queue_manager, config.paths.output, webui_path, config.assistant, config_path, docs_path);
         handlers.register_routes(server);
 
         // Initialize MCP server (if enabled at build time)
