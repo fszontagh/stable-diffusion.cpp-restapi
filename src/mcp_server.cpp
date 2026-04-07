@@ -184,163 +184,72 @@ json McpServer::handle_ping() {
 json McpServer::handle_list_tools() {
     json tools = json::array();
 
-    // 1. generate_image
+    // 1. generate — unified generation tool
     tools.push_back({
-        {"name", "generate_image"},
-        {"description", "Generate an image from a text prompt (txt2img). Requires a model to be loaded."},
+        {"name", "generate"},
+        {"description", "Generate images or videos. Dispatches to txt2img, img2img, txt2vid, or upscale based on the 'type' parameter. Requires a model to be loaded (except upscale which needs an ESRGAN upscaler)."},
         {"inputSchema", {
             {"type", "object"},
-            {"required", json::array({"prompt"})},
+            {"required", json::array({"type", "prompt"})},
             {"properties", {
-                {"prompt", {{"type", "string"}, {"description", "Text prompt describing the image to generate"}}},
+                {"type", {{"type", "string"}, {"enum", {"txt2img", "img2img", "video", "upscale"}}, {"description", "Generation type"}}},
+                {"prompt", {{"type", "string"}, {"description", "Text prompt describing the desired output"}}},
                 {"negative_prompt", {{"type", "string"}, {"description", "Negative prompt to avoid certain elements"}}},
-                {"width", {{"type", "integer"}, {"description", "Image width in pixels"}}},
-                {"height", {{"type", "integer"}, {"description", "Image height in pixels"}}},
+                {"width", {{"type", "integer"}, {"description", "Output width in pixels"}}},
+                {"height", {{"type", "integer"}, {"description", "Output height in pixels"}}},
                 {"steps", {{"type", "integer"}, {"description", "Number of sampling steps"}}},
                 {"cfg_scale", {{"type", "number"}, {"description", "Classifier-free guidance scale"}}},
                 {"seed", {{"type", "integer"}, {"description", "Random seed (-1 for random)"}}},
-                {"batch_count", {{"type", "integer"}, {"description", "Number of images to generate"}}},
+                {"batch_count", {{"type", "integer"}, {"description", "Number of images to generate (txt2img only)"}}},
                 {"sampler", {{"type", "string"}, {"description", "Sampler name (e.g., euler, euler_a, dpm++2m)"}}},
-                {"scheduler", {{"type", "string"}, {"description", "Scheduler name (e.g., normal, karras, sgm_uniform)"}}}
+                {"scheduler", {{"type", "string"}, {"description", "Scheduler name (e.g., normal, karras, sgm_uniform)"}}},
+                {"init_image_base64", {{"type", "string"}, {"description", "Base64-encoded input image (required for img2img and upscale)"}}},
+                {"strength", {{"type", "number"}, {"description", "Denoising strength 0.0-1.0 (img2img only)"}}}
             }}
         }}
     });
 
-    // 2. generate_image_from_image
+    // 2. model — unified model management tool
     tools.push_back({
-        {"name", "generate_image_from_image"},
-        {"description", "Generate an image from an input image and text prompt (img2img). Requires a model to be loaded."},
+        {"name", "model"},
+        {"description", "Manage models: load, unload, or list available models."},
         {"inputSchema", {
             {"type", "object"},
-            {"required", json::array({"prompt", "init_image_base64"})},
+            {"required", json::array({"action"})},
             {"properties", {
-                {"prompt", {{"type", "string"}, {"description", "Text prompt describing the desired output"}}},
-                {"init_image_base64", {{"type", "string"}, {"description", "Base64-encoded input image"}}},
-                {"negative_prompt", {{"type", "string"}, {"description", "Negative prompt"}}},
-                {"strength", {{"type", "number"}, {"description", "Denoising strength (0.0-1.0)"}}},
-                {"steps", {{"type", "integer"}, {"description", "Number of sampling steps"}}},
-                {"cfg_scale", {{"type", "number"}, {"description", "Classifier-free guidance scale"}}},
-                {"seed", {{"type", "integer"}, {"description", "Random seed (-1 for random)"}}}
+                {"action", {{"type", "string"}, {"enum", {"load", "unload", "list"}}, {"description", "Action to perform"}}},
+                {"model_name", {{"type", "string"}, {"description", "Name of the model to load (required for 'load')"}}},
+                {"model_type", {{"type", "string"}, {"description", "Filter/specify model type: checkpoint, diffusion, vae, lora, clip, t5, embedding, controlnet, llm, esrgan, taesd"}}},
+                {"vae", {{"type", "string"}, {"description", "VAE model name (for 'load')"}}},
+                {"clip_l", {{"type", "string"}, {"description", "CLIP-L model name (for 'load')"}}},
+                {"clip_g", {{"type", "string"}, {"description", "CLIP-G model name (for 'load')"}}},
+                {"t5xxl", {{"type", "string"}, {"description", "T5-XXL model name (for 'load')"}}},
+                {"llm", {{"type", "string"}, {"description", "LLM model name for multimodal architectures (for 'load')"}}},
+                {"flash_attn", {{"type", "boolean"}, {"description", "Enable flash attention (for 'load')"}}},
+                {"n_threads", {{"type", "integer"}, {"description", "Number of CPU threads, -1 for auto (for 'load')"}}}
             }}
         }}
     });
 
-    // 3. generate_video
+    // 3. job — unified job management tool
     tools.push_back({
-        {"name", "generate_video"},
-        {"description", "Generate a video from a text prompt (txt2vid). Requires a video-capable model to be loaded."},
+        {"name", "job"},
+        {"description", "Manage generation jobs: get status, cancel, delete (soft-delete to recycle bin), or search the queue."},
         {"inputSchema", {
             {"type", "object"},
-            {"required", json::array({"prompt"})},
+            {"required", json::array({"action"})},
             {"properties", {
-                {"prompt", {{"type", "string"}, {"description", "Text prompt describing the video to generate"}}},
-                {"negative_prompt", {{"type", "string"}, {"description", "Negative prompt"}}},
-                {"width", {{"type", "integer"}, {"description", "Video width in pixels"}}},
-                {"height", {{"type", "integer"}, {"description", "Video height in pixels"}}},
-                {"steps", {{"type", "integer"}, {"description", "Number of sampling steps"}}},
-                {"cfg_scale", {{"type", "number"}, {"description", "Classifier-free guidance scale"}}},
-                {"seed", {{"type", "integer"}, {"description", "Random seed (-1 for random)"}}}
-            }}
-        }}
-    });
-
-    // 4. upscale_image
-    tools.push_back({
-        {"name", "upscale_image"},
-        {"description", "Upscale an image using a loaded ESRGAN upscaler model."},
-        {"inputSchema", {
-            {"type", "object"},
-            {"required", json::array({"image_base64"})},
-            {"properties", {
-                {"image_base64", {{"type", "string"}, {"description", "Base64-encoded image to upscale"}}}
-            }}
-        }}
-    });
-
-    // 5. load_model
-    tools.push_back({
-        {"name", "load_model"},
-        {"description", "Load a Stable Diffusion model for image/video generation."},
-        {"inputSchema", {
-            {"type", "object"},
-            {"required", json::array({"model_name"})},
-            {"properties", {
-                {"model_name", {{"type", "string"}, {"description", "Name of the model to load (relative path from models directory)"}}},
-                {"model_type", {{"type", "string"}, {"description", "Model type: checkpoint, diffusion, vae, lora, clip, t5, embedding, controlnet, llm, esrgan, taesd"}}},
-                {"vae", {{"type", "string"}, {"description", "VAE model name"}}},
-                {"clip_l", {{"type", "string"}, {"description", "CLIP-L model name"}}},
-                {"clip_g", {{"type", "string"}, {"description", "CLIP-G model name"}}},
-                {"t5xxl", {{"type", "string"}, {"description", "T5-XXL model name"}}},
-                {"llm", {{"type", "string"}, {"description", "LLM model name for multimodal architectures"}}},
-                {"flash_attn", {{"type", "boolean"}, {"description", "Enable flash attention"}}},
-                {"n_threads", {{"type", "integer"}, {"description", "Number of CPU threads (-1 for auto)"}}}
-            }}
-        }}
-    });
-
-    // 6. unload_model
-    tools.push_back({
-        {"name", "unload_model"},
-        {"description", "Unload the currently loaded model to free memory."},
-        {"inputSchema", {
-            {"type", "object"},
-            {"properties", json::object()}
-        }}
-    });
-
-    // 7. list_models
-    tools.push_back({
-        {"name", "list_models"},
-        {"description", "List available models, optionally filtered by type."},
-        {"inputSchema", {
-            {"type", "object"},
-            {"properties", {
-                {"model_type", {{"type", "string"}, {"description", "Filter by model type: checkpoint, diffusion, vae, lora, clip, t5, embedding, controlnet, llm, esrgan, taesd"}}}
-            }}
-        }}
-    });
-
-    // 8. get_job_status
-    tools.push_back({
-        {"name", "get_job_status"},
-        {"description", "Get the status and details of a generation job."},
-        {"inputSchema", {
-            {"type", "object"},
-            {"required", json::array({"job_id"})},
-            {"properties", {
-                {"job_id", {{"type", "string"}, {"description", "The job UUID to check"}}}
-            }}
-        }}
-    });
-
-    // 9. cancel_job
-    tools.push_back({
-        {"name", "cancel_job"},
-        {"description", "Cancel a pending or processing generation job."},
-        {"inputSchema", {
-            {"type", "object"},
-            {"required", json::array({"job_id"})},
-            {"properties", {
-                {"job_id", {{"type", "string"}, {"description", "The job UUID to cancel"}}}
-            }}
-        }}
-    });
-
-    tools.push_back({
-        {"name", "search_queue"},
-        {"description", "Search and filter the job queue with pagination. Returns max 10 items per page. Use this instead of the queue resource for filtered or paginated access."},
-        {"inputSchema", {
-            {"type", "object"},
-            {"properties", {
-                {"search", {{"type", "string"}, {"description", "Search in prompt and negative_prompt text (case-insensitive)"}}},
-                {"status", {{"type", "string"}, {"enum", {"pending", "processing", "completed", "failed", "cancelled"}}, {"description", "Filter by job status"}}},
-                {"type", {{"type", "string"}, {"enum", {"txt2img", "img2img", "txt2vid", "upscale"}}, {"description", "Filter by generation type"}}},
-                {"architecture", {{"type", "string"}, {"description", "Filter by model architecture (partial match, e.g. 'flux', 'z-image')"}}},
-                {"model", {{"type", "string"}, {"description", "Filter by model name (partial match)"}}},
-                {"before", {{"type", "integer"}, {"description", "Only jobs created before this Unix timestamp"}}},
-                {"after", {{"type", "integer"}, {"description", "Only jobs created after this Unix timestamp"}}},
-                {"limit", {{"type", "integer"}, {"description", "Max items to return (1-10, default 10)"}}},
-                {"offset", {{"type", "integer"}, {"description", "Number of items to skip for pagination"}}}
+                {"action", {{"type", "string"}, {"enum", {"status", "cancel", "delete", "search"}}, {"description", "Action to perform"}}},
+                {"job_id", {{"type", "string"}, {"description", "Job UUID (required for 'status', 'cancel', 'delete')"}}},
+                {"search", {{"type", "string"}, {"description", "Search in prompt text, case-insensitive (for 'search')"}}},
+                {"status_filter", {{"type", "string"}, {"enum", {"pending", "processing", "completed", "failed", "cancelled"}}, {"description", "Filter by job status (for 'search')"}}},
+                {"type_filter", {{"type", "string"}, {"enum", {"txt2img", "img2img", "txt2vid", "upscale"}}, {"description", "Filter by generation type (for 'search')"}}},
+                {"architecture", {{"type", "string"}, {"description", "Filter by model architecture, partial match (for 'search')"}}},
+                {"model", {{"type", "string"}, {"description", "Filter by model name, partial match (for 'search')"}}},
+                {"before", {{"type", "integer"}, {"description", "Only jobs created before this Unix timestamp (for 'search')"}}},
+                {"after", {{"type", "integer"}, {"description", "Only jobs created after this Unix timestamp (for 'search')"}}},
+                {"limit", {{"type", "integer"}, {"description", "Max items to return, 1-10, default 10 (for 'search')"}}},
+                {"offset", {{"type", "integer"}, {"description", "Number of items to skip for pagination (for 'search')"}}}
             }}
         }}
     });
@@ -358,264 +267,234 @@ json McpServer::handle_call_tool(const json& params) {
     std::string name = params["name"].get<std::string>();
     json args = params.value("arguments", json::object());
 
-    if (name == "generate_image") return tool_generate_image(args);
-    if (name == "generate_image_from_image") return tool_generate_image_from_image(args);
-    if (name == "generate_video") return tool_generate_video(args);
-    if (name == "upscale_image") return tool_upscale_image(args);
-    if (name == "load_model") return tool_load_model(args);
-    if (name == "unload_model") return tool_unload_model(args);
-    if (name == "list_models") return tool_list_models(args);
-    if (name == "get_job_status") return tool_get_job_status(args);
-    if (name == "cancel_job") return tool_cancel_job(args);
-    if (name == "search_queue") return tool_search_queue(args);
+    if (name == "generate") return tool_generate(args);
+    if (name == "model") return tool_model(args);
+    if (name == "job") return tool_job(args);
 
     return make_tool_result("Unknown tool: " + name, true);
 }
 
 // ─── Tool Implementations ────────────────────────────────────────────────────
 
-json McpServer::tool_generate_image(const json& args) {
+json McpServer::tool_generate(const json& args) {
+    if (!args.contains("type") || !args["type"].is_string()) {
+        return make_tool_result("Missing required parameter: type (txt2img, img2img, video, upscale)", true);
+    }
+
+    std::string type = args["type"].get<std::string>();
+
+    if (type == "upscale") {
+        // Upscale requires image_base64 (aliased from init_image_base64)
+        if (!args.contains("init_image_base64") && !args.contains("image_base64")) {
+            return make_tool_result("Missing required parameter: init_image_base64 for upscale", true);
+        }
+        // Pass image_base64 if that's what was provided
+        json job_args = args;
+        if (args.contains("image_base64") && !args.contains("init_image_base64")) {
+            job_args["init_image_base64"] = args["image_base64"];
+        }
+        try {
+            std::string job_id = queue_manager_.add_job(GenerationType::Upscale, job_args);
+            json result = {{"job_id", job_id}, {"status", "pending"}, {"message", "Upscale job queued"}};
+            return make_tool_result(result.dump());
+        } catch (const std::exception& e) {
+            return make_tool_result("Failed to queue job: " + std::string(e.what()), true);
+        }
+    }
+
+    // All other types require a loaded model and a prompt
     if (!model_manager_.is_model_loaded()) {
-        return make_tool_result("No model loaded. Use load_model first.", true);
+        return make_tool_result("No model loaded. Use model(action:'load') first.", true);
     }
     if (!args.contains("prompt") || !args["prompt"].is_string()) {
         return make_tool_result("Missing required parameter: prompt", true);
     }
 
+    GenerationType gen_type;
+    std::string message;
+
+    if (type == "txt2img") {
+        gen_type = GenerationType::Text2Image;
+        message = "Image generation job queued";
+    } else if (type == "img2img") {
+        if (!args.contains("init_image_base64") || !args["init_image_base64"].is_string()) {
+            return make_tool_result("Missing required parameter: init_image_base64 for img2img", true);
+        }
+        gen_type = GenerationType::Image2Image;
+        message = "Image-to-image generation job queued";
+    } else if (type == "video") {
+        gen_type = GenerationType::Text2Video;
+        message = "Video generation job queued";
+    } else {
+        return make_tool_result("Unknown generation type: " + type + ". Use: txt2img, img2img, video, upscale", true);
+    }
+
     try {
-        std::string job_id = queue_manager_.add_job(GenerationType::Text2Image, args);
-        json result = {
-            {"job_id", job_id},
-            {"status", "pending"},
-            {"message", "Image generation job queued"}
-        };
+        std::string job_id = queue_manager_.add_job(gen_type, args);
+        json result = {{"job_id", job_id}, {"status", "pending"}, {"message", message}};
         return make_tool_result(result.dump());
     } catch (const std::exception& e) {
         return make_tool_result("Failed to queue job: " + std::string(e.what()), true);
     }
 }
 
-json McpServer::tool_generate_image_from_image(const json& args) {
-    if (!model_manager_.is_model_loaded()) {
-        return make_tool_result("No model loaded. Use load_model first.", true);
-    }
-    if (!args.contains("prompt") || !args["prompt"].is_string()) {
-        return make_tool_result("Missing required parameter: prompt", true);
-    }
-    if (!args.contains("init_image_base64") || !args["init_image_base64"].is_string()) {
-        return make_tool_result("Missing required parameter: init_image_base64", true);
+json McpServer::tool_model(const json& args) {
+    if (!args.contains("action") || !args["action"].is_string()) {
+        return make_tool_result("Missing required parameter: action (load, unload, list)", true);
     }
 
-    try {
-        std::string job_id = queue_manager_.add_job(GenerationType::Image2Image, args);
-        json result = {
-            {"job_id", job_id},
-            {"status", "pending"},
-            {"message", "Image-to-image generation job queued"}
-        };
-        return make_tool_result(result.dump());
-    } catch (const std::exception& e) {
-        return make_tool_result("Failed to queue job: " + std::string(e.what()), true);
+    std::string action = args["action"].get<std::string>();
+
+    if (action == "load") {
+        if (!args.contains("model_name") || !args["model_name"].is_string()) {
+            return make_tool_result("Missing required parameter: model_name", true);
+        }
+        try {
+            auto params = ModelLoadParams::from_json(args);
+            model_manager_.load_model(params);
+
+            auto loaded_info = model_manager_.get_loaded_models_info();
+            json result = {
+                {"success", true},
+                {"message", "Model loaded successfully"},
+                {"model_name", loaded_info["model_name"]},
+                {"model_type", loaded_info["model_type"]},
+                {"loaded_components", loaded_info["loaded_components"]}
+            };
+            return make_tool_result(result.dump());
+        } catch (const std::exception& e) {
+            return make_tool_result("Failed to load model: " + std::string(e.what()), true);
+        }
+    } else if (action == "unload") {
+        try {
+            model_manager_.unload_model();
+            json result = {{"success", true}, {"message", "Model unloaded"}};
+            return make_tool_result(result.dump());
+        } catch (const std::exception& e) {
+            return make_tool_result("Failed to unload model: " + std::string(e.what()), true);
+        }
+    } else if (action == "list") {
+        try {
+            ModelFilter filter;
+            if (args.contains("model_type") && args["model_type"].is_string()) {
+                filter.type = string_to_model_type(args["model_type"].get<std::string>());
+            }
+            json models = model_manager_.get_models_json(filter);
+            return make_tool_result(models.dump());
+        } catch (const std::exception& e) {
+            return make_tool_result("Failed to list models: " + std::string(e.what()), true);
+        }
     }
+
+    return make_tool_result("Unknown model action: " + action + ". Use: load, unload, list", true);
 }
 
-json McpServer::tool_generate_video(const json& args) {
-    if (!model_manager_.is_model_loaded()) {
-        return make_tool_result("No model loaded. Use load_model first.", true);
-    }
-    if (!args.contains("prompt") || !args["prompt"].is_string()) {
-        return make_tool_result("Missing required parameter: prompt", true);
+json McpServer::tool_job(const json& args) {
+    if (!args.contains("action") || !args["action"].is_string()) {
+        return make_tool_result("Missing required parameter: action (status, cancel, delete, search)", true);
     }
 
-    try {
-        std::string job_id = queue_manager_.add_job(GenerationType::Text2Video, args);
-        json result = {
-            {"job_id", job_id},
-            {"status", "pending"},
-            {"message", "Video generation job queued"}
-        };
-        return make_tool_result(result.dump());
-    } catch (const std::exception& e) {
-        return make_tool_result("Failed to queue job: " + std::string(e.what()), true);
-    }
-}
+    std::string action = args["action"].get<std::string>();
 
-json McpServer::tool_upscale_image(const json& args) {
-    if (!args.contains("image_base64") || !args["image_base64"].is_string()) {
-        return make_tool_result("Missing required parameter: image_base64", true);
-    }
+    if (action == "status") {
+        if (!args.contains("job_id") || !args["job_id"].is_string()) {
+            return make_tool_result("Missing required parameter: job_id", true);
+        }
+        std::string job_id = args["job_id"].get<std::string>();
+        auto job = queue_manager_.get_job(job_id);
+        if (!job.has_value()) {
+            return make_tool_result("Job not found: " + job_id, true);
+        }
+        return make_tool_result(rewrite_job_outputs(job->to_json()).dump());
 
-    try {
-        std::string job_id = queue_manager_.add_job(GenerationType::Upscale, args);
-        json result = {
-            {"job_id", job_id},
-            {"status", "pending"},
-            {"message", "Upscale job queued"}
-        };
-        return make_tool_result(result.dump());
-    } catch (const std::exception& e) {
-        return make_tool_result("Failed to queue job: " + std::string(e.what()), true);
-    }
-}
+    } else if (action == "cancel") {
+        if (!args.contains("job_id") || !args["job_id"].is_string()) {
+            return make_tool_result("Missing required parameter: job_id", true);
+        }
+        std::string job_id = args["job_id"].get<std::string>();
+        bool cancelled = queue_manager_.cancel_job(job_id);
+        if (cancelled) {
+            json result = {{"success", true}, {"message", "Job cancelled"}, {"job_id", job_id}};
+            return make_tool_result(result.dump());
+        }
+        return make_tool_result("Failed to cancel job " + job_id + ": job may not be in a cancellable state", true);
 
-json McpServer::tool_load_model(const json& args) {
-    if (!args.contains("model_name") || !args["model_name"].is_string()) {
-        return make_tool_result("Missing required parameter: model_name", true);
-    }
+    } else if (action == "delete") {
+        if (!args.contains("job_id") || !args["job_id"].is_string()) {
+            return make_tool_result("Missing required parameter: job_id", true);
+        }
+        std::string job_id = args["job_id"].get<std::string>();
+        bool deleted = queue_manager_.delete_job(job_id);
+        if (deleted) {
+            json result = {{"success", true}, {"message", "Job moved to recycle bin"}, {"job_id", job_id}};
+            return make_tool_result(result.dump());
+        }
+        return make_tool_result("Failed to delete job " + job_id + ": job may be processing or not found", true);
 
-    try {
-        auto params = ModelLoadParams::from_json(args);
-        model_manager_.load_model(params);
+    } else if (action == "search") {
+        QueueFilter filter;
 
-        auto loaded_info = model_manager_.get_loaded_models_info();
-        json result = {
-            {"success", true},
-            {"message", "Model loaded successfully"},
-            {"model_name", loaded_info["model_name"]},
-            {"model_type", loaded_info["model_type"]},
-            {"loaded_components", loaded_info["loaded_components"]}
-        };
-        return make_tool_result(result.dump());
-    } catch (const std::exception& e) {
-        return make_tool_result("Failed to load model: " + std::string(e.what()), true);
-    }
-}
-
-json McpServer::tool_unload_model(const json& /*args*/) {
-    try {
-        model_manager_.unload_model();
-        json result = {
-            {"success", true},
-            {"message", "Model unloaded"}
-        };
-        return make_tool_result(result.dump());
-    } catch (const std::exception& e) {
-        return make_tool_result("Failed to unload model: " + std::string(e.what()), true);
-    }
-}
-
-json McpServer::tool_list_models(const json& args) {
-    try {
-        ModelFilter filter;
-        if (args.contains("model_type") && args["model_type"].is_string()) {
-            filter.type = string_to_model_type(args["model_type"].get<std::string>());
+        if (args.contains("search") && args["search"].is_string()) {
+            filter.search = args["search"].get<std::string>();
+        }
+        if (args.contains("status_filter") && args["status_filter"].is_string()) {
+            std::string s = args["status_filter"].get<std::string>();
+            if (s == "pending") filter.status = QueueStatus::Pending;
+            else if (s == "processing") filter.status = QueueStatus::Processing;
+            else if (s == "completed") filter.status = QueueStatus::Completed;
+            else if (s == "failed") filter.status = QueueStatus::Failed;
+            else if (s == "cancelled") filter.status = QueueStatus::Cancelled;
+        }
+        if (args.contains("type_filter") && args["type_filter"].is_string()) {
+            std::string t = args["type_filter"].get<std::string>();
+            if (t == "txt2img") filter.type = GenerationType::Text2Image;
+            else if (t == "img2img") filter.type = GenerationType::Image2Image;
+            else if (t == "txt2vid") filter.type = GenerationType::Text2Video;
+            else if (t == "upscale") filter.type = GenerationType::Upscale;
+        }
+        if (args.contains("architecture") && args["architecture"].is_string()) {
+            filter.architecture = args["architecture"].get<std::string>();
+        }
+        if (args.contains("model") && args["model"].is_string()) {
+            filter.model = args["model"].get<std::string>();
+        }
+        if (args.contains("before") && args["before"].is_number_integer()) {
+            filter.before_timestamp = args["before"].get<int64_t>();
+        }
+        if (args.contains("after") && args["after"].is_number_integer()) {
+            filter.after_timestamp = args["after"].get<int64_t>();
         }
 
-        json models = model_manager_.get_models_json(filter);
-        return make_tool_result(models.dump());
-    } catch (const std::exception& e) {
-        return make_tool_result("Failed to list models: " + std::string(e.what()), true);
-    }
-}
+        size_t limit = 10;
+        if (args.contains("limit") && args["limit"].is_number_integer()) {
+            limit = std::min(static_cast<size_t>(args["limit"].get<int>()), static_cast<size_t>(10));
+            if (limit < 1) limit = 1;
+        }
+        filter.limit = limit;
 
-json McpServer::tool_get_job_status(const json& args) {
-    if (!args.contains("job_id") || !args["job_id"].is_string()) {
-        return make_tool_result("Missing required parameter: job_id", true);
-    }
+        if (args.contains("offset") && args["offset"].is_number_integer()) {
+            filter.offset = std::max(0, args["offset"].get<int>());
+        }
 
-    std::string job_id = args["job_id"].get<std::string>();
-    auto job = queue_manager_.get_job(job_id);
-    if (!job.has_value()) {
-        return make_tool_result("Job not found: " + job_id, true);
-    }
+        auto result = queue_manager_.get_jobs_paginated(filter);
 
-    return make_tool_result(rewrite_job_outputs(job->to_json()).dump());
-}
+        json items = json::array();
+        for (const auto& item : result.items) {
+            items.push_back(rewrite_job_outputs(item.to_json()));
+        }
 
-json McpServer::tool_cancel_job(const json& args) {
-    if (!args.contains("job_id") || !args["job_id"].is_string()) {
-        return make_tool_result("Missing required parameter: job_id", true);
-    }
-
-    std::string job_id = args["job_id"].get<std::string>();
-    bool cancelled = queue_manager_.cancel_job(job_id);
-
-    if (cancelled) {
-        json result = {
-            {"success", true},
-            {"message", "Job cancelled"},
-            {"job_id", job_id}
+        json response = {
+            {"items", items},
+            {"total_count", result.total_count},
+            {"returned_count", result.filtered_count},
+            {"offset", result.offset},
+            {"limit", result.limit},
+            {"has_more", result.has_more}
         };
-        return make_tool_result(result.dump());
-    } else {
-        return make_tool_result("Failed to cancel job " + job_id + ": job may not be in a cancellable state", true);
-    }
-}
-
-json McpServer::tool_search_queue(const json& args) {
-    QueueFilter filter;
-
-    // Text search in prompts
-    if (args.contains("search") && args["search"].is_string()) {
-        filter.search = args["search"].get<std::string>();
+        return make_tool_result(response.dump());
     }
 
-    // Status filter
-    if (args.contains("status") && args["status"].is_string()) {
-        std::string status_str = args["status"].get<std::string>();
-        if (status_str == "pending") filter.status = QueueStatus::Pending;
-        else if (status_str == "processing") filter.status = QueueStatus::Processing;
-        else if (status_str == "completed") filter.status = QueueStatus::Completed;
-        else if (status_str == "failed") filter.status = QueueStatus::Failed;
-        else if (status_str == "cancelled") filter.status = QueueStatus::Cancelled;
-    }
-
-    // Generation type filter
-    if (args.contains("type") && args["type"].is_string()) {
-        std::string type_str = args["type"].get<std::string>();
-        if (type_str == "txt2img") filter.type = GenerationType::Text2Image;
-        else if (type_str == "img2img") filter.type = GenerationType::Image2Image;
-        else if (type_str == "txt2vid") filter.type = GenerationType::Text2Video;
-        else if (type_str == "upscale") filter.type = GenerationType::Upscale;
-    }
-
-    // Architecture filter (partial match)
-    if (args.contains("architecture") && args["architecture"].is_string()) {
-        filter.architecture = args["architecture"].get<std::string>();
-    }
-
-    // Model name filter (partial match)
-    if (args.contains("model") && args["model"].is_string()) {
-        filter.model = args["model"].get<std::string>();
-    }
-
-    // Date range
-    if (args.contains("before") && args["before"].is_number_integer()) {
-        filter.before_timestamp = args["before"].get<int64_t>();
-    }
-    if (args.contains("after") && args["after"].is_number_integer()) {
-        filter.after_timestamp = args["after"].get<int64_t>();
-    }
-
-    // Pagination (cap at 10)
-    size_t limit = 10;
-    if (args.contains("limit") && args["limit"].is_number_integer()) {
-        limit = std::min(static_cast<size_t>(args["limit"].get<int>()), static_cast<size_t>(10));
-        if (limit < 1) limit = 1;
-    }
-    filter.limit = limit;
-
-    if (args.contains("offset") && args["offset"].is_number_integer()) {
-        filter.offset = std::max(0, args["offset"].get<int>());
-    }
-
-    auto result = queue_manager_.get_jobs_paginated(filter);
-
-    json items = json::array();
-    for (const auto& item : result.items) {
-        items.push_back(rewrite_job_outputs(item.to_json()));
-    }
-
-    json response = {
-        {"items", items},
-        {"total_count", result.total_count},
-        {"returned_count", result.filtered_count},
-        {"offset", result.offset},
-        {"limit", result.limit},
-        {"has_more", result.has_more}
-    };
-
-    return make_tool_result(response.dump());
+    return make_tool_result("Unknown job action: " + action + ". Use: status, cancel, delete, search", true);
 }
 
 // ─── Resource Definitions ────────────────────────────────────────────────────

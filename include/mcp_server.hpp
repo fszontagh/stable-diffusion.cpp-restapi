@@ -35,17 +35,10 @@ private:
     nlohmann::json handle_list_resources();
     nlohmann::json handle_read_resource(const nlohmann::json& params);
 
-    // Tool implementations
-    nlohmann::json tool_generate_image(const nlohmann::json& args);
-    nlohmann::json tool_generate_image_from_image(const nlohmann::json& args);
-    nlohmann::json tool_generate_video(const nlohmann::json& args);
-    nlohmann::json tool_upscale_image(const nlohmann::json& args);
-    nlohmann::json tool_load_model(const nlohmann::json& args);
-    nlohmann::json tool_unload_model(const nlohmann::json& args);
-    nlohmann::json tool_list_models(const nlohmann::json& args);
-    nlohmann::json tool_get_job_status(const nlohmann::json& args);
-    nlohmann::json tool_cancel_job(const nlohmann::json& args);
-    nlohmann::json tool_search_queue(const nlohmann::json& args);
+    // Consolidated tool implementations (3 tools)
+    nlohmann::json tool_generate(const nlohmann::json& args);
+    nlohmann::json tool_model(const nlohmann::json& args);
+    nlohmann::json tool_job(const nlohmann::json& args);
 
     // Resource implementations
     nlohmann::json resource_health();
