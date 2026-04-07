@@ -38,6 +38,11 @@
 │   ├── src/components/    # Reusable components
 │   ├── src/stores/app.ts  # Pinia state store
 │   └── src/api/client.ts  # API client with types
+├── docs/                  # Documentation (served at /docs endpoint)
+│   ├── API.md             # Complete API reference
+│   ├── LIBRARY_REFERENCE.md # Developer library reference
+│   ├── DEPENDENCIES-*.md  # Platform-specific build dependencies
+│   └── plans/             # Design documents
 ├── CMakeLists.txt         # Build configuration
 └── config.example.json    # Server configuration template
 ```
@@ -163,16 +168,24 @@ Events broadcast from `src/websocket_server.cpp`:
 
 The MCP server at `POST /mcp` implements JSON-RPC 2.0 for Streamable HTTP transport. It's compile-time optional via `SDCPP_MCP` (ON by default).
 
-**Tools (10):** generate_image, generate_image_from_image, generate_video, upscale_image, load_model, unload_model, list_models, get_job_status, cancel_job, search_queue
+**Tools (3 consolidated):**
+- `generate(type, prompt, ...)` — Types: `txt2img`, `img2img`, `video`, `upscale`
+- `model(action, ...)` — Actions: `load`, `unload`, `list`
+- `job(action, ...)` — Actions: `status`, `cancel`, `delete` (soft-delete → recycle bin), `search` (filtered/paginated)
 
 **Resources (7):** sdcpp://health, sdcpp://memory, sdcpp://models, sdcpp://models/loaded, sdcpp://queue (last 10 items), sdcpp://queue/{job_id}, sdcpp://architectures
 
-**Queue limits:** All MCP queue responses are capped at 10 items max. The `sdcpp://queue` resource returns the last 10 items. The `search_queue` tool supports filtering (prompt text, status, type, architecture, model, date range) with pagination capped at 10 per page.
+**Queue limits:** All MCP queue responses are capped at 10 items max. The `sdcpp://queue` resource returns the last 10 items. The `job(action:'search')` supports filtering (prompt text, status, type, architecture, model, date range) with pagination capped at 10 per page.
+
+**Adding a new action to an existing MCP tool:**
+1. Add the action string to the tool's `enum` in `handle_list_tools()` in `src/mcp_server.cpp`
+2. Add `else if (action == "new_action")` case in the tool's implementation (`tool_generate`, `tool_model`, or `tool_job`)
+3. Add any new input properties to the tool's `inputSchema`
 
 **Adding a new MCP tool:**
 1. Add method declaration to `include/mcp_server.hpp`
 2. Add tool definition in `handle_list_tools()` in `src/mcp_server.cpp`
-3. Implement tool function (e.g., `tool_my_action()`)
+3. Implement tool function
 4. Add dispatch case in `handle_call_tool()`
 
 **Adding a new MCP resource:**
@@ -212,6 +225,10 @@ curl -s http://localhost:8080/health | jq '.features.experimental_offload'
 curl -s -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | jq .
+
+# Documentation (raw markdown)
+curl http://localhost:8080/docs/        # Table of contents
+curl http://localhost:8080/docs/API.md  # Specific doc file
 ```
 
 ## Supported Model Architectures
