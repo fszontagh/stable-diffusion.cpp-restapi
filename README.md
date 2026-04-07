@@ -166,6 +166,8 @@ Fields with architecture-dependent defaults (width, height, steps, sampler, etc.
 | `GET /queue/{id}` | Get job status |
 | `GET /architectures` | Get model architecture presets |
 | `POST /mcp` | MCP (Model Context Protocol) JSON-RPC endpoint |
+| `GET /docs` | Documentation table of contents (raw markdown) |
+| `GET /docs/{path}` | Serve documentation file (raw markdown) |
 
 ### WebSocket
 
@@ -182,11 +184,12 @@ MCP support enables any MCP-compatible AI client to use the server's tools:
 POST /mcp
 ```
 
-**Available tools:** generate_image, generate_image_from_image, generate_video, upscale_image, load_model, unload_model, list_models, get_job_status, cancel_job, search_queue
+**Tools (3 consolidated):**
+- `generate(type, prompt, ...)` — Generate images/videos. Types: `txt2img`, `img2img`, `video`, `upscale`
+- `model(action, ...)` — Manage models. Actions: `load`, `unload`, `list`
+- `job(action, ...)` — Manage jobs. Actions: `status`, `cancel`, `delete` (soft-delete to recycle bin), `search` (filtered/paginated, max 10 per page)
 
 **Available resources:** sdcpp://health, sdcpp://memory, sdcpp://models, sdcpp://models/loaded, sdcpp://queue (last 10 items), sdcpp://queue/{job_id}, sdcpp://architectures
-
-**Queue access:** The `sdcpp://queue` resource returns the last 10 items only. Use the `search_queue` tool for filtering by prompt text, status, type, architecture, model name, date range, and paginated access (max 10 items per page).
 
 Disable at build time with `-DSDCPP_MCP=OFF`.
 
