@@ -412,7 +412,7 @@
         "scheduler": "smoothstep",
         "width": 1024,
         "height": 688,
-        "easycache": true
+        "cache_mode": "easycache"
       }
     },
     "Qwen": {

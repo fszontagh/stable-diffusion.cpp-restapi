@@ -63,8 +63,15 @@ const flowShift = ref(3.0)
 // Advanced params
 const showAdvanced = ref(false)
 const slgScale = ref(0.0)
-const easycache = ref(false)
+const cacheMode = ref('')
 const easycacheThreshold = ref(0.2)
+const spectrumW = ref(0.5)
+const spectrumM = ref(5)
+const spectrumLam = ref(0.5)
+const spectrumWindowSize = ref(3)
+const spectrumFlexWindow = ref(0.5)
+const spectrumWarmupSteps = ref(2)
+const spectrumStopPercent = ref(0.8)
 const vaeTiling = ref(false)
 const vaeTileSizeX = ref(0)
 const vaeTileSizeY = ref(0)
@@ -324,8 +331,9 @@ function getCurrentSettings() {
     fps: fps.value,
     flowShift: flowShift.value,
     slgScale: slgScale.value,
-    easycache: easycache.value,
+    cacheMode: cacheMode.value,
     easycacheThreshold: easycacheThreshold.value,
+    spectrumW: spectrumW.value,
     vaeTiling: vaeTiling.value,
     vaeTileSizeX: vaeTileSizeX.value,
     vaeTileSizeY: vaeTileSizeY.value,
@@ -353,8 +361,12 @@ function applySettings(settings: Record<string, unknown>) {
   if (settings.fps !== undefined) fps.value = settings.fps as number
   if (settings.flowShift !== undefined) flowShift.value = settings.flowShift as number
   if (settings.slgScale !== undefined) slgScale.value = settings.slgScale as number
-  if (settings.easycache !== undefined) easycache.value = settings.easycache as boolean
+  if (settings.cacheMode !== undefined) cacheMode.value = settings.cacheMode as string
+  if (settings.easycache !== undefined && settings.cacheMode === undefined) {
+    cacheMode.value = settings.easycache ? 'easycache' : ''
+  }
   if (settings.easycacheThreshold !== undefined) easycacheThreshold.value = settings.easycacheThreshold as number
+  if (settings.spectrumW !== undefined) spectrumW.value = settings.spectrumW as number
   if (settings.vaeTiling !== undefined) vaeTiling.value = settings.vaeTiling as boolean
   if (settings.vaeTileSizeX !== undefined) vaeTileSizeX.value = settings.vaeTileSizeX as number
   if (settings.vaeTileSizeY !== undefined) vaeTileSizeY.value = settings.vaeTileSizeY as number
@@ -544,7 +556,7 @@ const debouncedSaveLoraSettings = useDebounceFn(() => {
 watch([
   width, height, steps, cfgScale, distilledGuidance, seed, sampler,
   scheduler, batchCount, clipSkip, strength, controlStrength, videoFrames,
-  fps, flowShift, slgScale, easycache, easycacheThreshold, vaeTiling,
+  fps, flowShift, slgScale, cacheMode, easycacheThreshold, spectrumW, vaeTiling,
   vaeTileSizeX, vaeTileSizeY, vaeTileOverlap
 ], debouncedSaveSettings)
 
@@ -583,7 +595,7 @@ interface RecommendedSettings {
   width: number
   height: number
   slgScale?: number
-  easycache?: boolean
+  cacheMode?: string
 }
 
 // Resolve current architecture preset from store (exact → case-insensitive → partial match)
@@ -637,7 +649,7 @@ const recommended = computed((): RecommendedSettings | null => {
     width?: number
     height?: number
     slg_scale?: number
-    easycache?: boolean
+    cache_mode?: string
   }
   return {
     sampler: defaults.sampler || 'euler',
@@ -649,7 +661,7 @@ const recommended = computed((): RecommendedSettings | null => {
     width: defaults.width || 1024,
     height: defaults.height || 1024,
     slgScale: defaults.slg_scale,
-    easycache: defaults.easycache
+    cacheMode: defaults.cache_mode || (defaults.easycache ? 'easycache' : undefined)
   }
 })
 
@@ -677,8 +689,8 @@ function applyRecommendedSettings() {
   if (recommended.value.slgScale !== undefined) {
     slgScale.value = recommended.value.slgScale
   }
-  if (recommended.value.easycache !== undefined) {
-    easycache.value = recommended.value.easycache
+  if (recommended.value.cacheMode !== undefined) {
+    cacheMode.value = recommended.value.cacheMode
   }
 
   store.showToast('Applied recommended settings', 'success')
@@ -697,7 +709,7 @@ function applyRecommendedSetting(field: keyof RecommendedSettings) {
     distilledGuidance: () => { distilledGuidance.value = val as number },
     clipSkip: () => { clipSkip.value = val as number },
     slgScale: () => { slgScale.value = val as number },
-    easycache: () => { easycache.value = val as boolean },
+    cacheMode: () => { cacheMode.value = val as string },
   }
   setters[field]?.()
 }
@@ -753,7 +765,8 @@ function handleAssistantSettingChange(event: Event) {
     vaeTileSizeY: { get: () => vaeTileSizeY.value, set: (v) => vaeTileSizeY.value = v as number },
     vae_tile_overlap: { get: () => vaeTileOverlap.value, set: (v) => vaeTileOverlap.value = v as number },
     vaeTileOverlap: { get: () => vaeTileOverlap.value, set: (v) => vaeTileOverlap.value = v as number },
-    easycache: { get: () => easycache.value, set: (v) => easycache.value = v as boolean },
+    cacheMode: { get: () => cacheMode.value, set: (v) => cacheMode.value = v as string },
+    cache_mode: { get: () => cacheMode.value, set: (v) => cacheMode.value = v as string },
     video_frames: { get: () => videoFrames.value, set: (v) => videoFrames.value = v as number },
     videoFrames: { get: () => videoFrames.value, set: (v) => videoFrames.value = v as number },
     fps: { get: () => fps.value, set: (v) => fps.value = v as number }
@@ -805,7 +818,8 @@ function handleHighlightSetting(event: Event) {
     vaeTileSizeY: 'vae-tile-size-y',
     vae_tile_overlap: 'vae-tile-overlap',
     vaeTileOverlap: 'vae-tile-overlap',
-    easycache: 'easycache',
+    cacheMode: 'cache-mode',
+    cache_mode: 'cache-mode',
     video_frames: 'video-frames',
     videoFrames: 'video-frames',
     fps: 'fps'
@@ -1048,7 +1062,10 @@ function loadJobParams(type: string, params: Record<string, unknown>) {
 
   // Advanced params
   if (params.slg_scale !== undefined) slgScale.value = params.slg_scale as number
-  if (params.easycache !== undefined) easycache.value = params.easycache as boolean
+  if (params.cache_mode !== undefined) cacheMode.value = params.cache_mode as string
+  if (params.easycache !== undefined && params.cache_mode === undefined) {
+    cacheMode.value = params.easycache ? 'easycache' : ''
+  }
   if (params.easycache_threshold !== undefined) easycacheThreshold.value = params.easycache_threshold as number
   if (params.vae_tiling !== undefined) vaeTiling.value = params.vae_tiling as boolean
   if (params.vae_tile_size_x !== undefined) vaeTileSizeX.value = params.vae_tile_size_x as number
@@ -1136,9 +1153,19 @@ async function handleSubmit() {
     if (slgScale.value > 0) {
       baseParams.slg_scale = slgScale.value
     }
-    if (easycache.value) {
-      baseParams.easycache = true
-      baseParams.easycache_threshold = easycacheThreshold.value
+    if (cacheMode.value) {
+      baseParams.cache_mode = cacheMode.value
+      if (cacheMode.value === 'easycache') {
+        baseParams.easycache_threshold = easycacheThreshold.value
+      } else if (cacheMode.value === 'spectrum') {
+        baseParams.spectrum_w = spectrumW.value
+        baseParams.spectrum_m = spectrumM.value
+        baseParams.spectrum_lam = spectrumLam.value
+        baseParams.spectrum_window_size = spectrumWindowSize.value
+        baseParams.spectrum_flex_window = spectrumFlexWindow.value
+        baseParams.spectrum_warmup_steps = spectrumWarmupSteps.value
+        baseParams.spectrum_stop_percent = spectrumStopPercent.value
+      }
     }
     if (vaeTiling.value) {
       baseParams.vae_tiling = true
@@ -1505,18 +1532,34 @@ async function handleSubmit() {
               <input v-model.number="slgScale" type="number" class="form-input" step="0.5" min="0" max="10" />
             </div>
 
-            <label class="form-checkbox" data-setting="easycache" :class="{ 'setting-highlighted': highlightedSetting === 'easycache' }">
-              <input v-model="easycache" type="checkbox" />
-              Enable EasyCache (faster DiT models)
-              <span v-if="recommended?.easycache !== undefined && recommended.easycache !== easycache" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('easycache')" title="Click to apply">
-                (rec: {{ recommended.easycache ? 'enabled' : 'disabled' }})
-              </span>
-            </label>
+            <div class="form-group" data-setting="cache-mode" :class="{ 'setting-highlighted': highlightedSetting === 'cache-mode' }">
+              <label class="form-label">Cache Acceleration
+                <span v-if="recommended?.cacheMode !== undefined && recommended.cacheMode !== cacheMode" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('cacheMode')" title="Click to apply">
+                  (rec: {{ recommended.cacheMode || 'disabled' }})
+                </span>
+              </label>
+              <select v-model="cacheMode" class="form-input">
+                <option value="">Disabled</option>
+                <option value="easycache">EasyCache</option>
+                <option value="spectrum">Spectrum</option>
+              </select>
+            </div>
 
-            <div v-if="easycache" class="form-group mt-2">
+            <div v-if="cacheMode === 'easycache'" class="form-group mt-2">
               <label class="form-label">EasyCache Threshold</label>
               <input v-model.number="easycacheThreshold" type="number" class="form-input" step="0.05" min="0" max="1" />
             </div>
+
+            <template v-if="cacheMode === 'spectrum'">
+              <div class="form-group mt-2">
+                <label class="form-label">Spectrum W</label>
+                <input v-model.number="spectrumW" type="number" class="form-input" step="0.1" min="0" max="1" />
+              </div>
+              <div class="form-group mt-2">
+                <label class="form-label">Spectrum Stop %</label>
+                <input v-model.number="spectrumStopPercent" type="number" class="form-input" step="0.05" min="0" max="1" />
+              </div>
+            </template>
 
             <label class="form-checkbox" data-setting="vae-tiling" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tiling' }">
               <input v-model="vaeTiling" type="checkbox" />
