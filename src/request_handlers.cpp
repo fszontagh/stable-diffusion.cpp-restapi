@@ -31,8 +31,9 @@ namespace sdcpp {
 RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queue_manager,
                                  const std::string& output_dir, const std::string& webui_dir,
                                  const AssistantConfig& assistant_config,
-                                 const std::string& config_file_path)
-    : model_manager_(model_manager), queue_manager_(queue_manager), output_dir_(output_dir), webui_dir_(webui_dir)
+                                 const std::string& config_file_path,
+                                 const std::string& docs_dir)
+    : model_manager_(model_manager), queue_manager_(queue_manager), output_dir_(output_dir), webui_dir_(webui_dir), docs_dir_(docs_dir)
     // ArchitectureManager uses config directory (where model_architectures.json lives), not output directory
     , architecture_manager_(std::make_unique<ArchitectureManager>(
           config_file_path.empty() ? output_dir : fs::path(config_file_path).parent_path().string()))
@@ -305,6 +306,22 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         std::cout << "[Routes] WebUI routes NOT registered (webui_dir is empty)" << std::endl;
     }
 
+    // ── Documentation ────────────────────────────────────────────────
+    if (!docs_dir_.empty()) {
+        std::cout << "[Routes] Registering Docs routes (docs_dir=" << docs_dir_ << ")" << std::endl;
+        server.Get("/docs", [](const httplib::Request& /*req*/, httplib::Response& res) {
+            res.set_redirect("/docs/");
+        });
+        server.Get("/docs/", [this](const httplib::Request& req, httplib::Response& res) {
+            handle_docs(req, res);
+        });
+        server.Get(R"(/docs/(.*))", [this](const httplib::Request& req, httplib::Response& res) {
+            handle_docs(req, res);
+        });
+    } else {
+        std::cout << "[Routes] Docs routes NOT registered (docs_dir is empty)" << std::endl;
+    }
+
     // ── Preview Settings ─────────────────────────────────────────────
     api.addEndpoint<void, PreviewSettingsResponse>(
         server, "GET", "/preview/settings",
@@ -507,7 +524,8 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             {{"id", "q6_k"}, {"name", "Q6_K (6-bit K-quant)"}, {"bits", 6}},
             {{"id", "q8_k"}, {"name", "Q8_K (8-bit K-quant)"}, {"bits", 8}},
             {{"id", "q3_k"}, {"name", "Q3_K (3-bit K-quant)"}, {"bits", 3}},
-            {{"id", "q2_k"}, {"name", "Q2_K (2-bit K-quant)"}, {"bits", 2}}
+            {{"id", "q2_k"}, {"name", "Q2_K (2-bit K-quant)"}, {"bits", 2}},
+            {{"id", "nvfp4"}, {"name", "NVFP4 (4-bit NVIDIA float)"}, {"bits", 4}}
         })}
     };
 
@@ -1306,6 +1324,16 @@ std::time_t RequestHandlers::get_directory_content_mtime(const std::string& path
     return latest;
 }
 
+int RequestHandlers::count_directory_files(const std::string& path) {
+    int count = 0;
+    try {
+        for (const auto& entry : fs::directory_iterator(path, fs::directory_options::skip_permission_denied)) {
+            if (entry.is_regular_file()) count++;
+        }
+    } catch (...) {}
+    return count;
+}
+
 bool RequestHandlers::is_image_file(const std::string& path) {
     std::string ext = fs::path(path).extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
@@ -1475,13 +1503,14 @@ void RequestHandlers::handle_thumbnail(const httplib::Request& req, httplib::Res
 }
 
 std::string RequestHandlers::generate_directory_html(const std::string& dir_path, const std::string& url_path,
-                                                     const std::string& sort_by, bool sort_asc) {
+                                                     const std::string& sort_by, bool sort_asc,
+                                                     int page, int per_page) {
     std::ostringstream html;
 
-    // Build sort URL helper
+    // Build sort URL helper (preserves pagination)
     auto make_sort_url = [&](const std::string& col) -> std::string {
         std::string new_order = (sort_by == col && sort_asc) ? "desc" : "asc";
-        return url_path + "?sort=" + col + "&order=" + new_order;
+        return url_path + "?sort=" + col + "&order=" + new_order + "&per_page=" + std::to_string(per_page);
     };
 
     // Sort indicator
@@ -1654,6 +1683,41 @@ std::string RequestHandlers::generate_directory_html(const std::string& dir_path
             justify-content: center;
         }
 
+        /* Pagination */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 16px;
+            padding: 12px;
+            flex-wrap: wrap;
+        }
+        .page-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 36px;
+            height: 36px;
+            padding: 0 10px;
+            border-radius: 6px;
+            background: #16213e;
+            color: #00d9ff;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: background 0.15s;
+            cursor: pointer;
+        }
+        .page-btn:hover:not(.disabled):not(.active) { background: #1a3a6e; }
+        .page-btn.active {
+            background: #00d9ff;
+            color: #1a1a2e;
+            font-weight: 600;
+            cursor: default;
+        }
+        .page-btn.disabled { color: #555; cursor: default; }
+        .page-ellipsis { color: #555; padding: 0 4px; }
+
         /* Mobile styles */
         @media (max-width: 768px) {
             body { padding: 12px; }
@@ -1686,24 +1750,25 @@ std::string RequestHandlers::generate_directory_html(const std::string& dir_path
     <h1>)" << url_path << R"(</h1>
 )";
 
-    // Collect entries with sizes (skip .thumbs folder)
+    // Collect entries with lightweight metadata (no recursive dir scanning)
     struct Entry {
         std::string name;
         bool is_dir;
         bool is_media;
         bool is_image;
         bool is_video;
-        size_t size;
+        size_t size;       // file size only; 0 for directories until page slice
         std::time_t mtime;
+        int file_count;    // for directories: number of immediate files (set after page slice)
     };
     std::vector<Entry> entries;
-    size_t total_size = 0;
     int dir_count = 0, file_count = 0;
 
     try {
         for (const auto& entry : fs::directory_iterator(dir_path)) {
             Entry e;
             e.name = entry.path().filename().string();
+            e.file_count = 0;
 
             // Skip .thumbs directories
             if (e.name == ".thumbs") continue;
@@ -1713,34 +1778,25 @@ std::string RequestHandlers::generate_directory_html(const std::string& dir_path
             e.is_video = !e.is_dir && is_video_file(entry.path().string());
             e.is_media = e.is_image || e.is_video;
 
+            // Lightweight metadata: use directory's own mtime, skip recursive size calc
+            auto ftime = entry.last_write_time();
+            auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                ftime - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
+            e.mtime = std::chrono::system_clock::to_time_t(sctp);
+
             if (e.is_dir) {
-                e.size = calculate_directory_size(entry.path().string());
-                // Use content-based mtime for directories (excludes .thumbs changes)
-                e.mtime = get_directory_content_mtime(entry.path().string());
+                e.size = 0;
                 dir_count++;
             } else {
                 e.size = entry.file_size();
-                auto ftime = entry.last_write_time();
-                auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-                    ftime - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
-                e.mtime = std::chrono::system_clock::to_time_t(sctp);
                 file_count++;
             }
-            total_size += e.size;
 
             entries.push_back(e);
         }
     } catch (const std::exception& ex) {
         html << "<p style='color:#ff6b6b;'>Error reading directory: " << ex.what() << "</p>";
     }
-
-    // Stats bar
-    html << R"(    <div class="stats">
-        <div class="stat"><span class="stat-value">)" << dir_count << R"(</span> folders</div>
-        <div class="stat"><span class="stat-value">)" << file_count << R"(</span> files</div>
-        <div class="stat"><span class="stat-value">)" << format_file_size(total_size) << R"(</span> total</div>
-    </div>
-)";
 
     // Sort entries
     if (sort_by == "size") {
@@ -1759,6 +1815,34 @@ std::string RequestHandlers::generate_directory_html(const std::string& dir_path
             return sort_asc ? (al < bl) : (al > bl);
         });
     }
+
+    // Pagination
+    int total_entries = static_cast<int>(entries.size());
+    int total_pages = std::max(1, (total_entries + per_page - 1) / per_page);
+    page = std::clamp(page, 1, total_pages);
+    int start_idx = (page - 1) * per_page;
+    int end_idx = std::min(start_idx + per_page, total_entries);
+
+    // Only compute expensive dir metadata for visible page entries
+    for (int i = start_idx; i < end_idx; i++) {
+        if (entries[i].is_dir) {
+            std::string full = dir_path + "/" + entries[i].name;
+            entries[i].file_count = count_directory_files(full);
+        }
+    }
+
+    // Stats bar with pagination info
+    auto make_page_url = [&](int p) -> std::string {
+        return url_path + "?sort=" + sort_by + "&order=" + sort_order_str
+             + "&page=" + std::to_string(p) + "&per_page=" + std::to_string(per_page);
+    };
+
+    html << R"(    <div class="stats">
+        <div class="stat"><span class="stat-value">)" << dir_count << R"(</span> folders</div>
+        <div class="stat"><span class="stat-value">)" << file_count << R"(</span> files</div>
+        <div class="stat">Showing <span class="stat-value">)" << (start_idx + 1) << R"(</span>–<span class="stat-value">)" << end_idx << R"(</span> of <span class="stat-value">)" << total_entries << R"(</span></div>
+    </div>
+)";
 
     // Table header with sort links
     html << "    <table>\n"
@@ -1798,8 +1882,9 @@ std::string RequestHandlers::generate_directory_html(const std::string& dir_path
         rel_base = rel_base.substr(1);
     }
 
-    // Generate rows
-    for (const auto& entry : entries) {
+    // Generate rows (only for current page)
+    for (int i = start_idx; i < end_idx; i++) {
+        const auto& entry = entries[i];
         std::string entry_url = url_path;
         if (!entry_url.empty() && entry_url.back() != '/') entry_url += '/';
         entry_url += entry.name;
@@ -1836,6 +1921,14 @@ std::string RequestHandlers::generate_directory_html(const std::string& dir_path
         char date_buf[64];
         std::strftime(date_buf, sizeof(date_buf), "%Y-%m-%d %H:%M", tm);
 
+        // Format size: for directories show file count, for files show size
+        std::string size_str;
+        if (entry.is_dir) {
+            size_str = std::to_string(entry.file_count) + " file" + (entry.file_count != 1 ? "s" : "");
+        } else {
+            size_str = format_file_size(entry.size);
+        }
+
         html << "            <tr>\n";
         html << "                <td data-label=\"Name\">\n";
         html << "                    <div class=\"name-cell\">\n";
@@ -1860,14 +1953,51 @@ std::string RequestHandlers::generate_directory_html(const std::string& dir_path
         html << "                        </div>\n";
         html << "                    </div>\n";
         html << "                </td>\n";
-        html << "                <td class=\"size\" data-label=\"Size\">" << format_file_size(entry.size) << "</td>\n";
+        html << "                <td class=\"size\" data-label=\"Size\">" << size_str << "</td>\n";
         html << "                <td class=\"date date-col\" data-label=\"Modified\">" << date_buf << "</td>\n";
         html << "            </tr>\n";
     }
 
     html << R"HTML(        </tbody>
     </table>
-</div>
+)HTML";
+
+    // Pagination controls
+    if (total_pages > 1) {
+        html << "    <div class=\"pagination\">\n";
+
+        // Previous button
+        if (page > 1) {
+            html << "        <a class=\"page-btn\" href=\"" << make_page_url(page - 1) << "\">&#8592; Prev</a>\n";
+        } else {
+            html << "        <span class=\"page-btn disabled\">&#8592; Prev</span>\n";
+        }
+
+        // Page numbers with ellipsis
+        int window = 2; // pages around current
+        for (int p = 1; p <= total_pages; p++) {
+            if (p == 1 || p == total_pages || (p >= page - window && p <= page + window)) {
+                if (p == page) {
+                    html << "        <span class=\"page-btn active\">" << p << "</span>\n";
+                } else {
+                    html << "        <a class=\"page-btn\" href=\"" << make_page_url(p) << "\">" << p << "</a>\n";
+                }
+            } else if (p == page - window - 1 || p == page + window + 1) {
+                html << "        <span class=\"page-ellipsis\">...</span>\n";
+            }
+        }
+
+        // Next button
+        if (page < total_pages) {
+            html << "        <a class=\"page-btn\" href=\"" << make_page_url(page + 1) << "\">Next &#8594;</a>\n";
+        } else {
+            html << "        <span class=\"page-btn disabled\">Next &#8594;</span>\n";
+        }
+
+        html << "    </div>\n";
+    }
+
+    html << R"HTML(</div>
 
 <!-- Lightbox -->
 <div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
@@ -2015,8 +2145,18 @@ void RequestHandlers::handle_file_browser(const httplib::Request& req, httplib::
             sort_asc = (req.get_param_value("order") != "desc");
         }
 
+        // Parse pagination parameters
+        int page = 1;
+        int per_page = 50;
+        if (req.has_param("page")) {
+            try { page = std::max(1, std::stoi(req.get_param_value("page"))); } catch (...) {}
+        }
+        if (req.has_param("per_page")) {
+            try { per_page = std::clamp(std::stoi(req.get_param_value("per_page")), 10, 200); } catch (...) {}
+        }
+
         // Directory: generate listing HTML
-        std::string html = generate_directory_html(full_path.string(), url_path, sort_by, sort_asc);
+        std::string html = generate_directory_html(full_path.string(), url_path, sort_by, sort_asc, page, per_page);
         res.set_content(html, "text/html");
     } else {
         // File: serve it
@@ -2104,6 +2244,140 @@ void RequestHandlers::handle_webui(const httplib::Request& req, httplib::Respons
 
     std::string mime_type = get_mime_type(full_path.string());
     res.set_content(content, mime_type);
+}
+
+std::string RequestHandlers::generate_docs_toc() {
+    std::ostringstream md;
+    md << "# Documentation\n\n";
+    md << "Available documentation files:\n\n";
+
+    // Collect all .md files recursively, sorted
+    std::vector<std::string> files;
+    for (const auto& entry : fs::recursive_directory_iterator(docs_dir_)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".md") {
+            auto rel = fs::relative(entry.path(), docs_dir_).string();
+            files.push_back(rel);
+        }
+    }
+    std::sort(files.begin(), files.end());
+
+    // Group by directory
+    std::string current_dir;
+    for (const auto& file : files) {
+        auto dir = fs::path(file).parent_path().string();
+        if (dir != current_dir) {
+            current_dir = dir;
+            if (!dir.empty()) {
+                md << "\n### " << dir << "/\n\n";
+            }
+        }
+        // Extract title from first heading line, or use filename
+        std::string title = fs::path(file).stem().string();
+        fs::path full = fs::path(docs_dir_) / file;
+        std::ifstream f(full);
+        if (f) {
+            std::string line;
+            while (std::getline(f, line)) {
+                if (line.size() > 2 && line[0] == '#' && line[1] == ' ') {
+                    title = line.substr(2);
+                    break;
+                }
+            }
+        }
+        md << "- [" << title << "](/docs/" << file << ")\n";
+    }
+
+    return md.str();
+}
+
+void RequestHandlers::handle_docs(const httplib::Request& req, httplib::Response& res) {
+    if (docs_dir_.empty()) {
+        send_error(res, "Documentation not configured", 404);
+        return;
+    }
+
+    // Extract relative path from URL
+    std::string rel_path;
+    if (req.matches.size() > 1) {
+        rel_path = req.matches[1].str();
+    }
+
+    // URL decode
+    std::string decoded_path;
+    for (size_t i = 0; i < rel_path.size(); ++i) {
+        if (rel_path[i] == '%' && i + 2 < rel_path.size()) {
+            int value;
+            std::istringstream iss(rel_path.substr(i + 1, 2));
+            if (iss >> std::hex >> value) {
+                decoded_path += static_cast<char>(value);
+                i += 2;
+                continue;
+            }
+        }
+        decoded_path += rel_path[i];
+    }
+    rel_path = decoded_path;
+
+    // Security: prevent path traversal
+    if (rel_path.find("..") != std::string::npos) {
+        send_error(res, "Invalid path", 400);
+        return;
+    }
+
+    // Empty path or trailing slash → table of contents
+    if (rel_path.empty()) {
+        res.set_content(generate_docs_toc(), "text/markdown; charset=utf-8");
+        return;
+    }
+
+    fs::path full_path = fs::path(docs_dir_) / rel_path;
+
+    if (!fs::exists(full_path)) {
+        send_error(res, "Document not found: " + rel_path, 404);
+        return;
+    }
+
+    // Directory → list files in that subdirectory as markdown
+    if (fs::is_directory(full_path)) {
+        std::ostringstream md;
+        md << "# " << rel_path << "/\n\n";
+        std::vector<std::string> entries;
+        for (const auto& entry : fs::directory_iterator(full_path)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".md") {
+                entries.push_back(entry.path().filename().string());
+            } else if (entry.is_directory()) {
+                entries.push_back(entry.path().filename().string() + "/");
+            }
+        }
+        std::sort(entries.begin(), entries.end());
+        for (const auto& e : entries) {
+            std::string link_path = rel_path;
+            if (!link_path.empty() && link_path.back() != '/') link_path += '/';
+            link_path += e;
+            md << "- [" << e << "](/docs/" << link_path << ")\n";
+        }
+        res.set_content(md.str(), "text/markdown; charset=utf-8");
+        return;
+    }
+
+    // Serve the file
+    std::ifstream file(full_path, std::ios::binary);
+    if (!file) {
+        send_error(res, "Cannot read file", 500);
+        return;
+    }
+
+    std::ostringstream oss;
+    oss << file.rdbuf();
+
+    // Determine content type
+    std::string ext = full_path.extension().string();
+    std::string content_type = "text/plain; charset=utf-8";
+    if (ext == ".md") {
+        content_type = "text/markdown; charset=utf-8";
+    }
+
+    res.set_content(oss.str(), content_type);
 }
 
 void RequestHandlers::handle_get_preview_settings(const httplib::Request& /*req*/, httplib::Response& res) {

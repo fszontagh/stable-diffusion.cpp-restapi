@@ -35,11 +35,13 @@ public:
      * @param webui_dir Optional webui directory path for serving web UI
      * @param assistant_config Assistant configuration for LLM helper
      * @param config_file_path Path to config.json for persisting settings (optional)
+     * @param docs_dir Optional docs directory path for serving documentation
      */
     RequestHandlers(ModelManager& model_manager, QueueManager& queue_manager,
                     const std::string& output_dir, const std::string& webui_dir = "",
                     const AssistantConfig& assistant_config = AssistantConfig{},
-                    const std::string& config_file_path = "");
+                    const std::string& config_file_path = "",
+                    const std::string& docs_dir = "");
 
     /**
      * Register all routes with the HTTP server
@@ -114,6 +116,10 @@ private:
     void handle_assistant_model_info(const httplib::Request& req, httplib::Response& res);
 #endif
 
+    // Documentation endpoints
+    void handle_docs(const httplib::Request& req, httplib::Response& res);
+    std::string generate_docs_toc();
+
     // Architecture endpoints
     void handle_get_architectures(const httplib::Request& req, httplib::Response& res);
     void handle_detect_architecture(const httplib::Request& req, httplib::Response& res);
@@ -150,13 +156,16 @@ private:
     std::string format_file_size(size_t size);
     size_t calculate_directory_size(const std::string& path);
     std::time_t get_directory_content_mtime(const std::string& path);
+    int count_directory_files(const std::string& path);
     std::string generate_directory_html(const std::string& path, const std::string& url_path,
-                                        const std::string& sort_by = "name", bool sort_asc = true);
+                                        const std::string& sort_by = "name", bool sort_asc = true,
+                                        int page = 1, int per_page = 50);
 
     ModelManager& model_manager_;
     QueueManager& queue_manager_;
     std::string output_dir_;
     std::string webui_dir_;
+    std::string docs_dir_;
     std::unique_ptr<ArchitectureManager> architecture_manager_;
     std::unique_ptr<SettingsManager> settings_manager_;
     std::unique_ptr<ApiRegistry> api_registry_;
