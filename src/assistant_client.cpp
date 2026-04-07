@@ -263,7 +263,7 @@ nlohmann::json AssistantClient::build_tools() const {
                 {"type", "object"},
                 {"required", nlohmann::json::array({"field", "value"})},
                 {"properties", {
-                    {"field", {{"type", "string"}, {"description", "Setting field: prompt, negativePrompt, width, height, steps, cfgScale, distilledGuidance, seed, sampler, scheduler, batchCount, clipSkip, slgScale, vaeTiling, easycache, videoFrames, fps"}}},
+                    {"field", {{"type", "string"}, {"description", "Setting field: prompt, negativePrompt, width, height, steps, cfgScale, distilledGuidance, seed, sampler, scheduler, batchCount, clipSkip, slgScale, vaeTiling, cacheMode, videoFrames, fps"}}},
                     {"value", {{"type", "string"}, {"description", "The new value for the setting (use string representation for numbers/booleans)"}}}
                 }}
             }}

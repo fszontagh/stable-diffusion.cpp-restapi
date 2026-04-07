@@ -91,11 +91,18 @@ struct Txt2ImgParams {
     int vae_tile_size_y = 0;
     float vae_tile_overlap = 0.5f;
 
-    // EasyCache for DiT models (optional)
-    bool easycache_enabled = false;
+    // Cache acceleration for DiT models (optional)
+    std::string cache_mode = "";                    // "", "easycache", "spectrum"
     float easycache_threshold = 0.2f;
     float easycache_start = 0.15f;
     float easycache_end = 0.95f;
+    float spectrum_w = 0.5f;
+    int spectrum_m = 5;
+    float spectrum_lam = 0.5f;
+    int spectrum_window_size = 3;
+    float spectrum_flex_window = 0.5f;
+    int spectrum_warmup_steps = 2;
+    float spectrum_stop_percent = 0.8f;
 
     // PhotoMaker (optional - requires PhotoMaker model loaded)
     std::vector<std::string> pm_id_images_base64;  // Array of base64-encoded ID images
@@ -174,11 +181,18 @@ struct Img2ImgParams {
     int vae_tile_size_y = 0;
     float vae_tile_overlap = 0.5f;
 
-    // EasyCache for DiT models (optional)
-    bool easycache_enabled = false;
+    // Cache acceleration for DiT models (optional)
+    std::string cache_mode = "";                    // "", "easycache", "spectrum"
     float easycache_threshold = 0.2f;
     float easycache_start = 0.15f;
     float easycache_end = 0.95f;
+    float spectrum_w = 0.5f;
+    int spectrum_m = 5;
+    float spectrum_lam = 0.5f;
+    int spectrum_window_size = 3;
+    float spectrum_flex_window = 0.5f;
+    int spectrum_warmup_steps = 2;
+    float spectrum_stop_percent = 0.8f;
 
     // PhotoMaker (optional - requires PhotoMaker model loaded)
     std::vector<std::string> pm_id_images_base64;  // Array of base64-encoded ID images
@@ -278,11 +292,18 @@ struct Txt2VidParams {
     int vae_tile_size_y = 0;
     float vae_tile_overlap = 0.5f;
 
-    // EasyCache for DiT models (optional)
-    bool easycache_enabled = false;
+    // Cache acceleration for DiT models (optional)
+    std::string cache_mode = "";                    // "", "easycache", "spectrum"
     float easycache_threshold = 0.2f;
     float easycache_start = 0.15f;
     float easycache_end = 0.95f;
+    float spectrum_w = 0.5f;
+    int spectrum_m = 5;
+    float spectrum_lam = 0.5f;
+    int spectrum_window_size = 3;
+    float spectrum_flex_window = 0.5f;
+    int spectrum_warmup_steps = 2;
+    float spectrum_stop_percent = 0.8f;
 
     static Txt2VidParams from_json(const nlohmann::json& j);
     nlohmann::json to_json() const;

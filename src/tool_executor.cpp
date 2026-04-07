@@ -672,7 +672,8 @@ nlohmann::json ToolExecutor::execute_get_quantization_types() {
         {{"id", "iq1_s"}, {"name", "IQ1_S (1-bit importance)"}, {"bits", 1}},
         {{"id", "iq1_m"}, {"name", "IQ1_M (1-bit importance)"}, {"bits", 1}},
         {{"id", "tq1_0"}, {"name", "TQ1_0 (ternary 1-bit)"}, {"bits", 1}},
-        {{"id", "tq2_0"}, {"name", "TQ2_0 (ternary 2-bit)"}, {"bits", 2}}
+        {{"id", "tq2_0"}, {"name", "TQ2_0 (ternary 2-bit)"}, {"bits", 2}},
+        {{"id", "nvfp4"}, {"name", "NVFP4 (4-bit NVIDIA float)"}, {"bits", 4}}
     });
 
     return {

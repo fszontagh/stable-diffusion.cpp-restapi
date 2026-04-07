@@ -617,11 +617,21 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     p.vae_tile_size_y = parse_int(j, "vae_tile_size_y", 0);
     p.vae_tile_overlap = parse_float(j, "vae_tile_overlap", 0.5f);
 
-    // EasyCache support for DiT models
-    p.easycache_enabled = parse_bool(j, "easycache", false);
+    // Cache acceleration for DiT models
+    p.cache_mode = parse_string(j, "cache_mode", "");
+    if (p.cache_mode.empty() && parse_bool(j, "easycache", false)) {
+        p.cache_mode = "easycache";
+    }
     p.easycache_threshold = parse_float(j, "easycache_threshold", 0.2f);
     p.easycache_start = parse_float(j, "easycache_start", 0.15f);
     p.easycache_end = parse_float(j, "easycache_end", 0.95f);
+    p.spectrum_w = parse_float(j, "spectrum_w", 0.5f);
+    p.spectrum_m = parse_int(j, "spectrum_m", 5);
+    p.spectrum_lam = parse_float(j, "spectrum_lam", 0.5f);
+    p.spectrum_window_size = parse_int(j, "spectrum_window_size", 3);
+    p.spectrum_flex_window = parse_float(j, "spectrum_flex_window", 0.5f);
+    p.spectrum_warmup_steps = parse_int(j, "spectrum_warmup_steps", 2);
+    p.spectrum_stop_percent = parse_float(j, "spectrum_stop_percent", 0.8f);
 
     // PhotoMaker parameters
     p.pm_id_images_base64 = parse_string_array(j, "pm_id_images");
@@ -688,12 +698,22 @@ nlohmann::json Txt2ImgParams::to_json() const {
         j["vae_tile_overlap"] = vae_tile_overlap;
     }
 
-    // Include easycache if enabled
-    if (easycache_enabled) {
-        j["easycache"] = true;
-        j["easycache_threshold"] = easycache_threshold;
-        j["easycache_start"] = easycache_start;
-        j["easycache_end"] = easycache_end;
+    // Cache acceleration
+    if (!cache_mode.empty()) {
+        j["cache_mode"] = cache_mode;
+        if (cache_mode == "easycache") {
+            j["easycache_threshold"] = easycache_threshold;
+            j["easycache_start"] = easycache_start;
+            j["easycache_end"] = easycache_end;
+        } else if (cache_mode == "spectrum") {
+            j["spectrum_w"] = spectrum_w;
+            j["spectrum_m"] = spectrum_m;
+            j["spectrum_lam"] = spectrum_lam;
+            j["spectrum_window_size"] = spectrum_window_size;
+            j["spectrum_flex_window"] = spectrum_flex_window;
+            j["spectrum_warmup_steps"] = spectrum_warmup_steps;
+            j["spectrum_stop_percent"] = spectrum_stop_percent;
+        }
     }
 
     // PhotoMaker
@@ -796,11 +816,21 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     p.vae_tile_size_y = parse_int(j, "vae_tile_size_y", 0);
     p.vae_tile_overlap = parse_float(j, "vae_tile_overlap", 0.5f);
 
-    // EasyCache support for DiT models
-    p.easycache_enabled = parse_bool(j, "easycache", false);
+    // Cache acceleration for DiT models
+    p.cache_mode = parse_string(j, "cache_mode", "");
+    if (p.cache_mode.empty() && parse_bool(j, "easycache", false)) {
+        p.cache_mode = "easycache";
+    }
     p.easycache_threshold = parse_float(j, "easycache_threshold", 0.2f);
     p.easycache_start = parse_float(j, "easycache_start", 0.15f);
     p.easycache_end = parse_float(j, "easycache_end", 0.95f);
+    p.spectrum_w = parse_float(j, "spectrum_w", 0.5f);
+    p.spectrum_m = parse_int(j, "spectrum_m", 5);
+    p.spectrum_lam = parse_float(j, "spectrum_lam", 0.5f);
+    p.spectrum_window_size = parse_int(j, "spectrum_window_size", 3);
+    p.spectrum_flex_window = parse_float(j, "spectrum_flex_window", 0.5f);
+    p.spectrum_warmup_steps = parse_int(j, "spectrum_warmup_steps", 2);
+    p.spectrum_stop_percent = parse_float(j, "spectrum_stop_percent", 0.8f);
 
     // PhotoMaker parameters
     p.pm_id_images_base64 = parse_string_array(j, "pm_id_images");
@@ -874,12 +904,22 @@ nlohmann::json Img2ImgParams::to_json() const {
         j["vae_tile_overlap"] = vae_tile_overlap;
     }
 
-    // Include easycache if enabled
-    if (easycache_enabled) {
-        j["easycache"] = true;
-        j["easycache_threshold"] = easycache_threshold;
-        j["easycache_start"] = easycache_start;
-        j["easycache_end"] = easycache_end;
+    // Cache acceleration
+    if (!cache_mode.empty()) {
+        j["cache_mode"] = cache_mode;
+        if (cache_mode == "easycache") {
+            j["easycache_threshold"] = easycache_threshold;
+            j["easycache_start"] = easycache_start;
+            j["easycache_end"] = easycache_end;
+        } else if (cache_mode == "spectrum") {
+            j["spectrum_w"] = spectrum_w;
+            j["spectrum_m"] = spectrum_m;
+            j["spectrum_lam"] = spectrum_lam;
+            j["spectrum_window_size"] = spectrum_window_size;
+            j["spectrum_flex_window"] = spectrum_flex_window;
+            j["spectrum_warmup_steps"] = spectrum_warmup_steps;
+            j["spectrum_stop_percent"] = spectrum_stop_percent;
+        }
     }
 
     // PhotoMaker
@@ -980,11 +1020,21 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     p.moe_boundary = parse_float(j, "moe_boundary", 0.875f);
     p.vace_strength = parse_float(j, "vace_strength", 1.0f);
 
-    // EasyCache support for DiT models
-    p.easycache_enabled = parse_bool(j, "easycache", false);
+    // Cache acceleration for DiT models
+    p.cache_mode = parse_string(j, "cache_mode", "");
+    if (p.cache_mode.empty() && parse_bool(j, "easycache", false)) {
+        p.cache_mode = "easycache";
+    }
     p.easycache_threshold = parse_float(j, "easycache_threshold", 0.2f);
     p.easycache_start = parse_float(j, "easycache_start", 0.15f);
     p.easycache_end = parse_float(j, "easycache_end", 0.95f);
+    p.spectrum_w = parse_float(j, "spectrum_w", 0.5f);
+    p.spectrum_m = parse_int(j, "spectrum_m", 5);
+    p.spectrum_lam = parse_float(j, "spectrum_lam", 0.5f);
+    p.spectrum_window_size = parse_int(j, "spectrum_window_size", 3);
+    p.spectrum_flex_window = parse_float(j, "spectrum_flex_window", 0.5f);
+    p.spectrum_warmup_steps = parse_int(j, "spectrum_warmup_steps", 2);
+    p.spectrum_stop_percent = parse_float(j, "spectrum_stop_percent", 0.8f);
 
     // VAE tiling for large videos
     p.vae_tiling = parse_bool(j, "vae_tiling", false);
@@ -1049,12 +1099,22 @@ nlohmann::json Txt2VidParams::to_json() const {
         j["vace_strength"] = vace_strength;
     }
 
-    // Include easycache if enabled
-    if (easycache_enabled) {
-        j["easycache"] = true;
-        j["easycache_threshold"] = easycache_threshold;
-        j["easycache_start"] = easycache_start;
-        j["easycache_end"] = easycache_end;
+    // Cache acceleration
+    if (!cache_mode.empty()) {
+        j["cache_mode"] = cache_mode;
+        if (cache_mode == "easycache") {
+            j["easycache_threshold"] = easycache_threshold;
+            j["easycache_start"] = easycache_start;
+            j["easycache_end"] = easycache_end;
+        } else if (cache_mode == "spectrum") {
+            j["spectrum_w"] = spectrum_w;
+            j["spectrum_m"] = spectrum_m;
+            j["spectrum_lam"] = spectrum_lam;
+            j["spectrum_window_size"] = spectrum_window_size;
+            j["spectrum_flex_window"] = spectrum_flex_window;
+            j["spectrum_warmup_steps"] = spectrum_warmup_steps;
+            j["spectrum_stop_percent"] = spectrum_stop_percent;
+        }
     }
 
     // VAE tiling
@@ -1302,12 +1362,21 @@ std::vector<std::string> SDWrapper::generate_txt2img(
         gen_params.control_image.data = nullptr;
     }
 
-    // Cache support for DiT models (EasyCache, UCache, etc.)
-    if (params.easycache_enabled) {
+    // Cache acceleration for DiT models
+    if (params.cache_mode == "easycache") {
         gen_params.cache.mode = SD_CACHE_EASYCACHE;
         gen_params.cache.reuse_threshold = params.easycache_threshold;
         gen_params.cache.start_percent = params.easycache_start;
         gen_params.cache.end_percent = params.easycache_end;
+    } else if (params.cache_mode == "spectrum") {
+        gen_params.cache.mode = SD_CACHE_SPECTRUM;
+        gen_params.cache.spectrum_w = params.spectrum_w;
+        gen_params.cache.spectrum_m = params.spectrum_m;
+        gen_params.cache.spectrum_lam = params.spectrum_lam;
+        gen_params.cache.spectrum_window_size = params.spectrum_window_size;
+        gen_params.cache.spectrum_flex_window = params.spectrum_flex_window;
+        gen_params.cache.spectrum_warmup_steps = params.spectrum_warmup_steps;
+        gen_params.cache.spectrum_stop_percent = params.spectrum_stop_percent;
     }
 
     // VAE tiling support
@@ -1613,12 +1682,21 @@ std::vector<std::string> SDWrapper::generate_img2img(
         gen_params.control_image.data = nullptr;
     }
 
-    // Cache support for DiT models (EasyCache, UCache, etc.)
-    if (params.easycache_enabled) {
+    // Cache acceleration for DiT models
+    if (params.cache_mode == "easycache") {
         gen_params.cache.mode = SD_CACHE_EASYCACHE;
         gen_params.cache.reuse_threshold = params.easycache_threshold;
         gen_params.cache.start_percent = params.easycache_start;
         gen_params.cache.end_percent = params.easycache_end;
+    } else if (params.cache_mode == "spectrum") {
+        gen_params.cache.mode = SD_CACHE_SPECTRUM;
+        gen_params.cache.spectrum_w = params.spectrum_w;
+        gen_params.cache.spectrum_m = params.spectrum_m;
+        gen_params.cache.spectrum_lam = params.spectrum_lam;
+        gen_params.cache.spectrum_window_size = params.spectrum_window_size;
+        gen_params.cache.spectrum_flex_window = params.spectrum_flex_window;
+        gen_params.cache.spectrum_warmup_steps = params.spectrum_warmup_steps;
+        gen_params.cache.spectrum_stop_percent = params.spectrum_stop_percent;
     }
 
     // VAE tiling support
@@ -1830,12 +1908,21 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
         vid_params.control_frames_size = 0;
     }
 
-    // Cache support for DiT models (EasyCache, UCache, etc.)
-    if (params.easycache_enabled) {
+    // Cache acceleration for DiT models
+    if (params.cache_mode == "easycache") {
         vid_params.cache.mode = SD_CACHE_EASYCACHE;
         vid_params.cache.reuse_threshold = params.easycache_threshold;
         vid_params.cache.start_percent = params.easycache_start;
         vid_params.cache.end_percent = params.easycache_end;
+    } else if (params.cache_mode == "spectrum") {
+        vid_params.cache.mode = SD_CACHE_SPECTRUM;
+        vid_params.cache.spectrum_w = params.spectrum_w;
+        vid_params.cache.spectrum_m = params.spectrum_m;
+        vid_params.cache.spectrum_lam = params.spectrum_lam;
+        vid_params.cache.spectrum_window_size = params.spectrum_window_size;
+        vid_params.cache.spectrum_flex_window = params.spectrum_flex_window;
+        vid_params.cache.spectrum_warmup_steps = params.spectrum_warmup_steps;
+        vid_params.cache.spectrum_stop_percent = params.spectrum_stop_percent;
     }
 
     // VAE tiling for large videos

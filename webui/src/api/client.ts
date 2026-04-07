@@ -236,10 +236,18 @@ export interface GenerationParams {
   vae_tile_size_x?: number
   vae_tile_size_y?: number
   vae_tile_overlap?: number
-  easycache?: boolean
+  cache_mode?: string              // "easycache", "spectrum", or empty
+  easycache?: boolean              // deprecated, use cache_mode
   easycache_threshold?: number
   easycache_start?: number
   easycache_end?: number
+  spectrum_w?: number
+  spectrum_m?: number
+  spectrum_lam?: number
+  spectrum_window_size?: number
+  spectrum_flex_window?: number
+  spectrum_warmup_steps?: number
+  spectrum_stop_percent?: number
   pm_id_images?: string[]
   pm_id_embed_path?: string
   pm_style_strength?: number

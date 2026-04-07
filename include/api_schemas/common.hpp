@@ -23,7 +23,7 @@ inline const std::vector<std::string> MODEL_TYPE_VALUES = {
 
 inline const std::vector<std::string> WEIGHT_TYPE_VALUES = {
     "f32", "f16", "bf16", "q8_0", "q5_0", "q5_1", "q4_0", "q4_1",
-    "q4_k", "q5_k", "q6_k", "q8_k", "q3_k", "q2_k"
+    "q4_k", "q5_k", "q6_k", "q8_k", "q3_k", "q2_k", "nvfp4"
 };
 
 inline const std::vector<std::string> RNG_TYPE_VALUES = {

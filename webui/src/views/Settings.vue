@@ -39,7 +39,7 @@ const genScheduler = ref('discrete')
 const genBatchCount = ref(1)
 const genClipSkip = ref(-1)
 const genSlgScale = ref(0.0)
-const genEasycache = ref(false)
+const genCacheMode = ref('')
 const genEasycacheThreshold = ref(0.2)
 const genVaeTiling = ref(false)
 const genVaeTileSizeX = ref(0)
@@ -195,7 +195,7 @@ function loadGenerationModeValues(mode: 'txt2img' | 'img2img' | 'txt2vid') {
   genBatchCount.value = (prefs.batchCount as number) || 1
   genClipSkip.value = (prefs.clipSkip as number) ?? -1
   genSlgScale.value = (prefs.slgScale as number) || 0.0
-  genEasycache.value = (prefs.easycache as boolean) || false
+  genCacheMode.value = (prefs.cacheMode as string) || (prefs.easycache ? 'easycache' : '')
   genEasycacheThreshold.value = (prefs.easycacheThreshold as number) || 0.2
   genVaeTiling.value = (prefs.vaeTiling as boolean) || false
   genVaeTileSizeX.value = (prefs.vaeTileSizeX as number) || 0
@@ -225,7 +225,7 @@ function getCurrentGenerationSettings() {
     batchCount: genBatchCount.value,
     clipSkip: genClipSkip.value,
     slgScale: genSlgScale.value,
-    easycache: genEasycache.value,
+    cacheMode: genCacheMode.value,
     easycacheThreshold: genEasycacheThreshold.value,
     vaeTiling: genVaeTiling.value,
     vaeTileSizeX: genVaeTileSizeX.value,
@@ -267,7 +267,7 @@ watch(generationMode, (newMode) => {
 watch([
   genWidth, genHeight, genSteps, genCfgScale, genDistilledGuidance, genSeed,
   genSampler, genScheduler, genBatchCount, genClipSkip, genSlgScale,
-  genEasycache, genEasycacheThreshold, genVaeTiling, genVaeTileSizeX,
+  genCacheMode, genEasycacheThreshold, genVaeTiling, genVaeTileSizeX,
   genVaeTileSizeY, genVaeTileOverlap, genStrength, genControlStrength,
   genVideoFrames, genFps, genFlowShift
 ], debouncedSaveGeneration)
@@ -285,7 +285,7 @@ async function resetGenerationDefaults() {
   genBatchCount.value = 1
   genClipSkip.value = -1
   genSlgScale.value = 0.0
-  genEasycache.value = false
+  genCacheMode.value = ''
   genEasycacheThreshold.value = 0.2
   genVaeTiling.value = false
   genVaeTileSizeX.value = 0
@@ -643,14 +643,17 @@ loadSettings()
                   :precision="1"
                 />
 
-                <SwitchField
-                  v-model="genEasycache"
-                  label="EasyCache"
-                  description="Enable caching for faster DiT model generation"
-                />
+                <div class="setting-row">
+                  <label class="setting-label">Cache Acceleration</label>
+                  <select v-model="genCacheMode" class="setting-select">
+                    <option value="">Disabled</option>
+                    <option value="easycache">EasyCache</option>
+                    <option value="spectrum">Spectrum</option>
+                  </select>
+                </div>
 
                 <SliderField
-                  v-if="genEasycache"
+                  v-if="genCacheMode === 'easycache'"
                   v-model="genEasycacheThreshold"
                   label="EasyCache Threshold"
                   description="Cache activation threshold (0-1)"

@@ -119,7 +119,7 @@ Available tools/actions:
 ## Modification Tools
 - set_setting: Modify a GENERATION PARAMETER only. NOT for loading models/components!
   Valid fields: prompt, negativePrompt, width, height, steps, cfgScale, distilledGuidance,
-  seed, sampler, scheduler, batchCount, clipSkip, slgScale, vaeTiling, easycache, videoFrames, fps
+  seed, sampler, scheduler, batchCount, clipSkip, slgScale, vaeTiling, cacheMode, videoFrames, fps
   Example: { "type": "set_setting", "parameters": { "field": "steps", "value": 20 } }
 - generate: Add a generation job to the queue. Uses current settings unless overridden.
   Parameters: type ("txt2img"|"img2img"|"txt2vid"), prompt (optional, uses current if not set),

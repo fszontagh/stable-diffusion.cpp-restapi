@@ -171,7 +171,7 @@ else()
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        5792c66
+            GIT_TAG        87ecb95
             GIT_SHALLOW    TRUE
         )
     endif()
@@ -378,9 +378,25 @@ else()
     message(STATUS "Web UI: disabled")
 endif()
 
+#
+# Documentation files (copy to build dir for serving)
+#
+set(SDCPP_DOCS_PATH "${CMAKE_BINARY_DIR}/docs")
+add_custom_target(docs-copy ALL
+    COMMENT "Copying documentation files..."
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/docs ${SDCPP_DOCS_PATH}
+)
+target_compile_definitions(sdcpp-restapi PRIVATE
+    SDCPP_DOCS_DEFAULT_PATH="${SDCPP_DOCS_PATH}"
+)
+add_dependencies(sdcpp-restapi docs-copy)
+
 # Installation
 install(TARGETS sdcpp-restapi RUNTIME DESTINATION bin)
 install(FILES config.example.json DESTINATION etc/sdcpp-restapi OPTIONAL)
+install(DIRECTORY ${SDCPP_DOCS_PATH}/
+        DESTINATION share/sdcpp-restapi/docs
+        OPTIONAL)
 
 # Print configuration summary
 message(STATUS "")

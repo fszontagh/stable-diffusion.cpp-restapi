@@ -934,7 +934,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     'distilled_guidance', 'distilledGuidance', 'seed',
     'sampler', 'scheduler', 'batch_count', 'batchCount',
     'clip_skip', 'clipSkip', 'slg_scale', 'slgScale',
-    'vae_tiling', 'vaeTiling', 'easycache',
+    'vae_tiling', 'vaeTiling', 'cache_mode', 'cacheMode',
     'video_frames', 'videoFrames', 'fps'
   ])
 
@@ -1858,7 +1858,8 @@ export const useAssistantStore = defineStore('assistant', () => {
     slgScale: 'slgScale',
     vae_tiling: 'vaeTiling',
     vaeTiling: 'vaeTiling',
-    easycache: 'easycache',
+    cache_mode: 'cacheMode',
+    cacheMode: 'cacheMode',
     video_frames: 'videoFrames',
     videoFrames: 'videoFrames',
     fps: 'fps'
