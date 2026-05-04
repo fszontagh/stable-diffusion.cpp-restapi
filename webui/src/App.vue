@@ -75,8 +75,10 @@ onUnmounted(() => {
   <!-- API Offline Overlay - renders above everything when disconnected -->
   <ApiOfflineOverlay />
   
-  <!-- Initial Loading Overlay -->
-  <div v-if="store.isInitialLoading" class="initial-loading">
+  <!-- Initial Loading Overlay — only meaningful when authenticated and
+       startPolling() is actively fetching; on the login page polling hasn't
+       started yet, so showing this would just hide the login form forever. -->
+  <div v-if="store.isInitialLoading && auth.isAuthenticated" class="initial-loading">
     <div class="loading-content">
       <div class="spinner spinner-lg"></div>
       <p class="loading-text">Loading application...</p>
