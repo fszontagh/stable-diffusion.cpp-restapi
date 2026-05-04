@@ -424,6 +424,15 @@ int main(int argc, char* argv[]) {
         std::cout << "WebSocket server disabled at build time" << std::endl;
 #endif
 
+        // If a previous run persisted a loaded-model identity, try to
+        // re-load that model now — before the queue worker picks up jobs
+        // from the persisted queue state. Without this, queued jobs fail
+        // immediately with "No model loaded" after any server restart.
+        // Best-effort: if reload fails (model file moved/deleted, OOM, etc.)
+        // the queue worker still starts and surfaces the failure per-job.
+        std::cout << "Checking for persisted model state..." << std::endl;
+        model_manager.try_auto_reload_from_disk();
+
         // Start the queue worker
         std::cout << "Starting queue worker..." << std::endl;
         queue_manager.start();
