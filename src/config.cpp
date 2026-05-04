@@ -128,6 +128,26 @@ void from_json(const nlohmann::json& j, AssistantConfig& c) {
     c.proactive_suggestions = j.value("proactive_suggestions", true);
 }
 
+// AuthConfig JSON serialization
+void to_json(nlohmann::json& j, const AuthConfig& c) {
+    j = nlohmann::json{
+        {"enabled", c.enabled},
+        {"username", c.username},
+        // NOTE: password is intentionally serialized so a Config round-trip is
+        // lossless, but callers that expose Config to clients (e.g. the
+        // settings endpoint) MUST scrub or omit `auth.password` before sending.
+        {"password", c.password},
+        {"token_ttl_minutes", c.token_ttl_minutes}
+    };
+}
+
+void from_json(const nlohmann::json& j, AuthConfig& c) {
+    c.enabled = j.value("enabled", true);
+    c.username = j.value("username", "");
+    c.password = j.value("password", "");
+    c.token_ttl_minutes = j.value("token_ttl_minutes", 1440);
+}
+
 // RecycleBinConfig JSON serialization
 void to_json(nlohmann::json& j, const RecycleBinConfig& c) {
     j = nlohmann::json{
@@ -149,7 +169,8 @@ void to_json(nlohmann::json& j, const Config& c) {
         {"sd_defaults", c.sd_defaults},
         {"preview", c.preview},
         {"assistant", c.assistant},
-        {"recycle_bin", c.recycle_bin}
+        {"recycle_bin", c.recycle_bin},
+        {"auth", c.auth}
     };
 }
 
@@ -172,6 +193,12 @@ void from_json(const nlohmann::json& j, Config& c) {
     if (j.contains("recycle_bin")) {
         c.recycle_bin = j["recycle_bin"].get<RecycleBinConfig>();
     }
+    if (j.contains("auth")) {
+        c.auth = j["auth"].get<AuthConfig>();
+    }
+    // NOTE: env-var fallback (SDCPP_AUTH_USERNAME / SDCPP_AUTH_PASSWORD) is
+    // applied by AuthManager's constructor, not here, so the Config object
+    // continues to reflect what's literally in the JSON file.
 }
 
 Config Config::load(const std::string& path) {

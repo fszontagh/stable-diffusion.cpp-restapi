@@ -18,6 +18,7 @@
 #include "queue_manager.hpp"
 #include "request_handlers.hpp"
 #include "memory_utils.hpp"
+#include "auth_manager.hpp"
 #ifdef SDCPP_WEBSOCKET_ENABLED
 #include "websocket_server.hpp"
 #endif
@@ -247,6 +248,12 @@ int main(int argc, char* argv[]) {
         }
 #endif
 
+        // Initialize Auth Manager (must be before request handlers / MCP / WS).
+        // This will throw if auth.enabled is true and no credentials are
+        // available from either config or environment variables.
+        std::cout << "Initializing auth manager..." << std::endl;
+        sdcpp::AuthManager auth_manager(config);
+
         // Initialize Model Manager
         std::cout << "Initializing model manager..." << std::endl;
         sdcpp::ModelManager model_manager(config);
@@ -355,13 +362,15 @@ int main(int argc, char* argv[]) {
 
         // Initialize Request Handlers and register routes
         std::cout << "Registering API routes..." << std::endl;
-        sdcpp::RequestHandlers handlers(model_manager, queue_manager, config.paths.output, webui_path, config.assistant, config_path, docs_path);
+        sdcpp::RequestHandlers handlers(model_manager, queue_manager, auth_manager,
+                                        config.paths.output, webui_path, config.assistant,
+                                        config_path, docs_path);
         handlers.register_routes(server);
 
         // Initialize MCP server (if enabled at build time)
 #ifdef SDCPP_MCP_ENABLED
         std::cout << "Initializing MCP server..." << std::endl;
-        sdcpp::McpServer mcp_server(server, model_manager, queue_manager);
+        sdcpp::McpServer mcp_server(server, model_manager, queue_manager, auth_manager);
         mcp_server.register_endpoint();
 #else
         std::cout << "MCP server disabled at build time" << std::endl;
@@ -406,7 +415,7 @@ int main(int argc, char* argv[]) {
         // Initialize WebSocket server (if enabled at build time)
 #ifdef SDCPP_WEBSOCKET_ENABLED
         std::cout << "Initializing WebSocket server..." << std::endl;
-        auto ws_server = std::make_unique<sdcpp::WebSocketServer>();
+        auto ws_server = std::make_unique<sdcpp::WebSocketServer>(&auth_manager);
         sdcpp::set_websocket_server(ws_server.get());
         g_ws_server = ws_server.get();
 
@@ -449,6 +458,7 @@ int main(int argc, char* argv[]) {
         if (!webui_path.empty()) {
             std::cout << "Web UI:       http://" << config.server.host << ":" << config.server.port << "/ui/" << std::endl;
         }
+        std::cout << "Auth:         " << (auth_manager.enabled() ? "ENABLED (POST /auth/login to obtain bearer token)" : "DISABLED") << std::endl;
         std::cout << "Press Ctrl+C to stop (twice to force quit)\n" << std::endl;
 
         if (!server.listen(config.server.host, config.server.port)) {

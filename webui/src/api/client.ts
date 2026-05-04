@@ -596,12 +596,21 @@ class ApiClient {
       }
     }
 
-    const options: RequestInit = {
-      method,
-      headers: {
-        'Content-Type': 'application/json'
-      }
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
     }
+
+    // Attach bearer token if the auth store has one. We reach into
+    // localStorage directly here to avoid importing Pinia into the client
+    // module (which would cause circular imports through the store).
+    try {
+      const token = localStorage.getItem('sdcpp_auth_token')
+      if (token) headers['Authorization'] = `Bearer ${token}`
+    } catch {
+      // localStorage unavailable (private mode) — proceed unauthenticated
+    }
+
+    const options: RequestInit = { method, headers }
 
     if (data) {
       options.body = JSON.stringify(data)
@@ -615,19 +624,39 @@ class ApiClient {
 
         if (!response.ok) {
           const error = new ApiError(json.error || 'Request failed', response.status)
-          
+
+          // 401: token rejected (server restart wiped tokens, or expired
+          // server-side, or never valid). Clear local auth state and bounce
+          // to /login. We avoid importing the Pinia store / vue-router here
+          // to keep this module dependency-light; localStorage write +
+          // window.location is sufficient and works regardless of route
+          // history mode. Skip the redirect for the login endpoint itself —
+          // a 401 there is a wrong-password indication, not a session expiry.
+          if (response.status === 401 && !endpoint.startsWith('/auth/')) {
+            try {
+              localStorage.removeItem('sdcpp_auth_token')
+              localStorage.removeItem('sdcpp_auth_expires_at')
+              localStorage.removeItem('sdcpp_auth_username')
+            } catch { /* private mode — ignore */ }
+            if (typeof window !== 'undefined' &&
+                !window.location.hash.startsWith('#/login')) {
+              const dest = encodeURIComponent(window.location.hash.replace(/^#/, '') || '/')
+              window.location.hash = `#/login?redirect=${dest}`
+            }
+          }
+
           // Add error breadcrumb
           if (typeof window !== 'undefined') {
             try {
-              sentryAddBreadcrumb('api-error', `${method} ${endpoint} failed`, { 
+              sentryAddBreadcrumb('api-error', `${method} ${endpoint} failed`, {
                 status: response.status,
-                error: json.error 
+                error: json.error
               })
             } catch (e) {
               // Sentry not available, ignore
             }
           }
-          
+
           throw error
         }
 

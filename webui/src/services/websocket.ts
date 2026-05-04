@@ -184,9 +184,17 @@ class WebSocketService {
       return
     }
 
-    // Build WebSocket URL using same host:port as the page, with /ws path
+    // Build WebSocket URL using same host:port as the page, with /ws path.
+    // Append ?token=<bearer> if the user is authenticated — browsers can't
+    // set Authorization headers on WS handshakes, so the server accepts the
+    // token via query string instead. (See websocket_server.cpp handshake.)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    this.url = `${protocol}//${window.location.host}/ws`
+    let wsUrl = `${protocol}//${window.location.host}/ws`
+    try {
+      const token = localStorage.getItem('sdcpp_auth_token')
+      if (token) wsUrl += `?token=${encodeURIComponent(token)}`
+    } catch { /* private mode — connect without; server may close 4401 */ }
+    this.url = wsUrl
 
     this.updateState('connecting')
     console.log(`[WebSocket] Connecting to ${this.url}...`)

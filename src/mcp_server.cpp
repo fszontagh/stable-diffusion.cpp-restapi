@@ -2,9 +2,11 @@
 #include "model_manager.hpp"
 #include "queue_manager.hpp"
 #include "memory_utils.hpp"
+#include "auth_manager.hpp"
 
 #include <iostream>
 #include <fstream>
+#include <optional>
 #include <set>
 
 namespace sdcpp {
@@ -13,8 +15,10 @@ using json = nlohmann::json;
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
-McpServer::McpServer(httplib::Server& server, ModelManager& model_manager, QueueManager& queue_manager)
-    : server_(server), model_manager_(model_manager), queue_manager_(queue_manager) {}
+McpServer::McpServer(httplib::Server& server, ModelManager& model_manager, QueueManager& queue_manager,
+                     AuthManager& auth_manager)
+    : server_(server), model_manager_(model_manager), queue_manager_(queue_manager),
+      auth_manager_(auth_manager) {}
 
 // ─── Endpoint Registration ───────────────────────────────────────────────────
 
@@ -86,6 +90,26 @@ json McpServer::rewrite_job_outputs(const json& job_json) const {
 
 void McpServer::handle_request(const httplib::Request& req, httplib::Response& res) {
     try {
+        // Defense in depth: the global pre-routing middleware already enforces
+        // auth on /mcp, but keep an explicit check here so this method works
+        // correctly even if the middleware is bypassed (e.g. in tests).
+        if (auth_manager_.enabled()) {
+            std::string auth_header = req.get_header_value("Authorization");
+            const std::string bearer_prefix = "Bearer ";
+            std::optional<std::string> user;
+            if (auth_header.size() > bearer_prefix.size() &&
+                auth_header.compare(0, bearer_prefix.size(), bearer_prefix) == 0) {
+                user = auth_manager_.verify_token(auth_header.substr(bearer_prefix.size()));
+            }
+            if (!user.has_value()) {
+                res.status = 401;
+                res.set_header("WWW-Authenticate", "Bearer realm=\"sdcpp-restapi\"");
+                res.set_content(make_error(nullptr, -32001,
+                    "Unauthorized: bearer token required").dump(), "application/json");
+                return;
+            }
+        }
+
         json body;
         try {
             body = json::parse(req.body);

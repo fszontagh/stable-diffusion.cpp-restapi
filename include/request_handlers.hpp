@@ -21,6 +21,7 @@ namespace sdcpp {
 // Forward declarations
 class ModelManager;
 class QueueManager;
+class AuthManager;
 
 /**
  * Request Handlers - implements HTTP API endpoints
@@ -31,6 +32,7 @@ public:
      * Constructor
      * @param model_manager Reference to model manager
      * @param queue_manager Reference to queue manager
+     * @param auth_manager Reference to auth manager (used by login/logout + middleware)
      * @param output_dir Output directory path for file browser
      * @param webui_dir Optional webui directory path for serving web UI
      * @param assistant_config Assistant configuration for LLM helper
@@ -38,6 +40,7 @@ public:
      * @param docs_dir Optional docs directory path for serving documentation
      */
     RequestHandlers(ModelManager& model_manager, QueueManager& queue_manager,
+                    AuthManager& auth_manager,
                     const std::string& output_dir, const std::string& webui_dir = "",
                     const AssistantConfig& assistant_config = AssistantConfig{},
                     const std::string& config_file_path = "",
@@ -83,6 +86,10 @@ private:
 
     // Job preview endpoint (serves in-memory preview JPEG)
     void handle_get_job_preview(const httplib::Request& req, httplib::Response& res);
+
+    // Authentication endpoints
+    void handle_auth_login(const httplib::Request& req, httplib::Response& res);
+    void handle_auth_logout(const httplib::Request& req, httplib::Response& res);
 
     // Health endpoint
     void handle_health(const httplib::Request& req, httplib::Response& res);
@@ -163,6 +170,7 @@ private:
 
     ModelManager& model_manager_;
     QueueManager& queue_manager_;
+    AuthManager& auth_manager_;
     std::string output_dir_;
     std::string webui_dir_;
     std::string docs_dir_;

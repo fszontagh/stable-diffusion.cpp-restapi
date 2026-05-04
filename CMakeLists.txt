@@ -273,6 +273,7 @@ set(SDCPP_SOURCES
     src/main.cpp
     src/config.cpp
     src/utils.cpp
+    src/auth_manager.cpp
     src/model_manager.cpp
     src/queue_manager.cpp
     src/sd_wrapper.cpp

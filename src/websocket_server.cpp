@@ -5,8 +5,10 @@
 #include <sstream>
 #include <ctime>
 #include <algorithm>
+#include <optional>
 
 #include "httplib_compat.h"
+#include "auth_manager.hpp"
 
 namespace sdcpp {
 
@@ -17,6 +19,7 @@ struct ClientConnection {
     size_t id;
     httplib::ws::WebSocket* ws;  // non-owning, valid during handler lifetime
     std::mutex send_mutex;       // protects ws->send() from concurrent broadcasts
+    std::string username;        // populated from query token at handshake time
 };
 
 // Global WebSocket server instance
@@ -42,8 +45,9 @@ nlohmann::json get_server_status() {
     return nlohmann::json::object();
 }
 
-WebSocketServer::WebSocketServer()
-    : last_progress_broadcast_(std::chrono::steady_clock::now())
+WebSocketServer::WebSocketServer(AuthManager* auth_manager)
+    : auth_manager_(auth_manager),
+      last_progress_broadcast_(std::chrono::steady_clock::now())
 {
 }
 
@@ -54,9 +58,42 @@ WebSocketServer::~WebSocketServer() {
 void WebSocketServer::setup_endpoint(httplib::Server& server) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-    server.WebSocket("/ws", [this](const httplib::Request& /*req*/,
+    server.WebSocket("/ws", [this](const httplib::Request& req,
                                     httplib::ws::WebSocket& ws) {
-        handle_connection(static_cast<void*>(&ws));
+        // Defense in depth: the global pre-routing handler should already
+        // have rejected unauthenticated handshakes with HTTP 401, but if
+        // auth somehow slipped through (e.g. middleware ordering bug),
+        // close the socket immediately with an auth-failure code.
+        std::string username;
+        if (auth_manager_ && auth_manager_->enabled()) {
+            std::string token = req.has_param("token")
+                ? req.get_param_value("token")
+                : "";
+            if (token.empty()) {
+                std::string auth_header = req.get_header_value("Authorization");
+                const std::string bearer_prefix = "Bearer ";
+                if (auth_header.size() > bearer_prefix.size() &&
+                    auth_header.compare(0, bearer_prefix.size(), bearer_prefix) == 0) {
+                    token = auth_header.substr(bearer_prefix.size());
+                }
+            }
+            auto user = token.empty()
+                ? std::nullopt
+                : auth_manager_->verify_token(token);
+            if (!user.has_value()) {
+                // 4401 is the WebSocket "Unauthorized" application close code
+                // (private-use range; widely used by tooling for WS auth fails).
+                try {
+                    ws.close(static_cast<httplib::ws::CloseStatus>(4401),
+                             "Unauthorized");
+                } catch (...) {
+                    // Already closed — fine.
+                }
+                return;
+            }
+            username = *user;
+        }
+        handle_connection(static_cast<void*>(&ws), username);
     });
 #pragma GCC diagnostic pop
     std::cout << "[WebSocket] Registered /ws endpoint" << std::endl;
@@ -107,12 +144,13 @@ void WebSocketServer::stop() {
     std::cout << "[WebSocket] Server stopped" << std::endl;
 }
 
-void WebSocketServer::handle_connection(void* ws_ptr) {
+void WebSocketServer::handle_connection(void* ws_ptr, const std::string& username) {
     auto& ws = *static_cast<httplib::ws::WebSocket*>(ws_ptr);
 
     // Register client
     ClientConnection client;
     client.ws = &ws;
+    client.username = username;
 
     size_t client_id;
     {
@@ -124,6 +162,7 @@ void WebSocketServer::handle_connection(void* ws_ptr) {
     }
 
     std::cout << "[WebSocket] Client connected (id=" << client_id
+              << (username.empty() ? "" : (", user=" + username))
               << ", total=" << client_count_.load() << ")" << std::endl;
 
     // Send current server status to new client

@@ -9,6 +9,7 @@ namespace sdcpp {
 // Forward declarations
 class ModelManager;
 class QueueManager;
+class AuthManager;
 
 /**
  * MCP (Model Context Protocol) Server
@@ -18,7 +19,8 @@ class QueueManager;
  */
 class McpServer {
 public:
-    McpServer(httplib::Server& server, ModelManager& model_manager, QueueManager& queue_manager);
+    McpServer(httplib::Server& server, ModelManager& model_manager, QueueManager& queue_manager,
+              AuthManager& auth_manager);
 
     /** Register the POST /mcp endpoint on the HTTP server */
     void register_endpoint();
@@ -61,6 +63,7 @@ private:
     httplib::Server& server_;
     ModelManager& model_manager_;
     QueueManager& queue_manager_;
+    AuthManager& auth_manager_;
     std::string base_url_;  // Set per-request from Host header
 };
 

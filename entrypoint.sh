@@ -14,6 +14,16 @@ set -euo pipefail
 VOLUME_ROOT="${SDCPP_VOLUME_ROOT:-/workspace}"
 CONFIG_PATH="${SDCPP_CONFIG:-/etc/sdcpp-restapi/config.json}"
 
+# Authentication credentials (consumed by AuthManager at startup).
+# These take effect ONLY when the corresponding fields in config.json are
+# empty — config values win when set. The shipped runpod-config.json uses
+# placeholder values, so set these env vars on the pod to override:
+#   SDCPP_AUTH_USERNAME=<your username>
+#   SDCPP_AUTH_PASSWORD=<your password>
+# Both are passed through to the server process by `exec` below.
+export SDCPP_AUTH_USERNAME="${SDCPP_AUTH_USERNAME:-}"
+export SDCPP_AUTH_PASSWORD="${SDCPP_AUTH_PASSWORD:-}"
+
 MODEL_DIRS=(
     "${VOLUME_ROOT}/models/checkpoints"
     "${VOLUME_ROOT}/models/diffusion_models"
@@ -75,6 +85,16 @@ main() {
     echo "[entrypoint]   config:       ${CONFIG_PATH}"
     echo "[entrypoint]   volume root:  ${VOLUME_ROOT}"
     echo "[entrypoint]   docs path:    ${SDCPP_DOCS_PATH:-<unset>}"
+    if [[ -n "${SDCPP_AUTH_USERNAME}" ]]; then
+        echo "[entrypoint]   auth user:    <set via env>"
+    else
+        echo "[entrypoint]   auth user:    <unset; using config.json>"
+    fi
+    if [[ -n "${SDCPP_AUTH_PASSWORD}" ]]; then
+        echo "[entrypoint]   auth pass:    <set via env (length=${#SDCPP_AUTH_PASSWORD})>"
+    else
+        echo "[entrypoint]   auth pass:    <unset; using config.json>"
+    fi
 
     exec /opt/sdcpp/bin/sdcpp-restapi --config "${CONFIG_PATH}" "$@"
 }

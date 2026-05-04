@@ -160,6 +160,15 @@ RUN chmod +x /usr/local/bin/entrypoint.sh /opt/sdcpp/bin/bootstrap-models.sh
 ENV PATH=/opt/sdcpp/bin:$PATH \
     SDCPP_DOCS_PATH=/opt/sdcpp/share/sdcpp-restapi/docs \
     SDCPP_VOLUME_ROOT=/workspace
+# Auth credentials are intentionally NOT baked into the image. Set them on
+# the pod / `docker run -e` so they aren't part of the layered fs:
+#   SDCPP_AUTH_USERNAME=<your username>
+#   SDCPP_AUTH_PASSWORD=<your password>
+# These override config.json's auth.username / auth.password ONLY when those
+# config fields are empty. The runpod-config.json shipped in the image uses
+# the placeholder password "CHANGE_ME_BEFORE_DEPLOY", which the server logs a
+# loud warning about until you replace it (via env vars or by mounting your
+# own config.json over /etc/sdcpp-restapi/config.json).
 
 EXPOSE 8080
 

@@ -48,5 +48,11 @@
     "recycle_bin": {
         "enabled": true,
         "retention_minutes": 10080
+    },
+    "auth": {
+        "enabled": true,
+        "username": "admin",
+        "password": "CHANGE_ME_BEFORE_DEPLOY",
+        "token_ttl_minutes": 1440
     }
 }

@@ -4,6 +4,7 @@
 #include "download_manager.hpp"
 #include "settings_manager.hpp"
 #include "memory_utils.hpp"
+#include "auth_manager.hpp"
 #include "version.hpp"
 
 #ifdef SDCPP_ASSISTANT_ENABLED
@@ -19,6 +20,7 @@
 #include <iomanip>
 #include <ctime>
 #include <cmath>
+#include <optional>
 #include <regex>
 
 #include "stb_image.h"
@@ -29,11 +31,14 @@ namespace fs = std::filesystem;
 namespace sdcpp {
 
 RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queue_manager,
+                                 AuthManager& auth_manager,
                                  const std::string& output_dir, const std::string& webui_dir,
                                  const AssistantConfig& assistant_config,
                                  const std::string& config_file_path,
                                  const std::string& docs_dir)
-    : model_manager_(model_manager), queue_manager_(queue_manager), output_dir_(output_dir), webui_dir_(webui_dir), docs_dir_(docs_dir)
+    : model_manager_(model_manager), queue_manager_(queue_manager),
+      auth_manager_(auth_manager),
+      output_dir_(output_dir), webui_dir_(webui_dir), docs_dir_(docs_dir)
     // ArchitectureManager uses config directory (where model_architectures.json lives), not output directory
     , architecture_manager_(std::make_unique<ArchitectureManager>(
           config_file_path.empty() ? output_dir : fs::path(config_file_path).parent_path().string()))
@@ -73,6 +78,91 @@ void RequestHandlers::register_routes(httplib::Server& server) {
 
     // Register shared schemas that are referenced by $ref but not directly as endpoint types
     api.registerSchema("LoadOptions", LoadOptions::schema());
+
+    // ── Authentication ───────────────────────────────────────────────
+    // POST /auth/login is intentionally always-allowed (the user can't have
+    // a token yet). POST /auth/logout requires a valid token to identify
+    // which token to revoke; the auth middleware enforces that.
+    api.addEndpoint<LoginRequest, LoginResponse>(
+        server, "POST", "/auth/login",
+        "Issue a bearer token for the configured credentials", "Auth", 200,
+        [this](auto& req, auto& res) { handle_auth_login(req, res); });
+
+    api.addEndpoint<void, LogoutResponse>(
+        server, "POST", "/auth/logout",
+        "Revoke the bearer token used in this request", "Auth", 200,
+        [this](auto& req, auto& res) { handle_auth_logout(req, res); });
+
+    // Register the 401 schema so OpenAPI consumers know the response shape.
+    api.registerSchema("UnauthorizedResponse", UnauthorizedResponse::schema());
+
+    // Auth middleware — runs before any route handler. The /auth/login
+    // endpoint and a small allowlist (health, openapi.json, static UI / docs)
+    // bypass it. Everything else must present `Authorization: Bearer <token>`.
+    if (auth_manager_.enabled()) {
+        server.set_pre_routing_handler(
+            [this](const httplib::Request& req, httplib::Response& res) -> httplib::Server::HandlerResponse {
+                // Always allow CORS preflight — browsers can't attach Authorization
+                // to OPTIONS requests in many cases, and the handler itself decides
+                // whether to permit the actual subsequent request.
+                if (req.method == "OPTIONS") {
+                    return httplib::Server::HandlerResponse::Unhandled;
+                }
+
+                // Allowlist (health, openapi, login, /ui/, /docs/, /output/, /thumb/).
+                if (AuthManager::is_always_allowed(req.path)) {
+                    return httplib::Server::HandlerResponse::Unhandled;
+                }
+                // The /ws WebSocket handshake uses a query token because
+                // browsers can't attach Authorization headers to WS handshakes.
+                // We accept either a `?token=<valid>` query param OR a normal
+                // bearer header (for non-browser clients that can set headers).
+                std::optional<std::string> user;
+                if (req.path == "/ws") {
+                    std::string ws_token = req.has_param("token")
+                        ? req.get_param_value("token")
+                        : "";
+                    if (!ws_token.empty()) {
+                        user = auth_manager_.verify_token(ws_token);
+                    }
+                }
+
+                // Bearer token (Authorization header).
+                if (!user.has_value()) {
+                    std::string auth_header = req.get_header_value("Authorization");
+                    std::string token;
+                    const std::string bearer_prefix = "Bearer ";
+                    if (auth_header.size() > bearer_prefix.size() &&
+                        auth_header.compare(0, bearer_prefix.size(), bearer_prefix) == 0) {
+                        token = auth_header.substr(bearer_prefix.size());
+                    }
+                    if (!token.empty()) {
+                        user = auth_manager_.verify_token(token);
+                    }
+                }
+
+                if (!user.has_value()) {
+                    res.status = 401;
+                    res.set_header("WWW-Authenticate", "Bearer realm=\"sdcpp-restapi\"");
+                    nlohmann::json body = {
+                        {"error", "unauthorized"},
+                        {"message", "Authentication required. POST credentials to /auth/login to obtain a bearer token."}
+                    };
+                    res.set_content(body.dump(), "application/json");
+                    return httplib::Server::HandlerResponse::Handled;
+                }
+
+                // Stash the authenticated username on the request for downstream
+                // handlers that might want it (e.g. logout). httplib's Request
+                // is const here, so we use a header that handlers can read.
+                // (set_header on Request isn't exposed; we leave the token in
+                // the Authorization header instead and re-read it where needed.)
+                return httplib::Server::HandlerResponse::Unhandled;
+            });
+        std::cout << "[Auth] Pre-routing auth middleware installed" << std::endl;
+    } else {
+        std::cout << "[Auth] Pre-routing auth middleware NOT installed (auth disabled)" << std::endl;
+    }
 
     // ── Health & Status ──────────────────────────────────────────────
     api.addEndpoint<void, HealthResponse>(
@@ -435,6 +525,86 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     std::cout << "[Routes] All API routes registered. OpenAPI spec available at /openapi.json" << std::endl;
 }
 
+void RequestHandlers::handle_auth_login(const httplib::Request& req, httplib::Response& res) {
+    // If auth is disabled at the server level, /auth/login is meaningless —
+    // tell the caller, but don't 500.
+    if (!auth_manager_.enabled()) {
+        nlohmann::json body = {
+            {"error", "auth_disabled"},
+            {"message", "Authentication is disabled on this server. No token is required."}
+        };
+        send_json(res, body, 400);
+        return;
+    }
+
+    nlohmann::json body;
+    try {
+        body = parse_json_body(req);
+    } catch (const std::exception& e) {
+        send_error(res, std::string("Invalid JSON: ") + e.what(), 400);
+        return;
+    }
+
+    std::string username = body.value("username", "");
+    std::string password = body.value("password", "");
+
+    if (username.empty() || password.empty()) {
+        // Run a verify_credentials call anyway to keep timing similar.
+        (void)auth_manager_.verify_credentials(username, password);
+        res.status = 401;
+        res.set_header("WWW-Authenticate", "Bearer realm=\"sdcpp-restapi\"");
+        nlohmann::json err = {
+            {"error", "invalid_credentials"},
+            {"message", "Username and password are required."}
+        };
+        res.set_content(err.dump(), "application/json");
+        return;
+    }
+
+    if (!auth_manager_.verify_credentials(username, password)) {
+        std::cerr << "[Auth] Failed login attempt for user='" << username << "'" << std::endl;
+        res.status = 401;
+        res.set_header("WWW-Authenticate", "Bearer realm=\"sdcpp-restapi\"");
+        nlohmann::json err = {
+            {"error", "invalid_credentials"},
+            {"message", "Invalid username or password."}
+        };
+        res.set_content(err.dump(), "application/json");
+        return;
+    }
+
+    std::string token = auth_manager_.issue_token(username);
+    auto now = std::chrono::system_clock::now();
+    auto expires_at_tp = now + std::chrono::seconds(auth_manager_.token_ttl_seconds());
+    int64_t expires_at = std::chrono::duration_cast<std::chrono::seconds>(
+        expires_at_tp.time_since_epoch()).count();
+
+    nlohmann::json out = {
+        {"token", token},
+        {"token_type", "Bearer"},
+        {"expires_at", expires_at}
+    };
+    send_json(res, out, 200);
+}
+
+void RequestHandlers::handle_auth_logout(const httplib::Request& req, httplib::Response& res) {
+    // If we got past the middleware, we have a valid bearer. Pull it out and
+    // revoke it. If auth is disabled, this is a no-op success.
+    if (auth_manager_.enabled()) {
+        std::string auth_header = req.get_header_value("Authorization");
+        const std::string bearer_prefix = "Bearer ";
+        if (auth_header.size() > bearer_prefix.size() &&
+            auth_header.compare(0, bearer_prefix.size(), bearer_prefix) == 0) {
+            auth_manager_.revoke_token(auth_header.substr(bearer_prefix.size()));
+        }
+    }
+    nlohmann::json body = {
+        {"success", true},
+        {"message", "Logged out."}
+    };
+    send_json(res, body, 200);
+}
+
 void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Response& res) {
     auto loaded_info = model_manager_.get_loaded_models_info();
     auto memory_info = get_memory_info();
@@ -468,10 +638,11 @@ void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Re
             {"experimental_offload", false},
 #endif
 #ifdef SDCPP_MCP_ENABLED
-            {"mcp", true}
+            {"mcp", true},
 #else
-            {"mcp", false}
+            {"mcp", false},
 #endif
+            {"auth_required", auth_manager_.enabled()}
         }}
     };
 

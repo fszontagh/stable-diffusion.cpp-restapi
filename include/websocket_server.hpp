@@ -15,6 +15,8 @@ class Server;
 
 namespace sdcpp {
 
+class AuthManager;
+
 /**
  * Event types for WebSocket messages
  */
@@ -69,9 +71,13 @@ struct ClientConnection;
 class WebSocketServer {
 public:
     /**
-     * Create a WebSocket server (no port needed - uses httplib's port)
+     * Create a WebSocket server (no port needed - uses httplib's port).
+     * @param auth_manager Optional auth manager. If non-null and enabled(),
+     *        WS handshakes must include `?token=<valid>` in the query string;
+     *        invalid/missing tokens cause the handshake to be rejected with
+     *        an HTTP 401 (browsers can't attach Authorization headers to WS).
      */
-    WebSocketServer();
+    explicit WebSocketServer(AuthManager* auth_manager = nullptr);
 
     /**
      * Destructor - stops the server if running
@@ -130,8 +136,9 @@ private:
     /**
      * Handle a new WebSocket connection (runs in httplib's thread per connection)
      * @param ws The WebSocket connection (type-erased, actual type is httplib::ws::WebSocket)
+     * @param username Authenticated username (empty when auth is disabled)
      */
-    void handle_connection(void* ws);
+    void handle_connection(void* ws, const std::string& username);
 
     /**
      * Convert event type to string for JSON serialization
@@ -142,6 +149,9 @@ private:
      * Format timestamp as ISO 8601 string
      */
     static std::string format_timestamp(const std::chrono::system_clock::time_point& tp);
+
+    // Authentication (optional — null if no auth manager was provided)
+    AuthManager* auth_manager_ = nullptr;
 
     // State
     std::atomic<bool> running_{false};

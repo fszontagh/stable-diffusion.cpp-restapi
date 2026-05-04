@@ -74,5 +74,50 @@ struct JobCreatedResponse {
     }
 };
 
+// ─── Authentication schemas ──────────────────────────────────────────────
+
+struct LoginRequest {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("LoginRequest",
+                "Username + password pair for issuing a bearer token")
+            .required_field("username", schema::FieldType::String, "Server-configured username")
+            .required_field("password", schema::FieldType::String, "Server-configured password")
+            .build();
+    }
+};
+
+struct LoginResponse {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("LoginResponse",
+                "Issued bearer token plus its absolute expiration time")
+            .required_field("token", schema::FieldType::String,
+                "Opaque bearer token (~43 base64url characters)")
+            .required_field("expires_at", schema::FieldType::Integer,
+                "Token expiration as Unix epoch seconds")
+            .required_field("token_type", schema::FieldType::String,
+                "Always \"Bearer\" — included to match common OAuth-style clients")
+            .build();
+    }
+};
+
+struct LogoutResponse {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("LogoutResponse", "Response to logout request")
+            .required_field("success", schema::FieldType::Boolean, "Always true")
+            .required_field("message", schema::FieldType::String, "Confirmation message")
+            .build();
+    }
+};
+
+struct UnauthorizedResponse {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("UnauthorizedResponse",
+                "Returned with HTTP 401 when authentication is missing or invalid")
+            .required_field("error", schema::FieldType::String, "Short error code")
+            .required_field("message", schema::FieldType::String, "Human-readable message")
+            .build();
+    }
+};
+
 } // namespace api
 } // namespace sdcpp

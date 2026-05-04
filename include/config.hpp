@@ -83,6 +83,24 @@ struct AssistantConfig {
 };
 
 /**
+ * Authentication configuration
+ *
+ * Single credential pair for the whole server. If `enabled` is true and
+ * neither config nor environment variables provide credentials, the server
+ * refuses to start.
+ *
+ * Source priority (per field): config value → environment variable
+ *   - username: config.auth.username, else SDCPP_AUTH_USERNAME
+ *   - password: config.auth.password, else SDCPP_AUTH_PASSWORD
+ */
+struct AuthConfig {
+    bool enabled = true;             // Enforce auth on all non-public endpoints
+    std::string username;            // Configured username (empty = use env var)
+    std::string password;            // Configured password (empty = use env var)
+    int token_ttl_minutes = 1440;    // Bearer token lifetime (default 24h)
+};
+
+/**
  * Complete application configuration
  */
 struct Config {
@@ -92,6 +110,7 @@ struct Config {
     PreviewConfig preview;
     AssistantConfig assistant;
     RecycleBinConfig recycle_bin;
+    AuthConfig auth;
     
     /**
      * Load configuration from JSON file
@@ -131,6 +150,9 @@ void from_json(const nlohmann::json& j, AssistantConfig& c);
 
 void to_json(nlohmann::json& j, const RecycleBinConfig& c);
 void from_json(const nlohmann::json& j, RecycleBinConfig& c);
+
+void to_json(nlohmann::json& j, const AuthConfig& c);
+void from_json(const nlohmann::json& j, AuthConfig& c);
 
 void to_json(nlohmann::json& j, const Config& c);
 void from_json(const nlohmann::json& j, Config& c);
