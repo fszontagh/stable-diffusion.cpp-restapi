@@ -301,9 +301,14 @@ export const useAssistantStore = defineStore('assistant', () => {
   async function loadHistory() {
     try {
       const result = await api.getAssistantHistory()
-      // Backend returns newest-first, reverse to get chronological order (oldest first)
-      // This matches our push() behavior for new messages
-      const loadedMessages = result.messages.reverse()
+      // Backend stores history with insert(begin, ...) so the in-memory
+      // vector is [newest, ..., oldest]. handle_assistant_history iterates
+      // it verbatim, so the wire response is also newest-first. We need
+      // chronological (oldest-first) for the chat-messages flex container
+      // which renders top-to-bottom — so reverse a fresh copy. (Use slice()
+      // first to avoid mutating the response object in place, which can
+      // confuse Vue's reactivity if the same object gets read elsewhere.)
+      const loadedMessages = [...result.messages].reverse()
 
       // Mark internal/continuation messages as hidden
       // These are messages sent to the LLM for context but shouldn't be shown to users
@@ -697,15 +702,39 @@ export const useAssistantStore = defineStore('assistant', () => {
 
   // Get current generation settings from sessionStorage
   function gatherCurrentSettings(): Record<string, unknown> {
-    // Get the last active mode
-    const lastMode = sessionStorage.getItem('generateSettings_lastMode') || 'txt2img'
+    // Generate.vue persists settings in two places: the bulk JSON blob at
+    // sessionStorage[generateSettings_<mode>], and the prompt + negative
+    // prompt as separate localStorage entries
+    // (generateSettings_prompt_<mode>, generateSettings_negativePrompt_<mode>).
+    // We need to merge both so the assistant has visibility into the
+    // prompt the user is currently composing.
+    const readPrompts = (mode: string) => {
+      const out: Record<string, unknown> = {}
+      try {
+        const p = localStorage.getItem(`generateSettings_prompt_${mode}`)
+        if (p !== null) out.prompt = p
+        const np = localStorage.getItem(`generateSettings_negativePrompt_${mode}`)
+        if (np !== null) out.negativePrompt = np
+      } catch { /* private mode — ignore */ }
+      return out
+    }
 
-    // Try to get settings for the current/last mode first
+    // Last active mode (also persisted by Generate.vue on switch)
+    const lastMode = (() => {
+      try {
+        return localStorage.getItem('generateSettings_lastMode')
+            || sessionStorage.getItem('generateSettings_lastMode')
+            || 'txt2img'
+      } catch { return 'txt2img' }
+    })()
+
+    // Try the current/last mode first
     const currentSettings = sessionStorage.getItem(`generateSettings_${lastMode}`)
     if (currentSettings) {
       try {
         const settings = JSON.parse(currentSettings)
-        settings._mode = lastMode // Include the mode in context
+        settings._mode = lastMode
+        Object.assign(settings, readPrompts(lastMode))
         return settings
       } catch {
         // Fall through to try other modes
@@ -715,19 +744,24 @@ export const useAssistantStore = defineStore('assistant', () => {
     // Fallback: try other modes
     const modes = ['txt2img', 'img2img', 'txt2vid']
     for (const mode of modes) {
-      if (mode === lastMode) continue // Already tried
+      if (mode === lastMode) continue
       const savedSettings = sessionStorage.getItem(`generateSettings_${mode}`)
       if (savedSettings) {
         try {
           const settings = JSON.parse(savedSettings)
           settings._mode = mode
+          Object.assign(settings, readPrompts(mode))
           return settings
         } catch {
           continue
         }
       }
     }
-    return { _mode: lastMode }
+
+    // Last-resort: even if the bulk settings blob is missing, surface the
+    // prompt for the last mode so the LLM can still answer "what's my
+    // prompt?" right after a fresh load.
+    return { _mode: lastMode, ...readPrompts(lastMode) }
   }
 
   // Maximum retries when actions fail
@@ -914,7 +948,20 @@ export const useAssistantStore = defineStore('assistant', () => {
       messages.value[msgIndex].content = `Error: ${errorMsg}`
       lastError.value = errorMsg
       appStore.showToast(`Assistant error: ${errorMsg}`, 'error')
+    } finally {
+      // Defensive: guarantee the input unlocks. onDone/onError SHOULD have
+      // already cleared isLoading, but if the stream resolved without firing
+      // either (dropped SSE, transport hiccup, server crash mid-stream) we'd
+      // be stuck "thinking" forever. Also flip any orphan placeholder out
+      // of streaming state so the UI doesn't show a typing dot indefinitely.
       isLoading.value = false
+      const m = messages.value[msgIndex]
+      if (m && m.isStreaming) {
+        m.isStreaming = false
+        if (!m.content && !m.thinking && !(m.toolCalls?.length)) {
+          m.content = '(no response received)'
+        }
+      }
     }
   }
 

@@ -490,7 +490,11 @@ watch(mode, async (newMode, oldMode) => {
     localStorage.setItem(getPromptStorageKey(oldMode), prompt.value)
     localStorage.setItem(getNegativePromptStorageKey(oldMode), negativePrompt.value)
     await saveSettings()
-    await saveLoraSettings()
+    // Save the OLD mode's LoRA selection BEFORE we change anything — using
+    // mode.value here would write the OLD selection into the NEW mode's slot
+    // because mode.value has already been updated by the time the watcher
+    // fires.
+    await saveLoraSettings(oldMode as 'txt2img' | 'img2img' | 'img_edit' | 'txt2vid')
   }
   // Load settings for new mode
   await loadSettingsForMode(newMode)
@@ -509,13 +513,21 @@ const debouncedSaveSettings = useDebounceFn(() => {
   saveSettings()
 }, 500)
 
-// LoRA settings persistence
-async function saveLoraSettings() {
+// True while loadLoraSettingsForMode() is mutating the lora refs. The
+// `watch([positiveLoraList, ...], debouncedSaveLoraSettings)` would otherwise
+// fire as a consequence of the load and schedule a save with stale values.
+let isLoadingLoras = false
+
+// LoRA settings persistence. Takes an optional explicit mode so the
+// mode-change watcher can save against the OLD mode (avoid clobbering the
+// new mode's slot with the previous mode's LoRA selection).
+async function saveLoraSettings(forMode?: 'txt2img' | 'img2img' | 'img_edit' | 'txt2vid') {
   const currentPrefs = store.uiPreferences || {} as any
   const loraLists = (currentPrefs as any).lora_lists || {}
 
   // img_edit shares txt2img LoRA settings
-  const loraMode = mode.value === 'img_edit' ? 'txt2img' : mode.value
+  const target = forMode ?? mode.value
+  const loraMode = target === 'img_edit' ? 'txt2img' : target
   const newPrefs = {
     ...currentPrefs,
     lora_settings: loraSettings.value,
@@ -542,17 +554,30 @@ async function saveLoraSettings() {
 }
 
 function loadLoraSettingsForMode(targetMode: 'txt2img' | 'img2img' | 'txt2vid') {
-  const prefs = store.uiPreferences
-  if (prefs?.lora_settings) {
-    loraSettings.value = { ...loraSettings.value, ...prefs.lora_settings }
-  }
-  if (prefs?.lora_lists?.[targetMode]) {
-    const lists = prefs.lora_lists[targetMode]
-    positiveLoraList.value = lists?.positive || []
-    negativeLoraList.value = lists?.negative || []
-  } else {
-    positiveLoraList.value = []
-    negativeLoraList.value = []
+  isLoadingLoras = true
+  try {
+    const prefs = store.uiPreferences
+    if (prefs?.lora_settings) {
+      loraSettings.value = { ...loraSettings.value, ...prefs.lora_settings }
+    }
+    const stored = prefs?.lora_lists?.[targetMode]
+    if (stored) {
+      positiveLoraList.value = stored.positive ?? []
+      negativeLoraList.value = stored.negative ?? []
+    } else {
+      // No persisted entry for this mode yet. Don't overwrite whatever's
+      // currently selected — that would clobber an in-progress edit on a
+      // mode switch. Only zero-out if both lists are already empty (fresh
+      // mount with no prior selection).
+      if (positiveLoraList.value.length === 0 && negativeLoraList.value.length === 0) {
+        positiveLoraList.value = []
+        negativeLoraList.value = []
+      }
+    }
+  } finally {
+    // Defer the flag flip past the next tick so any cascading reactivity
+    // settles before the watcher is re-armed.
+    nextTick(() => { isLoadingLoras = false })
   }
 }
 
@@ -568,8 +593,13 @@ watch([
   vaeTileSizeX, vaeTileSizeY, vaeTileOverlap
 ], debouncedSaveSettings)
 
-// Watch for LoRA list and settings changes
-watch([positiveLoraList, negativeLoraList, loraSettings], debouncedSaveLoraSettings, { deep: true })
+// Watch for LoRA list and settings changes. Suppress while loading from
+// store — otherwise the load itself triggers a save that races against the
+// load and can write empty lists back into the store.
+watch([positiveLoraList, negativeLoraList, loraSettings], () => {
+  if (isLoadingLoras) return
+  debouncedSaveLoraSettings()
+}, { deep: true })
 
 // Close copy menu when clicking outside
 function handleClickOutside(event: MouseEvent) {
