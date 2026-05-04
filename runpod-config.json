@@ -1,0 +1,52 @@
+{
+    "server": {
+        "host": "0.0.0.0",
+        "port": 8080,
+        "threads": 8
+    },
+    "paths": {
+        "checkpoints":      "/workspace/models/checkpoints",
+        "diffusion_models": "/workspace/models/diffusion_models",
+        "vae":              "/workspace/models/vae",
+        "lora":             "/workspace/models/loras",
+        "clip":             "/workspace/models/clip",
+        "t5":               "/workspace/models/t5",
+        "embeddings":       "/workspace/models/embeddings",
+        "controlnet":       "/workspace/models/controlnet",
+        "llm":              "/workspace/models/llm",
+        "esrgan":           "/workspace/models/esrgan",
+        "taesd":            "/workspace/models/taesd",
+        "output":           "/workspace/output",
+        "webui":            "/opt/sdcpp/share/sdcpp-restapi/webui"
+    },
+    "sd_defaults": {
+        "n_threads": 8,
+        "keep_clip_on_cpu": false,
+        "keep_vae_on_cpu": false,
+        "flash_attn": true,
+        "offload_to_cpu": false
+    },
+    "preview": {
+        "enabled": true,
+        "mode": "tae",
+        "interval": 1,
+        "max_size": 256,
+        "quality": 75
+    },
+    "assistant": {
+        "enabled": false,
+        "endpoint": "http://localhost:11434",
+        "api_key": "",
+        "model": "llama3.2",
+        "temperature": 0.7,
+        "max_tokens": 2000,
+        "timeout_seconds": 120,
+        "system_prompt": "",
+        "max_history_turns": 20,
+        "proactive_suggestions": true
+    },
+    "recycle_bin": {
+        "enabled": true,
+        "retention_minutes": 10080
+    }
+}
