@@ -1,0 +1,91 @@
+{
+  "_comment": "Bootstrap model registry. Each architecture lists files to download into /workspace/models/<dest>/<filename>. The bootstrap script (scripts/bootstrap-models.sh) skips files that already exist with non-zero size, and resumes partial downloads.",
+  "_format": {
+    "name":   "filename on disk (must match the model loader's expectations)",
+    "dest":   "subdirectory under /workspace/models/ (e.g. diffusion_models, vae, llm)",
+    "url":    "direct download URL (HuggingFace 'resolve/main/...' or any HTTPS URL)",
+    "size_mb": "expected size in MB — informational, used for progress display only",
+    "auth":   "optional: 'hf' to send the HF_TOKEN env var as a bearer header"
+  },
+
+  "z-image": {
+    "description": "Z-Image Turbo (bf16) + AE VAE + Qwen3 4B text encoder — from Comfy-Org/z_image_turbo",
+    "files": [
+      {
+        "name":    "z_image_turbo_bf16.safetensors",
+        "dest":    "diffusion_models",
+        "url":     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+        "size_mb": 12300,
+        "auth":    ""
+      },
+      {
+        "name":    "ae.safetensors",
+        "dest":    "vae",
+        "url":     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+        "size_mb": 335,
+        "auth":    ""
+      },
+      {
+        "name":    "qwen_3_4b.safetensors",
+        "dest":    "llm",
+        "url":     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
+        "size_mb": 8040,
+        "auth":    ""
+      }
+    ]
+  },
+
+  "z-image-nvfp4": {
+    "description": "Z-Image Turbo (NVFP4 quantized, ~4.5GB) + AE VAE + Qwen3 4B FP8 mixed encoder — REQUIRES Blackwell GPU (RTX 5090, GB10x). On Ampere/Ada NVFP4 dequantizes to fp16 at load and OOMs. Use z-image-gguf instead on those cards.",
+    "files": [
+      {
+        "name":    "z_image_turbo_nvfp4.safetensors",
+        "dest":    "diffusion_models",
+        "url":     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_nvfp4.safetensors",
+        "size_mb": 4510,
+        "auth":    ""
+      },
+      {
+        "name":    "ae.safetensors",
+        "dest":    "vae",
+        "url":     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+        "size_mb": 335,
+        "auth":    ""
+      },
+      {
+        "name":    "qwen_3_4b_fp8_mixed.safetensors",
+        "dest":    "llm",
+        "url":     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors",
+        "size_mb": 5630,
+        "auth":    ""
+      }
+    ]
+  },
+
+  "z-image-gguf": {
+    "description": "Z-Image Turbo BF16 GGUF + AE VAE + Qwen3 4B FP16 GGUF encoder — full precision (no quantization), GGUF container for sd.cpp streaming/offload friendliness. ~20.7GB total weights; needs offload_to_cpu or layer streaming on 16-20GB cards.",
+    "files": [
+      {
+        "name":    "z-image-turbo-BF16.gguf",
+        "dest":    "diffusion_models",
+        "url":     "https://huggingface.co/unsloth/Z-Image-Turbo-GGUF/resolve/main/z-image-turbo-BF16.gguf",
+        "size_mb": 12300,
+        "auth":    ""
+      },
+      {
+        "name":    "ae.safetensors",
+        "dest":    "vae",
+        "url":     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+        "size_mb": 335,
+        "auth":    ""
+      },
+      {
+        "name":    "Qwen_3_4b-FP16.gguf",
+        "dest":    "llm",
+        "url":     "https://huggingface.co/worstplayer/Z-Image_Qwen_3_4b_text_encoder_GGUF/resolve/main/Qwen_3_4b-FP16.gguf",
+        "size_mb": 8050,
+        "auth":    ""
+      }
+    ]
+  }
+}

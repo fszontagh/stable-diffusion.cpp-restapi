@@ -1,0 +1,31 @@
+# Build outputs
+build/
+cmake-build-*/
+out/
+
+# WebUI build artifacts (rebuilt inside container)
+webui/node_modules/
+webui/dist/
+webui/*.tsbuildinfo
+
+# IDE / editor cruft
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cache
+
+# Local config & runtime data — never ship into the image
+config.json
+benchmark_output.log
+benchmark_v2_output.log
+benchmark_results/
+
+# Git metadata isn't needed in the build context
+.git/
+.gitignore
+
+# Models and outputs (huge — must come from a mounted volume)
+data/output/
+data/SD_MODELS/
