@@ -27,6 +27,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         cmake \
+        ccache \
         git \
         curl \
         ca-certificates \
@@ -35,6 +36,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         zlib1g-dev \
         libbrotli-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# ccache caches compiler outputs by hashing inputs; combined with BuildKit's
+# cache mount below, object files survive across `docker build` invocations.
+# After the first cold build (~45 min), subsequent rebuilds with unchanged
+# source hit the cache for ~95%+ of ggml-cuda's template-instance kernels and
+# finish in ~5 min instead. Cache is keyed on (source, flags, compiler
+# version) so it correctly invalidates when CUDA toolkit / fork SHA changes.
+ENV CMAKE_C_COMPILER_LAUNCHER=ccache \
+    CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    CMAKE_CUDA_COMPILER_LAUNCHER=ccache \
+    CCACHE_DIR=/root/.ccache \
+    CCACHE_MAXSIZE=20G \
+    CCACHE_COMPILERCHECK=content
 
 # Node.js 20 for the Vue WebUI build (vue-tsc + vite)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
@@ -71,12 +85,19 @@ COPY docs/ /src/docs/
 # "no kernel image is available for execution" at first GPU op (sm mismatch).
 ARG CMAKE_CUDA_ARCHITECTURES="80;86;89;90"
 
+# Parallel jobs for cmake --build. Defaults to nproc, but can be capped if
+# the build host has memory pressure: each nvcc compile of ggml-cuda template
+# instances uses ~3 GB, multiplied by arch count and -j parallelism.
+# Use --build-arg BUILD_PARALLELISM=6 to limit (e.g. 4 archs × 6 jobs ≈ 18 GB peak).
+ARG BUILD_PARALLELISM=""
+
 # SD_EXPERIMENTAL_OFFLOAD=ON enables the forked sd.cpp's layer-streaming and
 # dynamic offload modes — useful for fitting larger models (e.g. Z-Image bf16
 # at ~12 GB) onto smaller GPUs (16-20 GB cards). Pinned in CMakeLists.txt to
 # the May 4 streaming speedup commit. Runtime offload is opt-in: the binary
 # defaults to offload_mode=none.
-RUN cmake -S /src -B /src/build \
+RUN --mount=type=cache,target=/root/.ccache,sharing=locked,id=sdcpp-ccache \
+    cmake -S /src -B /src/build \
         -DCMAKE_BUILD_TYPE=Release \
         -DSD_CUDA=ON \
         -DSD_EXPERIMENTAL_OFFLOAD=ON \
@@ -85,8 +106,9 @@ RUN cmake -S /src -B /src/build \
         -DSDCPP_MCP=ON \
         -DSDCPP_ASSISTANT=ON \
         -DCMAKE_CUDA_ARCHITECTURES="${CMAKE_CUDA_ARCHITECTURES}" \
-    && cmake --build /src/build -j"$(nproc)" \
-    && cmake --install /src/build --prefix /opt/sdcpp
+    && cmake --build /src/build -j"${BUILD_PARALLELISM:-$(nproc)}" \
+    && cmake --install /src/build --prefix /opt/sdcpp \
+    && ccache --show-stats
 
 # 5. Data — runtime-only (model_architectures.json read at startup, not compile).
 # Copied AFTER the cmake build so editing data/ files doesn't invalidate the
