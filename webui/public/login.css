@@ -301,6 +301,13 @@ html, body {
   display: inline-block;
 }
 
+/* When the [hidden] attribute is present, the browser's UA stylesheet sets
+   display: none — but our explicit `display: inline-block` above overrides
+   it (same specificity, author CSS wins). Make hidden actually hide. */
+.login-spinner[hidden] {
+  display: none;
+}
+
 @keyframes login-spin {
   to { transform: rotate(360deg); }
 }
