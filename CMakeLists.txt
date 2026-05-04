@@ -342,8 +342,13 @@ if(SD_CUDA)
     # Bake the compiled CUDA arch list into the binary so the startup sanity
     # check can detect arch mismatches (e.g. binary built for sm_89 but
     # running on sm_86) before the first kernel dispatch crashes the server.
+    # NOTE: CMake list values use ';' as separator; passing one through to a
+    # -DFOO="..." compile flag breaks shell parsing because ';' is a command
+    # separator. Convert to commas — cuda_arch_check.cpp's parser handles
+    # both ';' and ',' as delimiters.
+    string(REPLACE ";" "," _SDCPP_CUDA_ARCHS_STR "${CMAKE_CUDA_ARCHITECTURES}")
     target_compile_definitions(sdcpp-restapi PRIVATE
-        SDCPP_CUDA_ARCHS="${CMAKE_CUDA_ARCHITECTURES}"
+        SDCPP_CUDA_ARCHS="${_SDCPP_CUDA_ARCHS_STR}"
     )
 endif()
 
