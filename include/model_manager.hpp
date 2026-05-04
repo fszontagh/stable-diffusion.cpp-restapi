@@ -220,6 +220,13 @@ public:
      * Check if a model is currently loaded
      */
     bool is_model_loaded() const;
+
+    /**
+     * Lock-free check for "a load is currently in progress".
+     * Used by /models/load to reject concurrent loads with 409 instead of
+     * letting the second request queue on context_mutex_ for minutes.
+     */
+    bool is_loading() const { return model_loading_.load(); }
     
     /**
      * Get name of currently loaded model

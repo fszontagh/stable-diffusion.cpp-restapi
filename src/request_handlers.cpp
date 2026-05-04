@@ -971,33 +971,68 @@ void RequestHandlers::handle_refresh_models(const httplib::Request& /*req*/, htt
 }
 
 void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Response& res) {
+    // Async load: validate the request synchronously, then dispatch the
+    // heavy work (sd.cpp model load — minutes for big GGUFs) to a detached
+    // thread so the request thread is freed immediately. cpp-httplib's
+    // worker pool is then available for other concurrent traffic
+    // (WebDAV PROPFIND / GET, /health polls, WebSocket pings, etc.) which
+    // would otherwise feel "frozen" while a load was in progress.
+    //
+    // Completion is reported via WebSocket events the WebUI already
+    // subscribes to: model_loading_progress (during), model_loaded (on
+    // success), model_load_failed (on error). The WebUI's optimistic
+    // local state plus those events drive the UI to the right state.
     try {
         auto body = parse_json_body(req);
         auto params = ModelLoadParams::from_json(body);
-        
-        std::cout << "[RequestHandlers] Loading model: " << params.model_name << std::endl;
-        
-        model_manager_.load_model(params);
-        
-        // Get full loaded model info including components
-        auto loaded_info = model_manager_.get_loaded_models_info();
-        
+
+        // Reject if a load is already in progress — saves the user from
+        // queuing on a context_mutex_ that will hold for minutes.
+        if (model_manager_.is_loading()) {
+            send_error(res,
+                "Another model is already loading. Wait for it to finish "
+                "or call /models/unload first.", 409);
+            return;
+        }
+
+        std::cout << "[RequestHandlers] Loading model (async): "
+                  << params.model_name << std::endl;
+
+        // Detach: the load runs to completion regardless of whether the
+        // HTTP request stays open. ModelManager::load_model handles its
+        // own progress reporting + WS broadcast via the model_manager
+        // internals.
+        std::thread([this, params]() {
+            try {
+                model_manager_.load_model(params);
+            } catch (const std::exception& e) {
+                // ModelManager::load_model emits a model_load_failed WS
+                // event on failure; we just log here for server-side
+                // forensics.
+                std::cerr << "[RequestHandlers] (async) model load threw: "
+                          << e.what() << std::endl;
+            }
+        }).detach();
+
+        // 202 Accepted — request received, processing not yet complete.
+        res.status = 202;
         nlohmann::json response = {
-            {"success", true},
-            {"message", "Model loaded successfully"},
-            {"model_name", loaded_info["model_name"]},
-            {"model_type", loaded_info["model_type"]},
-            {"loaded_components", loaded_info["loaded_components"]},
-            {"load_options", loaded_info.contains("load_options") ? loaded_info["load_options"] : nlohmann::json(nullptr)}
+            {"success",     true},
+            {"status",      "loading"},
+            {"message",     "Model load started. Watch /health.model_loading "
+                            "or the model_loading_progress / model_loaded WS "
+                            "events for completion."},
+            {"model_name",  params.model_name},
+            {"model_type",  model_type_to_string(params.model_type)}
         };
-        
-        send_json(res, response);
+        res.set_header("Content-Type", "application/json");
+        res.set_content(response.dump(), "application/json");
     } catch (const nlohmann::json::exception& e) {
         std::cerr << "[RequestHandlers] JSON parse error: " << e.what() << std::endl;
         send_error(res, std::string("Invalid JSON in request body: ") + e.what(), 400);
     } catch (const std::runtime_error& e) {
         std::cerr << "[RequestHandlers] Model load error: " << e.what() << std::endl;
-        send_error(res, e.what(), 400);  // Use 400 for validation errors
+        send_error(res, e.what(), 400);
     } catch (const std::exception& e) {
         std::cerr << "[RequestHandlers] Unexpected error: " << e.what() << std::endl;
         send_error(res, std::string("Internal error: ") + e.what(), 500);

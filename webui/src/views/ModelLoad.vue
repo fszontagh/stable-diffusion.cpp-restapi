@@ -160,11 +160,14 @@ async function handleLoadModel() {
     if (loadParams.value.taesd) params.taesd = loadParams.value.taesd
     params.options = loadParams.value.options
 
+    // Backend now returns 202 Accepted immediately; the actual load runs
+    // in a detached thread and reports completion via WebSocket events
+    // (model_loaded / model_load_failed). The api client doesn't reject
+    // on 202 (any 2xx is "ok"), so this await resolves quickly.
     await api.loadModel(params)
-    // Persist the params we successfully loaded with so the form can restore
-    // them next time, even after a WebUI page reload.
+    // Persist the params we used so the form can restore them next time.
     store.setLastLoadOptions(params)
-    store.showToast('Model loaded successfully', 'success')
+    store.showToast('Model load started — progress in the status bar.', 'info')
     store.fetchHealth()
     router.push('/models')
   } catch (e) {
