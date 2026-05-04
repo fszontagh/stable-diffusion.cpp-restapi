@@ -463,9 +463,14 @@ void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Re
         {"memory", memory_info.to_json()},
         {"features", {
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
-            {"experimental_offload", true}
+            {"experimental_offload", true},
 #else
-            {"experimental_offload", false}
+            {"experimental_offload", false},
+#endif
+#ifdef SDCPP_MCP_ENABLED
+            {"mcp", true}
+#else
+            {"mcp", false}
 #endif
         }}
     };
@@ -495,7 +500,8 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             "ddim_trailing",
             "tcd",
             "res_multistep",
-            "res_2s"
+            "res_2s",
+            "er_sde"
         }},
         {"schedulers", {
             "discrete",
@@ -790,6 +796,14 @@ void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Respo
         std::string output_path;
         if (body.contains("output_path") && !body["output_path"].get<std::string>().empty()) {
             output_path = body["output_path"].get<std::string>();
+            // Coerce bare filenames (no directory) into the input's parent dir.
+            // The WebUI used to send these from generateOutputPath() when the
+            // model was passed by name only; we now treat them as relative-
+            // to-source so the converted file lands next to the original.
+            fs::path output_p(output_path);
+            if (!output_p.has_parent_path()) {
+                output_path = (fs::path(input_path).parent_path() / output_p).string();
+            }
         } else {
             // Generate default output path
             fs::path input_p(input_path);
@@ -2246,6 +2260,21 @@ void RequestHandlers::handle_webui(const httplib::Request& req, httplib::Respons
     res.set_content(content, mime_type);
 }
 
+// Top-level directories under docs/ that are kept on disk but hidden from the
+// /docs endpoint (internal design artifacts, not user-facing reference docs).
+static const std::vector<std::string> kDocsHiddenDirs = {"plans"};
+
+static bool is_docs_path_hidden(const std::string& rel_path) {
+    fs::path p(rel_path);
+    auto it = p.begin();
+    if (it == p.end()) return false;
+    std::string top = it->string();
+    for (const auto& hidden : kDocsHiddenDirs) {
+        if (top == hidden) return true;
+    }
+    return false;
+}
+
 std::string RequestHandlers::generate_docs_toc() {
     std::ostringstream md;
     md << "# Documentation\n\n";
@@ -2256,6 +2285,7 @@ std::string RequestHandlers::generate_docs_toc() {
     for (const auto& entry : fs::recursive_directory_iterator(docs_dir_)) {
         if (entry.is_regular_file() && entry.path().extension() == ".md") {
             auto rel = fs::relative(entry.path(), docs_dir_).string();
+            if (is_docs_path_hidden(rel)) continue;
             files.push_back(rel);
         }
     }
@@ -2327,6 +2357,12 @@ void RequestHandlers::handle_docs(const httplib::Request& req, httplib::Response
     // Empty path or trailing slash → table of contents
     if (rel_path.empty()) {
         res.set_content(generate_docs_toc(), "text/markdown; charset=utf-8");
+        return;
+    }
+
+    // Hidden directories are kept on disk but not exposed via HTTP.
+    if (is_docs_path_hidden(rel_path)) {
+        send_error(res, "Document not found: " + rel_path, 404);
         return;
     }
 

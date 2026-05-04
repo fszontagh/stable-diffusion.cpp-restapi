@@ -8,7 +8,8 @@ namespace api {
 // Common enum values used across multiple schemas
 inline const std::vector<std::string> SAMPLER_VALUES = {
     "euler", "euler_a", "heun", "dpm2", "dpm++2s_a", "dpm++2m", "dpm++2mv2",
-    "ipndm", "ipndm_v", "lcm", "ddim_trailing", "tcd", "res_multistep", "res_2s"
+    "ipndm", "ipndm_v", "lcm", "ddim_trailing", "tcd", "res_multistep", "res_2s",
+    "er_sde"
 };
 
 inline const std::vector<std::string> SCHEDULER_VALUES = {

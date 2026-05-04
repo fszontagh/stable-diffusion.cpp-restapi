@@ -158,6 +158,48 @@ static void read_vulkan_memory(MemoryInfo& info) {
 }
 #endif
 
+bool verify_gpu_runtime(std::string& error_out) {
+    // ──────────────────────────────────────────────────────────────────────
+    // POLICY DECISION — fill in based on how strict you want the check.
+    //
+    // Background:
+    //   ggml's CUDA_CHECK macro calls GGML_ABORT (= abort()) on failure, which
+    //   bypasses our nullptr handling in model_manager.cpp:864 and freezes the
+    //   service for minutes while apport extracts a coredump. The whole point
+    //   of this function is to detect "GPU not really usable" BEFORE we hand
+    //   control to ggml.
+    //
+    // Trade-offs:
+    //   - Too lenient: CUDA_CHECK still aborts us on the next failure mode.
+    //   - Too strict: false negatives reject a healthy GPU after a warning.
+    //   - Too expensive: this runs on every model load.
+    //
+    // Suggested floor (any one of these failing should set error_out and
+    // return false):
+    //   • cudaGetDeviceCount(&n)        — "no CUDA-capable device" / driver
+    //                                     mismatch surfaces here
+    //   • n > 0
+    //   • cudaSetDevice(0)              — picks up driver/lib skew that
+    //                                     getDeviceCount sometimes hides
+    //   • cudaMemGetInfo(&free,&total)  — proves the device is responsive
+    //
+    // For Vulkan/Metal/etc the equivalent is vkEnumeratePhysicalDevices etc.
+    //
+    // TODO(you): implement the policy below. Set error_out on failure with
+    // a message that will be shown to the user via job.last_error / HTTP 503.
+    // ──────────────────────────────────────────────────────────────────────
+
+#ifdef SDCPP_USE_CUDA
+    // TODO: Your CUDA pre-flight check goes here.
+    (void)error_out;
+    return true;
+#else
+    // No GPU backend compiled in — CPU path can't fail this way.
+    (void)error_out;
+    return true;
+#endif
+}
+
 MemoryInfo get_memory_info() {
     MemoryInfo info;
 

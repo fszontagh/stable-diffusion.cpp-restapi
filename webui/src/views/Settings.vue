@@ -111,7 +111,10 @@ const samplers = computed(() =>
         { value: 'ipndm_v', label: 'ipndm_v' },
         { value: 'lcm', label: 'lcm' },
         { value: 'ddim_trailing', label: 'ddim_trailing' },
-        { value: 'tcd', label: 'tcd' }
+        { value: 'tcd', label: 'tcd' },
+        { value: 'res_multistep', label: 'res_multistep' },
+        { value: 'res_2s', label: 'res_2s' },
+        { value: 'er_sde', label: 'er_sde' }
       ]
 )
 

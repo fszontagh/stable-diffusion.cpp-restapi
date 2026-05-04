@@ -73,6 +73,10 @@ find_package(Threads REQUIRED)
 # OpenSSL for SHA256 hashing
 find_package(OpenSSL REQUIRED)
 
+# libcurl for model downloads (replaces cpp-httplib client which had TLS issues
+# with HuggingFace's CloudFront CDN — "Failed to read connection" at byte 0).
+find_package(CURL REQUIRED)
+
 # CUDA runtime for setting device scheduling flags (reduces CPU usage during generation)
 if(SD_CUDA)
     find_package(CUDAToolkit REQUIRED)
@@ -159,20 +163,39 @@ if(SDCPP_LOCAL_SOURCE)
     # Add the local source subdirectory directly (no patching needed for local dev)
     add_subdirectory(${stable-diffusion_SOURCE_DIR} ${stable-diffusion_BINARY_DIR})
 else()
+    # Only the submodules we actually compile against. The bundled
+    # examples/server/frontend submodule sometimes points at deleted commits and
+    # we don't link the example server, so we skip it.
+    set(SDCPP_SUBMODULES "ggml" "thirdparty/libwebm" "thirdparty/libwebp")
     if(SD_EXPERIMENTAL_OFFLOAD)
         message(STATUS "Experimental offload: ENABLED - Using forked sd.cpp with VRAM offloading")
+        # Track the branch tip so user-pushed improvements (e.g. the May 4
+        # streaming speedup wave) are pulled automatically on rebuild.
+        # GIT_SHALLOW works with branch names — and would NOT work if we pinned
+        # to a SHA here (CMake's `git clone --depth 1 --branch <ref>` only
+        # accepts branch/tag names, not commit hashes).
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/fszontagh/stable-diffusion.cpp.git
             GIT_TAG        feature/vram-offloading
             GIT_SHALLOW    TRUE
+            GIT_SUBMODULES ${SDCPP_SUBMODULES}
+            GIT_SUBMODULES_RECURSE TRUE
         )
     else()
+        # Pinned to the upstream commit that the fork's feature/vram-offloading
+        # branch most recently merged from, so the public API surface (samplers,
+        # ctx_params fields, gen_params fields) matches between OFFLOAD=ON/OFF.
+        # GIT_SHALLOW must be FALSE because GIT_TAG is a commit SHA — shallow
+        # clone with a SHA fails (`fatal: reference is not a tree`). Full clone
+        # adds ~25 MB to the build context but is reliable.
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        87ecb95
-            GIT_SHALLOW    TRUE
+            GIT_TAG        a81677f59c92d90343aebca51dfed7decf0a0cb0
+            GIT_SHALLOW    FALSE
+            GIT_SUBMODULES ${SDCPP_SUBMODULES}
+            GIT_SUBMODULES_RECURSE TRUE
         )
     endif()
     # First populate to get source directory
@@ -260,6 +283,7 @@ set(SDCPP_SOURCES
     src/architecture_manager.cpp
     src/download_manager.cpp
     src/settings_manager.cpp
+    src/cuda_arch_check.cpp
 )
 
 # Add assistant sources only if enabled
@@ -305,6 +329,7 @@ target_link_libraries(sdcpp-restapi PRIVATE
     nlohmann_json
     Threads::Threads
     OpenSSL::Crypto
+    CURL::libcurl
 )
 
 # WebSocket support is built into httplib - no additional link libraries needed
@@ -313,6 +338,12 @@ target_link_libraries(sdcpp-restapi PRIVATE
 if(SD_CUDA)
     target_link_libraries(sdcpp-restapi PRIVATE CUDA::cudart)
     target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_USE_CUDA=1)
+    # Bake the compiled CUDA arch list into the binary so the startup sanity
+    # check can detect arch mismatches (e.g. binary built for sm_89 but
+    # running on sm_86) before the first kernel dispatch crashes the server.
+    target_compile_definitions(sdcpp-restapi PRIVATE
+        SDCPP_CUDA_ARCHS="${CMAKE_CUDA_ARCHITECTURES}"
+    )
 endif()
 
 # Version information compile definitions (from VERSION file)
