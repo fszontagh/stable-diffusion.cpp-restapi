@@ -42,22 +42,40 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
-COPY . /src
+
+# COPYs ordered by stability (least → most frequently edited) for cache reuse.
+# Editing a file only invalidates its layer + everything after it.
+
+# 1. CMake config + version (rarely changes)
+COPY CMakeLists.txt VERSION /src/
+
+# 2. C++ source — invalidating these correctly forces a recompile
+COPY src/ /src/src/
+COPY include/ /src/include/
+
+# 3. WebUI source — invalidating these forces npm install + vite build
+COPY webui/ /src/webui/
+
+# 4. Docs — needed by CMake's docs-copy custom target (part of ALL)
+COPY docs/ /src/docs/
 
 # Narrow CUDA archs to shorten build time. Defaults cover most RunPod GPUs:
-#   86 = RTX 3090 / A10 / A40
-#   89 = RTX 4090 / L40
-#   80 = A100
-#   90 = H100
+#   80 = A100 datacenter
+#   86 = RTX 3090, A4000-A6000, A40, RTX A4500
+#   89 = RTX 4090, RTX 4080, L40
+#   90 = H100, H200
 # Override at build time:
 #   docker build --build-arg CMAKE_CUDA_ARCHITECTURES="89" -t sdcpp-restapi:cuda .
+# Building for a single arch is ~3-4x faster but the binary only runs on that
+# specific GPU class — narrowing without verifying the deploy target risks
+# "no kernel image is available for execution" at first GPU op (sm mismatch).
 ARG CMAKE_CUDA_ARCHITECTURES="80;86;89;90"
 
 # SD_EXPERIMENTAL_OFFLOAD=ON enables the forked sd.cpp's layer-streaming and
 # dynamic offload modes — useful for fitting larger models (e.g. Z-Image bf16
-# at ~12GB) onto smaller GPUs (16GB cards). It also avoids the broken
-# upstream short-SHA pin in CMakeLists.txt:183 that fails with shallow clones.
-# Runtime offload is opt-in: the binary defaults to offload_mode=none.
+# at ~12 GB) onto smaller GPUs (16-20 GB cards). Pinned in CMakeLists.txt to
+# the May 4 streaming speedup commit. Runtime offload is opt-in: the binary
+# defaults to offload_mode=none.
 RUN cmake -S /src -B /src/build \
         -DCMAKE_BUILD_TYPE=Release \
         -DSD_CUDA=ON \
@@ -70,8 +88,11 @@ RUN cmake -S /src -B /src/build \
     && cmake --build /src/build -j"$(nproc)" \
     && cmake --install /src/build --prefix /opt/sdcpp
 
-# Copy data/ next to the binary so architecture_manager.cpp's exe-relative
-# fallback (search_paths[3]) finds model_architectures.json at runtime.
+# 5. Data — runtime-only (model_architectures.json read at startup, not compile).
+# Copied AFTER the cmake build so editing data/ files doesn't invalidate the
+# ~25-min compile cache. The bootstrap_models.json is similarly copied late
+# in stage 2 (runtime image).
+COPY data/ /src/data/
 RUN mkdir -p /opt/sdcpp/data \
     && cp /src/data/model_architectures.json /opt/sdcpp/data/
 
@@ -82,7 +103,11 @@ FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Runtime deps from docs/DEPENDENCIES-ubuntu22.04-cuda.md + tini for PID 1
+# Runtime deps from docs/DEPENDENCIES-ubuntu22.04-cuda.md + tini for PID 1.
+# openssh-server provides SSH access on port 22 (RunPod auto-injects the
+# user's pubkey to /root/.ssh/authorized_keys on pod start; entrypoint.sh
+# starts sshd alongside the API server). Without this, exposing port 22 in
+# the deploy config returns "Connection refused" because nothing's listening.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
         libbrotli1 \
@@ -92,7 +117,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         tini \
         curl \
         jq \
-    && rm -rf /var/lib/apt/lists/*
+        openssh-server \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /run/sshd /root/.ssh \
+    && chmod 700 /root/.ssh \
+    && sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config \
+    && sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config \
+    && sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 
 COPY --from=builder /opt/sdcpp /opt/sdcpp
 

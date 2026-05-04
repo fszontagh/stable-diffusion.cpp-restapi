@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api, type HealthResponse, type ModelsResponse, type QueueResponse, type OptionsResponse, type Job, type QueueFilters, type GenerationDefaults, type UIPreferences, type ArchitecturesResponse, type OptionDescriptionsResponse, type PreviewSettings } from '../api/client'
+import { api, type HealthResponse, type ModelsResponse, type QueueResponse, type OptionsResponse, type Job, type QueueFilters, type GenerationDefaults, type UIPreferences, type ArchitecturesResponse, type OptionDescriptionsResponse, type PreviewSettings, type LoadModelParams } from '../api/client'
 import {
   wsService,
   type ConnectionState,
@@ -91,6 +91,40 @@ export const useAppStore = defineStore('app', () => {
 
   function clearUpscaleInputImage() {
     upscaleInputImage.value = null
+  }
+
+  // Last successful model load params - persisted to localStorage so a page
+  // reload between loads still restores the user's previous choices.
+  const LAST_LOAD_OPTIONS_KEY = 'sdcpp_last_load_options'
+
+  function loadLastLoadOptionsFromStorage(): LoadModelParams | null {
+    try {
+      const raw = localStorage.getItem(LAST_LOAD_OPTIONS_KEY)
+      if (!raw) return null
+      return JSON.parse(raw) as LoadModelParams
+    } catch {
+      return null
+    }
+  }
+
+  const lastLoadOptions = ref<LoadModelParams | null>(loadLastLoadOptionsFromStorage())
+
+  function setLastLoadOptions(params: LoadModelParams) {
+    lastLoadOptions.value = params
+    try {
+      localStorage.setItem(LAST_LOAD_OPTIONS_KEY, JSON.stringify(params))
+    } catch {
+      // localStorage may be unavailable (e.g. private mode quota); silently ignore
+    }
+  }
+
+  function clearLastLoadOptions() {
+    lastLoadOptions.value = null
+    try {
+      localStorage.removeItem(LAST_LOAD_OPTIONS_KEY)
+    } catch {
+      // ignore
+    }
   }
 
   // Settings state
@@ -1034,6 +1068,11 @@ export const useAppStore = defineStore('app', () => {
     upscaleInputImage,
     setUpscaleInputImage,
     clearUpscaleInputImage,
+
+    // Last load options (persisted)
+    lastLoadOptions,
+    setLastLoadOptions,
+    clearLastLoadOptions,
 
     // Settings
     generationDefaults,

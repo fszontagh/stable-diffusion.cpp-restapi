@@ -161,6 +161,9 @@ async function handleLoadModel() {
     params.options = loadParams.value.options
 
     await api.loadModel(params)
+    // Persist the params we successfully loaded with so the form can restore
+    // them next time, even after a WebUI page reload.
+    store.setLastLoadOptions(params)
     store.showToast('Model loaded successfully', 'success')
     store.fetchHealth()
     router.push('/models')
@@ -203,6 +206,11 @@ onMounted(async () => {
     loadParams.value.model_name = selectedModel.value.name
     loadParams.value.model_type = selectedModel.value.type === 'diffusion' ? 'diffusion' : 'checkpoint'
 
+    // Track whether we already restored prior user choices (from /health or
+    // localStorage). If so, architecture auto-detect should NOT clobber the
+    // user's options with raw architecture defaults.
+    let restoredFromPriorLoad = false
+
     // If model is already loaded, pre-populate with current components and options
     if (selectedModel.value.is_loaded && store.loadedComponents) {
       loadParams.value.vae = store.loadedComponents.vae || ''
@@ -239,12 +247,32 @@ onMounted(async () => {
           streaming_keep_layers_behind: store.loadOptions.streaming_keep_layers_behind ?? loadParams.value.options?.streaming_keep_layers_behind ?? 0,
           streaming_min_free_vram_mb: store.loadOptions.streaming_min_free_vram_mb ?? loadParams.value.options?.streaming_min_free_vram_mb ?? 0
         }
+        restoredFromPriorLoad = true
       }
 
       // Use current architecture if loaded
       if (store.modelArchitecture) {
         selectedArchitecture.value = store.modelArchitecture
       }
+    } else if (store.lastLoadOptions && store.lastLoadOptions.model_name === selectedModel.value.name) {
+      // No model currently loaded, but user previously loaded *this* model in
+      // a prior session — restore those choices from localStorage instead of
+      // overwriting with raw architecture defaults.
+      const last = store.lastLoadOptions
+      loadParams.value.vae = last.vae || ''
+      loadParams.value.clip_l = last.clip_l || ''
+      loadParams.value.clip_g = last.clip_g || ''
+      loadParams.value.t5xxl = last.t5xxl || ''
+      loadParams.value.controlnet = last.controlnet || ''
+      loadParams.value.llm = last.llm || ''
+      loadParams.value.taesd = last.taesd || ''
+      if (last.options) {
+        loadParams.value.options = {
+          ...loadParams.value.options,
+          ...last.options
+        }
+      }
+      restoredFromPriorLoad = true
     }
 
     // Auto-detect architecture from model name
@@ -252,7 +280,12 @@ onMounted(async () => {
     if (detected) {
       selectedArchitecture.value = detected.id
       isAutoDetected.value = true
-      applyArchitectureOptions(detected)
+      // Only apply raw architecture defaults if we did NOT restore prior user
+      // options — otherwise the detected arch's loadOptions would clobber
+      // values like offload_mode='layer_streaming' the user already chose.
+      if (!restoredFromPriorLoad) {
+        applyArchitectureOptions(detected)
+      }
     }
   }
 })

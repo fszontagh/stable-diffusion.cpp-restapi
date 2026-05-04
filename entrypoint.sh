@@ -47,8 +47,28 @@ bootstrap_models() {
     /opt/sdcpp/bin/bootstrap-models.sh
 }
 
+# Start the SSH daemon in the background so users can `ssh root@<pod>` for
+# shell access. RunPod (and similar platforms) auto-inject the account-level
+# pubkey to /root/.ssh/authorized_keys on pod start. We just need to ensure
+# host keys exist and that sshd is running. tini (PID 1) reaps the child
+# when the container shuts down. No-op if openssh isn't installed.
+start_sshd() {
+    if [[ ! -x /usr/sbin/sshd ]]; then
+        return 0
+    fi
+    # Generate any missing host keys (idempotent — ssh-keygen -A skips existing)
+    ssh-keygen -A >/dev/null 2>&1 || true
+    # Make authorized_keys readable by root only if it exists
+    if [[ -f /root/.ssh/authorized_keys ]]; then
+        chmod 600 /root/.ssh/authorized_keys
+    fi
+    echo "[entrypoint] starting sshd in background"
+    /usr/sbin/sshd -D &
+}
+
 main() {
     ensure_volume_layout
+    start_sshd
     bootstrap_models
 
     echo "[entrypoint] starting sdcpp-restapi"
