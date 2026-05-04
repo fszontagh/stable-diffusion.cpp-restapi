@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libssl-dev \
         zlib1g-dev \
         libbrotli-dev \
+        libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ccache caches compiler outputs by hashing inputs; combined with BuildKit's
@@ -135,6 +136,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libbrotli1 \
         libssl3 \
         zlib1g \
+        libcurl4 \
         ca-certificates \
         tini \
         curl \
