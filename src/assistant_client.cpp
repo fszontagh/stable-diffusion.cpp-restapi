@@ -384,6 +384,28 @@ nlohmann::json AssistantClient::build_tools() const {
         }}
     });
 
+    // search_docs tool - BM25 search over the project's markdown docs
+    // (RUNPOD.md, MCP.md, API.md, etc.). Use this when the user asks
+    // "how do I X" or "what is X" about features the assistant might not
+    // know from training data — auth, mounting / WebDAV, deploy on
+    // RunPod, MCP server, bootstrap profiles, etc. Cite the section
+    // names from the results so users can find more detail.
+    tools.push_back({
+        {"type", "function"},
+        {"function", {
+            {"name", "search_docs"},
+            {"description", "Search the project's documentation (RUNPOD.md, MCP.md, API.md, etc.) for content relevant to the user's question. Returns up to 3 documentation chunks ranked by BM25 relevance. Use this BEFORE answering 'how do I...' or 'what is...' questions about features like authentication, mounting/WebDAV, RunPod deployment, MCP, bootstrap profiles, etc. Cite the section names from the results so users can find more detail in the docs."},
+            {"parameters", {
+                {"type", "object"},
+                {"required", nlohmann::json::array({"query"})},
+                {"properties", {
+                    {"query", {{"type", "string"}, {"description", "The search query (free-form English; keywords work better than full sentences)"}}},
+                    {"max_results", {{"type", "integer"}, {"description", "Maximum chunks to return (default 3, max 10)"}, {"default", 3}}}
+                }}
+            }}
+        }}
+    });
+
     // get_architectures tool - Get architecture presets
     tools.push_back({
         {"type", "function"},

@@ -3,6 +3,7 @@
 #include "queue_manager.hpp"
 #include "architecture_manager.hpp"
 #include "settings_manager.hpp"
+#include "docs_index.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -30,7 +31,8 @@ const std::set<std::string> ToolExecutor::BACKEND_TOOLS = {
     "list_jobs",
     "analyze_image",
     "get_quantization_types",
-    "get_settings"
+    "get_settings",
+    "search_docs"
 };
 
 ToolExecutor::ToolExecutor(ModelManager& model_manager,
@@ -72,6 +74,8 @@ nlohmann::json ToolExecutor::execute(const std::string& tool_name,
             return execute_get_quantization_types();
         } else if (tool_name == "get_settings") {
             return execute_get_settings(parameters);
+        } else if (tool_name == "search_docs") {
+            return execute_search_docs(parameters);
         } else {
             return {{"error", "Unknown backend tool: " + tool_name}};
         }
@@ -685,6 +689,45 @@ nlohmann::json ToolExecutor::execute_get_quantization_types() {
 
 void ToolExecutor::set_settings_manager(SettingsManager* settings_manager) {
     settings_manager_ = settings_manager;
+}
+
+void ToolExecutor::set_docs_index(DocsIndex* docs_index) {
+    docs_index_ = docs_index;
+}
+
+nlohmann::json ToolExecutor::execute_search_docs(const nlohmann::json& params) {
+    if (!docs_index_) {
+        return {{"error", "Documentation index is not available."}};
+    }
+    std::string query = params.value("query", "");
+    if (query.empty()) {
+        return {{"error", "Required parameter 'query' is missing."}};
+    }
+    std::size_t max_results = 3;
+    if (params.contains("max_results") && params["max_results"].is_number_integer()) {
+        int n = params["max_results"].get<int>();
+        if (n > 0) max_results = static_cast<std::size_t>(std::min(n, 10));
+    }
+
+    auto hits = docs_index_->search(query, max_results);
+    std::cout << "[ToolExecutor] search_docs: query=\"" << query
+              << "\" → " << hits.size() << " hits" << std::endl;
+
+    nlohmann::json result_array = nlohmann::json::array();
+    for (const auto& h : hits) {
+        result_array.push_back({
+            {"doc",          h.doc_filename},
+            {"section",      h.section},
+            {"section_path", h.section_path},
+            {"content",      h.content},
+            {"score",        h.score}
+        });
+    }
+    return {
+        {"query",   query},
+        {"results", result_array},
+        {"count",   hits.size()}
+    };
 }
 
 nlohmann::json ToolExecutor::execute_get_settings(const nlohmann::json& params) {

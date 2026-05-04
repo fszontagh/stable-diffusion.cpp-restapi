@@ -294,6 +294,7 @@ set(SDCPP_SOURCES
     src/download_manager.cpp
     src/settings_manager.cpp
     src/cuda_arch_check.cpp
+    src/docs_index.cpp
 )
 
 # Add assistant sources only if enabled

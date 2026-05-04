@@ -16,6 +16,7 @@
 #ifdef SDCPP_ASSISTANT_ENABLED
 #include "assistant_client.hpp"
 #include "tool_executor.hpp"
+#include "docs_index.hpp"
 #endif
 
 namespace sdcpp {
@@ -226,6 +227,7 @@ private:
 #ifdef SDCPP_ASSISTANT_ENABLED
     std::unique_ptr<ToolExecutor> tool_executor_;
     std::unique_ptr<AssistantClient> assistant_client_;
+    std::unique_ptr<DocsIndex> docs_index_;  // BM25 index over docs/*.md
 #endif
 };
 

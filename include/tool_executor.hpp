@@ -72,6 +72,13 @@ public:
      */
     void set_settings_manager(SettingsManager* settings_manager);
 
+    /**
+     * Set the documentation index for the search_docs tool.
+     * Pointer is non-owning; caller (RequestHandlers) keeps the index alive
+     * for the ToolExecutor's lifetime.
+     */
+    void set_docs_index(class DocsIndex* docs_index);
+
 private:
     // Tool implementations
     nlohmann::json execute_get_status();
@@ -80,6 +87,7 @@ private:
     nlohmann::json execute_get_job(const std::string& job_id);
     nlohmann::json execute_search_jobs(const nlohmann::json& params);
     nlohmann::json execute_list_jobs(const nlohmann::json& params);
+    nlohmann::json execute_search_docs(const nlohmann::json& params);
     nlohmann::json execute_analyze_image(const nlohmann::json& params);
     nlohmann::json execute_get_quantization_types();
     nlohmann::json execute_get_settings(const nlohmann::json& params);
@@ -88,6 +96,7 @@ private:
     QueueManager& queue_manager_;
     ArchitectureManager* architecture_manager_;
     SettingsManager* settings_manager_ = nullptr;
+    class DocsIndex* docs_index_ = nullptr;
     std::string output_dir_;
 
     // Set of tools that execute on the backend
