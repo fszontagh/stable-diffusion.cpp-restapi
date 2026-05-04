@@ -121,34 +121,6 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     {
         server.set_pre_routing_handler(
             [this](const httplib::Request& req, httplib::Response& res) -> httplib::Server::HandlerResponse {
-                // ── /output and /thumb branch (HTTP Basic) ────────────
-                // Static-file responses for the gallery. Bearer can't ride
-                // on <img> / <video> tags from the browser, so we use Basic;
-                // the browser caches credentials per-session after the
-                // first 401-with-WWW-Authenticate prompt. Skip when auth is
-                // disabled — those builds want the gallery to be public.
-                if (auth_manager_.enabled()) {
-                    bool is_output_path =
-                        req.path == "/output" ||
-                        (req.path.size() >= 8 && req.path.compare(0, 8, "/output/") == 0) ||
-                        req.path == "/thumb"  ||
-                        (req.path.size() >= 7 && req.path.compare(0, 7, "/thumb/") == 0);
-                    if (is_output_path && !verify_basic_auth(req)) {
-                        res.status = 401;
-                        res.set_header("WWW-Authenticate", R"(Basic realm="sdcpp-restapi")");
-                        res.set_header("Content-Type", "application/json");
-                        res.set_content(
-                            R"({"error":"unauthorized","message":"Authentication required."})",
-                            "application/json");
-                        return httplib::Server::HandlerResponse::Handled;
-                    }
-                    // Authenticated /output/ or /thumb/ — fall through to the
-                    // normal route handler (registered as GET /output etc).
-                    if (is_output_path) {
-                        return httplib::Server::HandlerResponse::Unhandled;
-                    }
-                }
-
                 // ── WebDAV branch ─────────────────────────────────────
                 // Runs even when the global auth_manager is disabled — the
                 // pre-routing handler is the only place we can intercept
@@ -188,51 +160,78 @@ void RequestHandlers::register_routes(httplib::Server& server) {
                     return httplib::Server::HandlerResponse::Unhandled;
                 }
 
-                // ── Bearer-token branch (everything else) ────────────
+                // ── Cookie / Bearer / WS-token branch (everything else) ──
                 if (!auth_manager_.enabled()) {
                     return httplib::Server::HandlerResponse::Unhandled;
                 }
 
-                // Always allow CORS preflight — browsers can't attach Authorization
-                // to OPTIONS requests in many cases, and the handler itself decides
-                // whether to permit the actual subsequent request.
+                // Always allow CORS preflight.
                 if (req.method == "OPTIONS") {
                     return httplib::Server::HandlerResponse::Unhandled;
                 }
 
-                // Allowlist (health, openapi, login, /ui/, /docs/, /output/, /thumb/, /webdav/).
+                // /login is a public page. /assets, /favicon, /login.css are
+                // referenced by it and must be reachable too.
+                if (req.path == "/login" ||
+                    req.path == "/login.css" ||
+                    req.path == "/login.html" ||
+                    req.path == "/favicon.ico" ||
+                    req.path == "/favicon.svg") {
+                    return httplib::Server::HandlerResponse::Unhandled;
+                }
+
+                // Allowlist (health, openapi, /auth/login, /ui/, /docs/,
+                // /output/, /thumb/, /webdav/, /assets/).
                 if (AuthManager::is_always_allowed(req.path)) {
                     return httplib::Server::HandlerResponse::Unhandled;
                 }
-                // The /ws WebSocket handshake uses a query token because
-                // browsers can't attach Authorization headers to WS handshakes.
-                // We accept either a `?token=<valid>` query param OR a normal
-                // bearer header (for non-browser clients that can set headers).
+
+                // Resolve "who is this caller?" trying, in order:
+                //   1. Cookie (sdcpp_auth=<token>) — set by /auth/login,
+                //      auto-attached by browsers on every same-origin
+                //      request including <img>/<video>/WS handshakes.
+                //   2. Bearer token (Authorization: Bearer <token>) —
+                //      curl, scripts, MCP clients.
+                //   3. ?token=<token> query param (legacy WS path; cookie
+                //      should also work for WS but kept as a fallback).
                 std::optional<std::string> user;
-                if (req.path == "/ws") {
-                    std::string ws_token = req.has_param("token")
-                        ? req.get_param_value("token")
-                        : "";
-                    if (!ws_token.empty()) {
-                        user = auth_manager_.verify_token(ws_token);
-                    }
+
+                std::string cookie_token = extract_cookie_token(req);
+                if (!cookie_token.empty()) {
+                    user = auth_manager_.verify_token(cookie_token);
                 }
 
-                // Bearer token (Authorization header).
                 if (!user.has_value()) {
                     std::string auth_header = req.get_header_value("Authorization");
-                    std::string token;
                     const std::string bearer_prefix = "Bearer ";
                     if (auth_header.size() > bearer_prefix.size() &&
                         auth_header.compare(0, bearer_prefix.size(), bearer_prefix) == 0) {
-                        token = auth_header.substr(bearer_prefix.size());
-                    }
-                    if (!token.empty()) {
-                        user = auth_manager_.verify_token(token);
+                        std::string token = auth_header.substr(bearer_prefix.size());
+                        if (!token.empty()) user = auth_manager_.verify_token(token);
                     }
                 }
 
+                if (!user.has_value() && req.path == "/ws") {
+                    std::string ws_token = req.has_param("token")
+                        ? req.get_param_value("token") : "";
+                    if (!ws_token.empty()) user = auth_manager_.verify_token(ws_token);
+                }
+
                 if (!user.has_value()) {
+                    // Browser-style requests for /ui/* should redirect to the
+                    // login page rather than getting a 401 JSON body. We
+                    // detect "browser-style" via Accept: text/html and the
+                    // path being under /ui/. Everything else (API clients)
+                    // gets the JSON 401.
+                    bool wants_html = req.get_header_value("Accept").find("text/html") != std::string::npos;
+                    bool is_ui_path = (req.path == "/ui" || req.path == "/ui/" ||
+                                       (req.path.size() >= 4 && req.path.compare(0, 4, "/ui/") == 0));
+                    if (wants_html && is_ui_path) {
+                        std::string redirect = "/login?redirect=" + req.path;
+                        res.status = 302;
+                        res.set_header("Location", redirect);
+                        return httplib::Server::HandlerResponse::Handled;
+                    }
                     res.status = 401;
                     res.set_header("WWW-Authenticate", "Bearer realm=\"sdcpp-restapi\"");
                     nlohmann::json body = {
@@ -495,6 +494,33 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         server.Get(R"(/ui/(.*))", [this](const httplib::Request& req, httplib::Response& res) {
             handle_webui(req, res);
         });
+
+        // Server-rendered login page. Lives next to the SPA bundle in
+        // <webui_dir>/login.{html,css}. The pre-routing handler skips auth
+        // for these paths so anyone can reach them.
+        auto serve_static = [this](const std::string& filename, const std::string& mime,
+                                    const httplib::Request&, httplib::Response& res) {
+            namespace fs = std::filesystem;
+            fs::path p = fs::path(webui_dir_) / filename;
+            std::ifstream f(p, std::ios::binary);
+            if (!f) {
+                res.status = 404;
+                res.set_content("Not found", "text/plain");
+                return;
+            }
+            std::stringstream buf;
+            buf << f.rdbuf();
+            res.set_content(buf.str(), mime.c_str());
+        };
+        server.Get("/login", [serve_static](const httplib::Request& req, httplib::Response& res) {
+            serve_static("login.html", "text/html; charset=utf-8", req, res);
+        });
+        server.Get("/login.html", [serve_static](const httplib::Request& req, httplib::Response& res) {
+            serve_static("login.html", "text/html; charset=utf-8", req, res);
+        });
+        server.Get("/login.css", [serve_static](const httplib::Request& req, httplib::Response& res) {
+            serve_static("login.css", "text/css; charset=utf-8", req, res);
+        });
     } else {
         std::cout << "[Routes] WebUI routes NOT registered (webui_dir is empty)" << std::endl;
     }
@@ -703,17 +729,36 @@ void RequestHandlers::handle_auth_login(const httplib::Request& req, httplib::Re
     int64_t expires_at = std::chrono::duration_cast<std::chrono::seconds>(
         expires_at_tp.time_since_epoch()).count();
 
+    // Set the auth cookie alongside the JSON token so:
+    //   - Browsers attach it automatically to every same-origin request
+    //     (including <img> tags hitting /output, WS handshakes, etc.) — no
+    //     custom Authorization header machinery needed in the SPA.
+    //   - HttpOnly: JS cannot read it, mitigates XSS exfiltration.
+    //   - SameSite=Strict: CSRF-immune at the browser level.
+    //   - Path=/: cookie sent on every server route.
+    {
+        std::ostringstream cookie;
+        cookie << "sdcpp_auth=" << token
+               << "; HttpOnly; SameSite=Strict; Path=/"
+               << "; Max-Age=" << auth_manager_.token_ttl_seconds();
+        res.set_header("Set-Cookie", cookie.str());
+    }
+
+    // JSON body still includes the token for non-browser clients (curl,
+    // scripts, MCP) that prefer Bearer.
     nlohmann::json out = {
         {"token", token},
         {"token_type", "Bearer"},
-        {"expires_at", expires_at}
+        {"expires_at", expires_at},
+        {"username", username}
     };
     send_json(res, out, 200);
 }
 
 void RequestHandlers::handle_auth_logout(const httplib::Request& req, httplib::Response& res) {
-    // If we got past the middleware, we have a valid bearer. Pull it out and
-    // revoke it. If auth is disabled, this is a no-op success.
+    // If we got past the middleware, the caller is authenticated.
+    // Revoke whichever token form they used (Bearer header OR cookie) and
+    // clear the cookie via Max-Age=0 so the browser drops it.
     if (auth_manager_.enabled()) {
         std::string auth_header = req.get_header_value("Authorization");
         const std::string bearer_prefix = "Bearer ";
@@ -721,7 +766,18 @@ void RequestHandlers::handle_auth_logout(const httplib::Request& req, httplib::R
             auth_header.compare(0, bearer_prefix.size(), bearer_prefix) == 0) {
             auth_manager_.revoke_token(auth_header.substr(bearer_prefix.size()));
         }
+        // Cookie-based session
+        std::string cookie_token = extract_cookie_token(req);
+        if (!cookie_token.empty()) {
+            auth_manager_.revoke_token(cookie_token);
+        }
     }
+    // Always clear the cookie regardless — defensive (user may have a stale
+    // one even after auth is disabled at the server).
+    res.set_header(
+        "Set-Cookie",
+        "sdcpp_auth=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");
+
     nlohmann::json body = {
         {"success", true},
         {"message", "Logged out."}
@@ -729,8 +785,27 @@ void RequestHandlers::handle_auth_logout(const httplib::Request& req, httplib::R
     send_json(res, body, 200);
 }
 
-void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Response& res) {
+void RequestHandlers::handle_health(const httplib::Request& req, httplib::Response& res) {
     auto loaded_info = model_manager_.get_loaded_models_info();
+
+    // Resolve current authenticated username (if any) for SPA display.
+    // /health is a no-auth endpoint so callers without a session see null;
+    // callers with a valid cookie/bearer get their username back.
+    nlohmann::json username = nullptr;
+    if (auth_manager_.enabled()) {
+        std::string token = extract_cookie_token(req);
+        if (token.empty()) {
+            std::string h = req.get_header_value("Authorization");
+            const std::string p = "Bearer ";
+            if (h.size() > p.size() && h.compare(0, p.size(), p) == 0) {
+                token = h.substr(p.size());
+            }
+        }
+        if (!token.empty()) {
+            auto u = auth_manager_.verify_token(token);
+            if (u.has_value()) username = *u;
+        }
+    }
     auto memory_info = get_memory_info();
 
     nlohmann::json response = {
@@ -748,6 +823,7 @@ void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Re
         {"model_architecture", loaded_info["model_architecture"]},
         {"loaded_components", loaded_info["loaded_components"]},
         {"load_options", loaded_info.contains("load_options") ? loaded_info["load_options"] : nlohmann::json(nullptr)},
+        {"username", username},
         {"upscaler_loaded", loaded_info["upscaler_loaded"]},
         {"upscaler_name", loaded_info["upscaler_name"]},
 #ifdef SDCPP_WEBSOCKET_ENABLED
@@ -3966,6 +4042,29 @@ static int webdav_resolve_failure_status(const std::string& url_path) {
         return false;
     };
     return has_dotdot(decoded) ? 400 : 404;
+}
+
+std::string RequestHandlers::extract_cookie_token(const httplib::Request& req) {
+    // The Cookie header is a single line of the form
+    //   Cookie: name1=val1; name2=val2; ...
+    // We only care about our `sdcpp_auth` entry. Hand-parse rather than pull
+    // in a cookie library — the format is dead simple and we want to be
+    // strict about whitespace tolerance.
+    std::string h = req.get_header_value("Cookie");
+    if (h.empty()) return std::string();
+    static const std::string key = "sdcpp_auth=";
+    size_t pos = 0;
+    while (pos < h.size()) {
+        // Skip leading whitespace
+        while (pos < h.size() && (h[pos] == ' ' || h[pos] == '\t')) ++pos;
+        size_t end = h.find(';', pos);
+        if (end == std::string::npos) end = h.size();
+        if (h.compare(pos, key.size(), key) == 0) {
+            return h.substr(pos + key.size(), end - (pos + key.size()));
+        }
+        pos = end + 1;
+    }
+    return std::string();
 }
 
 bool RequestHandlers::verify_basic_auth(const httplib::Request& req) const {

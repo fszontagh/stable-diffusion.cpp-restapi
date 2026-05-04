@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in &mdash; sd.cpp</title>
+  <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/ui/login.css">
+</head>
+<body>
+  <div class="login-stage">
+    <!-- Background -->
+    <div class="login-bg" aria-hidden="true">
+      <div class="login-bg-glow"></div>
+      <div class="login-bg-grid"></div>
+    </div>
+
+    <div class="login-shell">
+      <header class="login-brand">
+        <span class="login-mark" aria-hidden="true">&#129302;</span>
+        <span class="login-name">sd.cpp</span>
+        <span class="login-sub">REST API</span>
+      </header>
+
+      <form class="login-card" method="POST" action="/auth/login" autocomplete="on">
+        <h1 class="login-title">Welcome back</h1>
+        <p class="login-tagline">Sign in to your stable-diffusion.cpp server.</p>
+
+        <label class="login-field">
+          <span class="login-label">Username</span>
+          <input
+            type="text"
+            name="username"
+            autocomplete="username"
+            spellcheck="false"
+            autocapitalize="off"
+            required
+            autofocus
+            placeholder="admin"
+          >
+        </label>
+
+        <label class="login-field">
+          <span class="login-label">Password</span>
+          <div class="login-pw-wrap">
+            <input
+              type="password"
+              name="password"
+              autocomplete="current-password"
+              required
+              placeholder="&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;"
+              id="pw-input"
+            >
+            <button type="button" class="login-pw-toggle" id="pw-toggle" tabindex="-1" aria-label="Show password">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </label>
+
+        <p id="login-error" class="login-error" hidden role="alert"></p>
+
+        <button type="submit" class="login-submit" id="login-submit">
+          <span id="login-submit-label">Sign in</span>
+          <span class="login-spinner" id="login-spinner" hidden aria-hidden="true"></span>
+        </button>
+
+        <p class="login-hint">
+          Server admin sets credentials via <code>config.json</code> or the
+          <code>SDCPP_AUTH_USERNAME</code> / <code>SDCPP_AUTH_PASSWORD</code> env vars.
+        </p>
+      </form>
+
+      <footer class="login-foot">
+        <span>stable-diffusion.cpp REST API</span>
+        <span class="login-dot">&middot;</span>
+        <a href="/docs/" target="_blank" rel="noopener">docs</a>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // Pull ?redirect=… from URL so we can bounce back after login
+      var url = new URL(window.location.href);
+      var redirect = url.searchParams.get('redirect') || '/ui/';
+
+      // Show/hide password toggle
+      var pwInput = document.getElementById('pw-input');
+      var pwToggle = document.getElementById('pw-toggle');
+      pwToggle.addEventListener('click', function () {
+        var isPw = pwInput.type === 'password';
+        pwInput.type = isPw ? 'text' : 'password';
+        pwToggle.setAttribute('aria-label', isPw ? 'Hide password' : 'Show password');
+      });
+
+      // Submit via JSON to /auth/login. Server sets the auth cookie on success.
+      var form = document.querySelector('.login-card');
+      var errEl = document.getElementById('login-error');
+      var submitBtn = document.getElementById('login-submit');
+      var submitLabel = document.getElementById('login-submit-label');
+      var spinner = document.getElementById('login-spinner');
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        errEl.hidden = true;
+        submitBtn.disabled = true;
+        submitLabel.hidden = true;
+        spinner.hidden = false;
+
+        var fd = new FormData(form);
+        fetch('/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            username: fd.get('username'),
+            password: fd.get('password')
+          })
+        }).then(function (res) {
+          if (!res.ok) {
+            return res.json().then(function (body) {
+              errEl.textContent = (body && (body.message || body.error)) || ('Sign-in failed (HTTP ' + res.status + ')');
+              errEl.hidden = false;
+              submitBtn.disabled = false;
+              submitLabel.hidden = false;
+              spinner.hidden = true;
+            });
+          }
+          // Cookie was set on the response. Bounce to original target.
+          window.location.replace(redirect);
+        }).catch(function () {
+          errEl.textContent = 'Network error — could not reach the server.';
+          errEl.hidden = false;
+          submitBtn.disabled = false;
+          submitLabel.hidden = false;
+          spinner.hidden = true;
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

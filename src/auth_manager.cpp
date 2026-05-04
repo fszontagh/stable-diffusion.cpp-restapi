@@ -208,25 +208,15 @@ const std::unordered_set<std::string>& AuthManager::always_allowed_exact_paths()
 }
 
 const std::vector<std::string>& AuthManager::always_allowed_path_prefixes() {
-    // These prefixes bypass the BEARER middleware. Some are still gated by
-    // OTHER auth (HTTP Basic) — the prefix list just means "the Bearer
-    // pre-routing handler must not 401 here, because a different challenge
-    // happens elsewhere".
-    //
-    // /output/  → enforced by HTTP Basic in RequestHandlers' pre-routing.
-    //             Browsers can't attach Authorization to <img>/<video> tags,
-    //             so we use Basic which the browser caches per-session after
-    //             the first prompt. Use case: WebUI gallery + non-WebUI builds
-    //             that hit /output directly.
-    // /thumb/   → thumbnail variant of /output, same Basic-auth treatment.
-    // /webdav/  → enforced by HTTP Basic in the WebDAV pre-routing branch
-    //             of RequestHandlers; DAV clients (Finder, Explorer, Dolphin)
-    //             speak Basic, not Bearer.
+    // These prefixes bypass the BEARER/cookie middleware. /output and
+    // /thumb are NOT in this list any more — they go through the normal
+    // cookie-or-bearer path because browsers attach the auth cookie on
+    // <img>/<video> tags automatically. /webdav stays here because Basic
+    // auth happens in RequestHandlers' pre-routing and DAV clients speak
+    // Basic only, not the cookie.
     static const std::vector<std::string> prefixes = {
         "/ui/",
         "/docs/",
-        "/output/",
-        "/thumb/",
         "/webdav/",
     };
     return prefixes;

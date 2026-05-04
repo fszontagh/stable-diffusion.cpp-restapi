@@ -139,6 +139,14 @@ private:
     //                                  diffusion_models, vae, loras, clip, t5,
     //                                  controlnet, llm, esrgan, taesd, embeddings})
     bool verify_basic_auth(const httplib::Request& req) const;
+
+    // Extract the value of the `sdcpp_auth` cookie from the request's
+    // `Cookie:` header, or empty string if not present. Cookies are set
+    // by /auth/login on successful sign-in (HttpOnly + SameSite=Strict)
+    // so browsers attach them to every same-origin request — including
+    // <img src="/output/..."> and WS handshakes that can't carry an
+    // Authorization header.
+    static std::string extract_cookie_token(const httplib::Request& req);
     // Resolve a /webdav/... URL path to an absolute filesystem path under
     // a configured root. Returns nullopt for traversal attempts (`..`),
     // unknown roots, or malformed paths. The resulting path may not exist.

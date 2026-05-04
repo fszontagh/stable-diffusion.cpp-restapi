@@ -66,6 +66,10 @@ void WebSocketServer::setup_endpoint(httplib::Server& server) {
         // close the socket immediately with an auth-failure code.
         std::string username;
         if (auth_manager_ && auth_manager_->enabled()) {
+            // Try, in order: query token (?token=), Authorization: Bearer,
+            // and the sdcpp_auth cookie (set by /auth/login). Browser SPA
+            // uses the cookie path; curl/scripts use the Bearer header;
+            // legacy clients may pass ?token=.
             std::string token = req.has_param("token")
                 ? req.get_param_value("token")
                 : "";
@@ -75,6 +79,24 @@ void WebSocketServer::setup_endpoint(httplib::Server& server) {
                 if (auth_header.size() > bearer_prefix.size() &&
                     auth_header.compare(0, bearer_prefix.size(), bearer_prefix) == 0) {
                     token = auth_header.substr(bearer_prefix.size());
+                }
+            }
+            if (token.empty()) {
+                // Cookie: sdcpp_auth=<token>; ...
+                std::string cookie_hdr = req.get_header_value("Cookie");
+                static const std::string key = "sdcpp_auth=";
+                size_t pos = 0;
+                while (pos < cookie_hdr.size()) {
+                    while (pos < cookie_hdr.size() &&
+                           (cookie_hdr[pos] == ' ' || cookie_hdr[pos] == '\t')) ++pos;
+                    size_t end = cookie_hdr.find(';', pos);
+                    if (end == std::string::npos) end = cookie_hdr.size();
+                    if (cookie_hdr.compare(pos, key.size(), key) == 0) {
+                        token = cookie_hdr.substr(pos + key.size(),
+                                                   end - (pos + key.size()));
+                        break;
+                    }
+                    pos = end + 1;
                 }
             }
             auto user = token.empty()

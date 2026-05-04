@@ -600,17 +600,11 @@ class ApiClient {
       'Content-Type': 'application/json'
     }
 
-    // Attach bearer token if the auth store has one. We reach into
-    // localStorage directly here to avoid importing Pinia into the client
-    // module (which would cause circular imports through the store).
-    try {
-      const token = localStorage.getItem('sdcpp_auth_token')
-      if (token) headers['Authorization'] = `Bearer ${token}`
-    } catch {
-      // localStorage unavailable (private mode) — proceed unauthenticated
-    }
-
-    const options: RequestInit = { method, headers }
+    // Auth is via the sdcpp_auth HttpOnly cookie set by /auth/login.
+    // `credentials: 'same-origin'` (default for same-origin requests in
+    // modern browsers, but explicit here so it's obvious) ensures the
+    // cookie tags along on every fetch.
+    const options: RequestInit = { method, headers, credentials: 'same-origin' }
 
     if (data) {
       options.body = JSON.stringify(data)
@@ -625,23 +619,15 @@ class ApiClient {
         if (!response.ok) {
           const error = new ApiError(json.error || 'Request failed', response.status)
 
-          // 401: token rejected (server restart wiped tokens, or expired
-          // server-side, or never valid). Clear local auth state and bounce
-          // to /login. We avoid importing the Pinia store / vue-router here
-          // to keep this module dependency-light; localStorage write +
-          // window.location is sufficient and works regardless of route
-          // history mode. Skip the redirect for the login endpoint itself —
-          // a 401 there is a wrong-password indication, not a session expiry.
+          // 401: cookie expired/invalid (server restart wiped tokens, etc.)
+          // Server-rendered /login page handles re-authentication. We just
+          // bounce there with the current SPA route as ?redirect= so the
+          // user lands where they were after signing in.
           if (response.status === 401 && !endpoint.startsWith('/auth/')) {
-            try {
-              localStorage.removeItem('sdcpp_auth_token')
-              localStorage.removeItem('sdcpp_auth_expires_at')
-              localStorage.removeItem('sdcpp_auth_username')
-            } catch { /* private mode — ignore */ }
-            if (typeof window !== 'undefined' &&
-                !window.location.hash.startsWith('#/login')) {
-              const dest = encodeURIComponent(window.location.hash.replace(/^#/, '') || '/')
-              window.location.hash = `#/login?redirect=${dest}`
+            if (typeof window !== 'undefined') {
+              const currentPath = '/ui/' + window.location.hash.replace(/^#\/?/, '')
+              window.location.replace(
+                '/login?redirect=' + encodeURIComponent(currentPath))
             }
           }
 

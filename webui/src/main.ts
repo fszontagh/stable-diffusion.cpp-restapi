@@ -14,14 +14,16 @@ import RecycleBin from './views/RecycleBin.vue'
 import Chat from './views/Chat.vue'
 import Downloads from './views/Downloads.vue'
 import Settings from './views/Settings.vue'
-import Login from './views/Login.vue'
 
 // Lazy loaded views
 const ModelLoad = () => import('./views/ModelLoad.vue')
 
+// Auth is enforced server-side via the sdcpp_auth cookie. The server
+// redirects /ui/* to /login (a server-rendered HTML page) for any
+// unauthenticated request, so the SPA never needs an in-app login route
+// or navigation guard.
 const routes = [
   { path: '/', redirect: '/dashboard' },
-  { path: '/login', name: 'Login', component: Login, meta: { public: true } },
   { path: '/dashboard', name: 'Dashboard', component: Dashboard },
   { path: '/models', name: 'Models', component: Models },
   { path: '/models/load/:modelName', name: 'ModelLoad', component: ModelLoad, props: true },
@@ -46,17 +48,4 @@ initSentry(app, router)
 
 app.use(createPinia())
 app.use(router)
-
-// Auth navigation guard: routes are protected by default; add `meta.public: true`
-// to opt out (login page is the only public route today). Pinia must be
-// installed before this guard fires (see app.use(createPinia()) above).
-import { useAuthStore } from './stores/auth'
-router.beforeEach((to) => {
-  if (to.meta?.public) return true
-  const auth = useAuthStore()
-  if (auth.isAuthenticated) return true
-  // Preserve where the user was trying to go so /login can bounce back
-  return { name: 'Login', query: { redirect: to.fullPath } }
-})
-
 app.mount('#app')

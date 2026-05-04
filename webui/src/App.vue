@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from './stores/app'
-import { useAuthStore } from './stores/auth'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useTheme } from './composables/useTheme'
 import { wsService } from './services/websocket'
@@ -17,7 +16,6 @@ import ShortcutsHelpModal from './components/ShortcutsHelpModal.vue'
 import MobileTabBar from './components/MobileTabBar.vue'
 
 const store = useAppStore()
-const auth = useAuthStore()
 const shortcutsModalRef = ref<InstanceType<typeof ShortcutsHelpModal>>()
 const wsBannerDismissed = ref(false)
 
@@ -43,25 +41,11 @@ const handleShowShortcuts = (event: CustomEvent) => {
   shortcutsModalRef.value?.show(event.detail.shortcuts)
 }
 
-// Start/stop polling + WebSocket as the auth state changes. We deliberately
-// don't kick polling off at mount time anymore — when the user lands on /login
-// (unauthenticated), every poll would 401-redirect-to-login, including the
-// WS handshake which would surface as a "disconnected" banner that's just a
-// red herring caused by missing-token, not a real connectivity issue.
-function applyAuthState(isAuth: boolean) {
-  if (isAuth) {
-    store.startPolling()
-  } else {
-    store.stopPolling()
-    wsBannerDismissed.value = true   // suppress any stale banner
-    try { wsService.disconnect() } catch { /* ignore */ }
-  }
-}
-
-watch(() => auth.isAuthenticated, (v) => applyAuthState(v))
-
+// The SPA only loads when the user is authenticated — the server redirects
+// /ui/* to /login (a server-rendered HTML page) for unauthenticated callers.
+// So polling and the WebSocket can both kick off unconditionally on mount.
 onMounted(() => {
-  applyAuthState(auth.isAuthenticated)
+  store.startPolling()
   window.addEventListener('show-shortcuts-help', handleShowShortcuts as EventListener)
 })
 
@@ -72,10 +56,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- Initial Loading Overlay — only meaningful when authenticated and
-       startPolling() is actively fetching; on the login page polling hasn't
-       started yet, so showing this would just hide the login form forever. -->
-  <div v-if="store.isInitialLoading && auth.isAuthenticated" class="initial-loading">
+  <!-- API Offline Overlay - renders above everything when disconnected -->
+  <ApiOfflineOverlay />
+
+  <!-- Initial Loading Overlay -->
+  <div v-if="store.isInitialLoading" class="initial-loading">
     <div class="loading-content">
       <div class="spinner spinner-lg"></div>
       <p class="loading-text">Loading application...</p>
@@ -83,66 +68,40 @@ onUnmounted(() => {
   </div>
 
   <ErrorBoundary>
-    <!-- Authenticated shell: full app layout with sidebar / status bar / WS banner -->
-    <template v-if="auth.isAuthenticated">
-      <!-- API Offline Overlay — only when the user is logged in. On /login
-           we haven't started polling, so apiAvailable is its initial value
-           (false) and the overlay would cover the login form. -->
-      <ApiOfflineOverlay />
+    <StatusBar />
 
-      <StatusBar />
-
-      <!-- WebSocket disconnected warning banner (HTTP still works) -->
-      <Transition name="slide-down">
-        <div v-if="store.wsOnlyDisconnected && !wsBannerDismissed" class="ws-warning-banner">
-          <span class="ws-warning-icon">&#9888;</span>
-          <span class="ws-warning-text">
-            WebSocket disconnected - real-time updates unavailable. The UI will poll for updates.
-          </span>
-          <button class="ws-retry-btn" @click="retryWsConnection" title="Retry connection">
-            Retry
-          </button>
-          <button class="ws-dismiss-btn" @click="dismissWsBanner" title="Dismiss">
-            &times;
-          </button>
-        </div>
-      </Transition>
-
-      <div class="app-layout">
-        <Sidebar />
-        <main class="main-content">
-          <router-view />
-        </main>
+    <!-- WebSocket disconnected warning banner (HTTP still works) -->
+    <Transition name="slide-down">
+      <div v-if="store.wsOnlyDisconnected && !wsBannerDismissed" class="ws-warning-banner">
+        <span class="ws-warning-icon">&#9888;</span>
+        <span class="ws-warning-text">
+          WebSocket disconnected - real-time updates unavailable. The UI will poll for updates.
+        </span>
+        <button class="ws-retry-btn" @click="retryWsConnection" title="Retry connection">
+          Retry
+        </button>
+        <button class="ws-dismiss-btn" @click="dismissWsBanner" title="Dismiss">
+          &times;
+        </button>
       </div>
-      <Toast />
-      <FloatingPreview />
-      <Assistant />
-      <AssistantQuestion />
-      <ShortcutsHelpModal ref="shortcutsModalRef" />
-      <MobileTabBar />
-    </template>
+    </Transition>
 
-    <!-- Unauthenticated shell: just the routed view (Login page), centered.
-         No sidebar / no top bar / no WS / no polling — Login.vue is full-bleed. -->
-    <template v-else>
-      <main class="main-content auth-shell">
+    <div class="app-layout">
+      <Sidebar />
+      <main class="main-content">
         <router-view />
       </main>
-      <Toast />
-    </template>
+    </div>
+    <Toast />
+    <FloatingPreview />
+    <Assistant />
+    <AssistantQuestion />
+    <ShortcutsHelpModal ref="shortcutsModalRef" />
+    <MobileTabBar />
   </ErrorBoundary>
 </template>
 
 <style scoped>
-/* When unauthenticated we strip the sidebar and any margins the global
-   .main-content rule applies. Login.vue handles its own full-screen layout. */
-.main-content.auth-shell {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  min-height: 100vh;
-}
-
 .initial-loading {
   position: fixed;
   inset: 0;

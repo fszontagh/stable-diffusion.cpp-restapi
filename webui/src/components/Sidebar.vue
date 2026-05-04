@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useAssistantStore } from '../stores/assistant'
 import { useAuthStore } from '../stores/auth'
 import MountDialog from './MountDialog.vue'
 
 const route = useRoute()
-const router = useRouter()
 const assistantStore = useAssistantStore()
 const auth = useAuthStore()
 
@@ -21,16 +20,20 @@ function closeMountDialog() {
 }
 
 function handleLogout() {
-  // Best-effort revoke server-side; even if it fails (network down,
-  // already-expired token, etc.) we still clear local state and bounce.
+  // Server clears the cookie via Set-Cookie: Max-Age=0 on its response;
+  // we wait for that to land before bouncing to /login so the next
+  // request from /login (which also goes through the cookie middleware)
+  // doesn't somehow re-authenticate from a stale cookie. credentials
+  // 'same-origin' makes sure the cookie tags along on the logout request.
   fetch('/auth/logout', {
     method: 'POST',
-    headers: auth.token
-      ? { 'Authorization': `Bearer ${auth.token}` }
-      : {}
-  }).catch(() => { /* ignore */ })
-  auth.clear()
-  router.replace('/login')
+    credentials: 'same-origin'
+  }).finally(() => {
+    auth.clear()
+    // Use full window navigation so we hit the server-rendered /login
+    // page, not a Vue route (which no longer exists).
+    window.location.replace('/login')
+  })
 }
 
 const navItems = computed(() => {
@@ -76,7 +79,6 @@ const navItems = computed(() => {
         <span class="nav-label">Output Files</span>
       </a>
       <button
-        v-if="auth.isAuthenticated"
         type="button"
         class="nav-item nav-mount"
         title="Mount this server's WebDAV share on your computer"
@@ -86,14 +88,13 @@ const navItems = computed(() => {
         <span class="nav-label">Mount</span>
       </button>
       <button
-        v-if="auth.isAuthenticated"
         type="button"
         class="nav-item nav-logout"
-        :title="auth.username ? `Logged in as ${auth.username}` : 'Sign out'"
+        title="Sign out"
         @click="handleLogout"
       >
         <span class="nav-icon">&#128274;</span>
-        <span class="nav-label">{{ auth.username || 'Sign out' }}</span>
+        <span class="nav-label">Sign out</span>
       </button>
     </div>
     <MountDialog :show="showMountDialog" @close="closeMountDialog" />

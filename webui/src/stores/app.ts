@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useAuthStore } from './auth'
 import { api, type HealthResponse, type ModelsResponse, type QueueResponse, type OptionsResponse, type Job, type QueueFilters, type GenerationDefaults, type UIPreferences, type ArchitecturesResponse, type OptionDescriptionsResponse, type PreviewSettings, type LoadModelParams } from '../api/client'
 import {
   wsService,
@@ -277,6 +278,17 @@ export const useAppStore = defineStore('app', () => {
       health.value = newHealth
       connected.value = true
       error.value = null
+
+      // Mirror the authenticated username into the auth store so the
+      // sidebar logout label, mount-dialog credentials hint, etc. can show
+      // it. The cookie is HttpOnly so JS can't read it directly; /health
+      // resolves the cookie/bearer back to a username server-side.
+      try {
+        const auth = useAuthStore()
+        const u = (newHealth as { username?: string | null }).username
+        auth.setUsername(u ?? null)
+      } catch { /* store not yet ready during SSR-style init */ }
+
       // Update document title with model loading progress
       updateDocumentTitle()
 
