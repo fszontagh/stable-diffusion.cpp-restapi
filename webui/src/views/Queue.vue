@@ -307,6 +307,23 @@ function isRefImagesJob(job: Job): boolean {
   return false
 }
 
+// Generation jobs produce image/video outputs that have thumbnails.
+// Non-generation jobs (model_download, model_hash, convert) do not.
+const GENERATION_JOB_TYPES = ['txt2img', 'img2img', 'txt2vid', 'upscale'] as const
+function isGenerationJob(job: Job): boolean {
+  return (GENERATION_JOB_TYPES as readonly string[]).includes(job.type)
+}
+
+// Larger glyph for non-generation jobs (used in the visual area in place of a thumbnail)
+function getNonGenerationOutputIcon(type: string): string {
+  const icons: Record<string, string> = {
+    model_download: '&#128229;', // inbox tray
+    model_hash: '&#35;',          // # hash mark
+    convert: '&#128260;'          // counterclockwise arrows / convert
+  }
+  return icons[type] || '&#128190;' // generic floppy disk
+}
+
 function getTypeIcon(type: string, job?: Job): string {
   if (job && isRefImagesJob(job)) return '&#128247;'
   const icons: Record<string, string> = {
@@ -1025,36 +1042,44 @@ async function sendImageToUpscale(outputPath: string) {
 
             <!-- Outputs for completed jobs -->
             <div v-else-if="job.status === 'completed' && job.outputs.length > 0" class="job-outputs">
-              <!-- Source image for upscale, img2img, and image edit jobs -->
-              <template v-if="job.type === 'upscale' || job.type === 'img2img' || isRefImagesJob(job)">
-                <div class="source-image">
-                  <span class="source-label">Source</span>
-                  <button
-                    class="output-thumb source-thumb"
-                    @click="openLightbox([job.job_id + '/source.png'], 0)"
-                    title="View source image"
-                  >
-                    <img :src="getThumbUrl(job.job_id + '/source.png')" alt="Source" />
-                  </button>
-                </div>
-                <span class="arrow-separator">→</span>
+              <!-- Generation jobs: render image thumbnails -->
+              <template v-if="isGenerationJob(job)">
+                <!-- Source image for upscale, img2img, and image edit jobs -->
+                <template v-if="job.type === 'upscale' || job.type === 'img2img' || isRefImagesJob(job)">
+                  <div class="source-image">
+                    <span class="source-label">Source</span>
+                    <button
+                      class="output-thumb source-thumb"
+                      @click="openLightbox([job.job_id + '/source.png'], 0)"
+                      title="View source image"
+                    >
+                      <img :src="getThumbUrl(job.job_id + '/source.png')" alt="Source" />
+                    </button>
+                  </div>
+                  <span class="arrow-separator">→</span>
+                </template>
+                <button
+                  v-for="(output, idx) in job.outputs.slice(0, 4)"
+                  :key="output"
+                  class="output-thumb"
+                  @click="openLightbox(job.outputs, idx)"
+                  :title="'Click to view full size'"
+                >
+                  <img :src="getThumbUrl(output)" :alt="output" />
+                </button>
+                <button
+                  v-if="job.outputs.length > 4"
+                  class="more-outputs"
+                  @click="openLightbox(job.outputs, 4)"
+                >
+                  +{{ job.outputs.length - 4 }}
+                </button>
               </template>
-              <button
-                v-for="(output, idx) in job.outputs.slice(0, 4)"
-                :key="output"
-                class="output-thumb"
-                @click="openLightbox(job.outputs, idx)"
-                :title="'Click to view full size'"
-              >
-                <img :src="getThumbUrl(output)" :alt="output" />
-              </button>
-              <button
-                v-if="job.outputs.length > 4"
-                class="more-outputs"
-                @click="openLightbox(job.outputs, 4)"
-              >
-                +{{ job.outputs.length - 4 }}
-              </button>
+              <!-- Non-generation jobs: show a typed icon instead of a (broken) thumbnail -->
+              <div v-else class="job-output-icon" :title="getTypeName(job.type, job)">
+                <span class="job-output-icon-glyph" v-html="getNonGenerationOutputIcon(job.type)"></span>
+                <span class="job-output-icon-label">{{ getTypeName(job.type, job) }}</span>
+              </div>
             </div>
 
             <!-- Error for failed jobs -->
@@ -1246,36 +1271,44 @@ async function sendImageToUpscale(outputPath: string) {
                   </div>
                 </div>
                 <div v-else-if="job.status === 'completed' && job.outputs.length > 0" class="job-outputs">
-                  <!-- Source image for upscale and img2img jobs -->
-                  <template v-if="job.type === 'upscale' || job.type === 'img2img'">
-                    <div class="source-image">
-                      <span class="source-label">Source</span>
-                      <button
-                        class="output-thumb source-thumb"
-                        @click="openLightbox([job.job_id + '/source.png'], 0)"
-                        title="View source image"
-                      >
-                        <img :src="getThumbUrl(job.job_id + '/source.png')" alt="Source" />
-                      </button>
-                    </div>
-                    <span class="arrow-separator">→</span>
+                  <!-- Generation jobs: render image thumbnails -->
+                  <template v-if="isGenerationJob(job)">
+                    <!-- Source image for upscale and img2img jobs -->
+                    <template v-if="job.type === 'upscale' || job.type === 'img2img'">
+                      <div class="source-image">
+                        <span class="source-label">Source</span>
+                        <button
+                          class="output-thumb source-thumb"
+                          @click="openLightbox([job.job_id + '/source.png'], 0)"
+                          title="View source image"
+                        >
+                          <img :src="getThumbUrl(job.job_id + '/source.png')" alt="Source" />
+                        </button>
+                      </div>
+                      <span class="arrow-separator">→</span>
+                    </template>
+                    <button
+                      v-for="(output, idx) in job.outputs.slice(0, 4)"
+                      :key="output"
+                      class="output-thumb"
+                      @click="openLightbox(job.outputs, idx)"
+                      :title="'Click to view full size'"
+                    >
+                      <img :src="getThumbUrl(output)" :alt="output" />
+                    </button>
+                    <button
+                      v-if="job.outputs.length > 4"
+                      class="more-outputs"
+                      @click="openLightbox(job.outputs, 4)"
+                    >
+                      +{{ job.outputs.length - 4 }}
+                    </button>
                   </template>
-                  <button
-                    v-for="(output, idx) in job.outputs.slice(0, 4)"
-                    :key="output"
-                    class="output-thumb"
-                    @click="openLightbox(job.outputs, idx)"
-                    :title="'Click to view full size'"
-                  >
-                    <img :src="getThumbUrl(output)" :alt="output" />
-                  </button>
-                  <button
-                    v-if="job.outputs.length > 4"
-                    class="more-outputs"
-                    @click="openLightbox(job.outputs, 4)"
-                  >
-                    +{{ job.outputs.length - 4 }}
-                  </button>
+                  <!-- Non-generation jobs: show a typed icon instead of a (broken) thumbnail -->
+                  <div v-else class="job-output-icon" :title="getTypeName(job.type, job)">
+                    <span class="job-output-icon-glyph" v-html="getNonGenerationOutputIcon(job.type)"></span>
+                    <span class="job-output-icon-label">{{ getTypeName(job.type, job) }}</span>
+                  </div>
                 </div>
                 <div v-else-if="job.status === 'failed' && job.error" class="job-error" :title="job.error">
                   <span class="error-text">{{ truncateText(job.error, 100) }}</span>
@@ -1455,15 +1488,27 @@ async function sendImageToUpscale(outputPath: string) {
         <div v-if="selectedJob.outputs.length > 0" class="detail-section">
           <h4>Outputs</h4>
           <div class="outputs-gallery">
-            <button
-              v-for="(output, idx) in selectedJob.outputs"
-              :key="output"
-              class="output-link"
-              @click="openLightbox(selectedJob.outputs, idx)"
-            >
-              <img :src="getThumbUrl(output)" :alt="output" />
-              <span class="output-name">{{ output.split('/').pop() }}</span>
-            </button>
+            <template v-if="isGenerationJob(selectedJob)">
+              <button
+                v-for="(output, idx) in selectedJob.outputs"
+                :key="output"
+                class="output-link"
+                @click="openLightbox(selectedJob.outputs, idx)"
+              >
+                <img :src="getThumbUrl(output)" :alt="output" />
+                <span class="output-name">{{ output.split('/').pop() }}</span>
+              </button>
+            </template>
+            <template v-else>
+              <div
+                v-for="output in selectedJob.outputs"
+                :key="output"
+                class="output-link"
+              >
+                <span class="job-output-icon-glyph" v-html="getNonGenerationOutputIcon(selectedJob.type)"></span>
+                <span class="output-name">{{ output.split('/').pop() }}</span>
+              </div>
+            </template>
           </div>
         </div>
 
@@ -2079,6 +2124,31 @@ async function sendImageToUpscale(outputPath: string) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.job-output-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 12px;
+  min-width: 64px;
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.job-output-icon-glyph {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.job-output-icon-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, #666);
 }
 
 .more-outputs {

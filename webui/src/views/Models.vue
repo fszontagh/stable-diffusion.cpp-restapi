@@ -101,9 +101,16 @@ function generateOutputPath(inputPath: string, quantType: string): string {
       baseName = stem.substring(0, lastDot)
     }
   }
-  // Build output path in same directory
+  // Build output path in same directory.
+  // If inputPath has no directory part (just a filename — happens when the
+  // backend was given a model by name and we don't know the full path),
+  // return empty so the request omits output_path entirely; the backend will
+  // auto-generate using the resolved input file's parent directory. Sending
+  // a directory-less filename caused converted files to land in the server's
+  // CWD instead of the model directory, where the scanner couldn't find them.
   const dir = parts.slice(0, -1).join('/')
-  return (dir ? dir + '/' : '') + baseName + '.' + quantType + '.gguf'
+  if (!dir) return ''
+  return dir + '/' + baseName + '.' + quantType + '.gguf'
 }
 
 function openConvertModal(model: ModelInfo) {
