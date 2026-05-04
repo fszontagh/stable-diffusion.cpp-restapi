@@ -121,6 +121,34 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     {
         server.set_pre_routing_handler(
             [this](const httplib::Request& req, httplib::Response& res) -> httplib::Server::HandlerResponse {
+                // ── /output and /thumb branch (HTTP Basic) ────────────
+                // Static-file responses for the gallery. Bearer can't ride
+                // on <img> / <video> tags from the browser, so we use Basic;
+                // the browser caches credentials per-session after the
+                // first 401-with-WWW-Authenticate prompt. Skip when auth is
+                // disabled — those builds want the gallery to be public.
+                if (auth_manager_.enabled()) {
+                    bool is_output_path =
+                        req.path == "/output" ||
+                        (req.path.size() >= 8 && req.path.compare(0, 8, "/output/") == 0) ||
+                        req.path == "/thumb"  ||
+                        (req.path.size() >= 7 && req.path.compare(0, 7, "/thumb/") == 0);
+                    if (is_output_path && !verify_basic_auth(req)) {
+                        res.status = 401;
+                        res.set_header("WWW-Authenticate", R"(Basic realm="sdcpp-restapi")");
+                        res.set_header("Content-Type", "application/json");
+                        res.set_content(
+                            R"({"error":"unauthorized","message":"Authentication required."})",
+                            "application/json");
+                        return httplib::Server::HandlerResponse::Handled;
+                    }
+                    // Authenticated /output/ or /thumb/ — fall through to the
+                    // normal route handler (registered as GET /output etc).
+                    if (is_output_path) {
+                        return httplib::Server::HandlerResponse::Unhandled;
+                    }
+                }
+
                 // ── WebDAV branch ─────────────────────────────────────
                 // Runs even when the global auth_manager is disabled — the
                 // pre-routing handler is the only place we can intercept
@@ -719,6 +747,7 @@ void RequestHandlers::handle_health(const httplib::Request& /*req*/, httplib::Re
         {"model_type", loaded_info["model_type"]},
         {"model_architecture", loaded_info["model_architecture"]},
         {"loaded_components", loaded_info["loaded_components"]},
+        {"load_options", loaded_info.contains("load_options") ? loaded_info["load_options"] : nlohmann::json(nullptr)},
         {"upscaler_loaded", loaded_info["upscaler_loaded"]},
         {"upscaler_name", loaded_info["upscaler_name"]},
 #ifdef SDCPP_WEBSOCKET_ENABLED
@@ -875,7 +904,8 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
             {"message", "Model loaded successfully"},
             {"model_name", loaded_info["model_name"]},
             {"model_type", loaded_info["model_type"]},
-            {"loaded_components", loaded_info["loaded_components"]}
+            {"loaded_components", loaded_info["loaded_components"]},
+            {"load_options", loaded_info.contains("load_options") ? loaded_info["load_options"] : nlohmann::json(nullptr)}
         };
         
         send_json(res, response);

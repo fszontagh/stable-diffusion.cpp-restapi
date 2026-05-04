@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useAppStore } from './stores/app'
+import { useAuthStore } from './stores/auth'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useTheme } from './composables/useTheme'
 import { wsService } from './services/websocket'
@@ -16,6 +17,7 @@ import ShortcutsHelpModal from './components/ShortcutsHelpModal.vue'
 import MobileTabBar from './components/MobileTabBar.vue'
 
 const store = useAppStore()
+const auth = useAuthStore()
 const shortcutsModalRef = ref<InstanceType<typeof ShortcutsHelpModal>>()
 const wsBannerDismissed = ref(false)
 
@@ -41,8 +43,25 @@ const handleShowShortcuts = (event: CustomEvent) => {
   shortcutsModalRef.value?.show(event.detail.shortcuts)
 }
 
+// Start/stop polling + WebSocket as the auth state changes. We deliberately
+// don't kick polling off at mount time anymore — when the user lands on /login
+// (unauthenticated), every poll would 401-redirect-to-login, including the
+// WS handshake which would surface as a "disconnected" banner that's just a
+// red herring caused by missing-token, not a real connectivity issue.
+function applyAuthState(isAuth: boolean) {
+  if (isAuth) {
+    store.startPolling()
+  } else {
+    store.stopPolling()
+    wsBannerDismissed.value = true   // suppress any stale banner
+    try { wsService.disconnect() } catch { /* ignore */ }
+  }
+}
+
+watch(() => auth.isAuthenticated, (v) => applyAuthState(v))
+
 onMounted(() => {
-  store.startPolling()
+  applyAuthState(auth.isAuthenticated)
   window.addEventListener('show-shortcuts-help', handleShowShortcuts as EventListener)
 })
 
@@ -65,40 +84,61 @@ onUnmounted(() => {
   </div>
   
   <ErrorBoundary>
-    <StatusBar />
+    <!-- Authenticated shell: full app layout with sidebar / status bar / WS banner -->
+    <template v-if="auth.isAuthenticated">
+      <StatusBar />
 
-    <!-- WebSocket disconnected warning banner (HTTP still works) -->
-    <Transition name="slide-down">
-      <div v-if="store.wsOnlyDisconnected && !wsBannerDismissed" class="ws-warning-banner">
-        <span class="ws-warning-icon">&#9888;</span>
-        <span class="ws-warning-text">
-          WebSocket disconnected - real-time updates unavailable. The UI will poll for updates.
-        </span>
-        <button class="ws-retry-btn" @click="retryWsConnection" title="Retry connection">
-          Retry
-        </button>
-        <button class="ws-dismiss-btn" @click="dismissWsBanner" title="Dismiss">
-          &times;
-        </button>
+      <!-- WebSocket disconnected warning banner (HTTP still works) -->
+      <Transition name="slide-down">
+        <div v-if="store.wsOnlyDisconnected && !wsBannerDismissed" class="ws-warning-banner">
+          <span class="ws-warning-icon">&#9888;</span>
+          <span class="ws-warning-text">
+            WebSocket disconnected - real-time updates unavailable. The UI will poll for updates.
+          </span>
+          <button class="ws-retry-btn" @click="retryWsConnection" title="Retry connection">
+            Retry
+          </button>
+          <button class="ws-dismiss-btn" @click="dismissWsBanner" title="Dismiss">
+            &times;
+          </button>
+        </div>
+      </Transition>
+
+      <div class="app-layout">
+        <Sidebar />
+        <main class="main-content">
+          <router-view />
+        </main>
       </div>
-    </Transition>
+      <Toast />
+      <FloatingPreview />
+      <Assistant />
+      <AssistantQuestion />
+      <ShortcutsHelpModal ref="shortcutsModalRef" />
+      <MobileTabBar />
+    </template>
 
-    <div class="app-layout">
-      <Sidebar />
-      <main class="main-content">
+    <!-- Unauthenticated shell: just the routed view (Login page), centered.
+         No sidebar / no top bar / no WS / no polling — Login.vue is full-bleed. -->
+    <template v-else>
+      <main class="main-content auth-shell">
         <router-view />
       </main>
-    </div>
-    <Toast />
-    <FloatingPreview />
-    <Assistant />
-    <AssistantQuestion />
-    <ShortcutsHelpModal ref="shortcutsModalRef" />
-    <MobileTabBar />
+      <Toast />
+    </template>
   </ErrorBoundary>
 </template>
 
 <style scoped>
+/* When unauthenticated we strip the sidebar and any margins the global
+   .main-content rule applies. Login.vue handles its own full-screen layout. */
+.main-content.auth-shell {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+}
+
 .initial-loading {
   position: fixed;
   inset: 0;

@@ -184,16 +184,23 @@ class WebSocketService {
       return
     }
 
+    // Skip connecting entirely when we have no auth token — the server's
+    // pre-routing handler returns 401 on the upgrade, which surfaces as a
+    // generic disconnected banner that confuses users on the login page.
+    // The auth store calls connect() again after a successful login.
+    let token = ''
+    try { token = localStorage.getItem('sdcpp_auth_token') || '' } catch { /* private mode */ }
+    if (!token) {
+      console.log('[WebSocket] No auth token — deferring connect until login')
+      return
+    }
+
     // Build WebSocket URL using same host:port as the page, with /ws path.
-    // Append ?token=<bearer> if the user is authenticated — browsers can't
-    // set Authorization headers on WS handshakes, so the server accepts the
-    // token via query string instead. (See websocket_server.cpp handshake.)
+    // Append ?token=<bearer> — browsers can't set Authorization headers on
+    // WS handshakes, so the server accepts the token via query string.
+    // (See websocket_server.cpp handshake.)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    let wsUrl = `${protocol}//${window.location.host}/ws`
-    try {
-      const token = localStorage.getItem('sdcpp_auth_token')
-      if (token) wsUrl += `?token=${encodeURIComponent(token)}`
-    } catch { /* private mode — connect without; server may close 4401 */ }
+    const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`
     this.url = wsUrl
 
     this.updateState('connecting')
