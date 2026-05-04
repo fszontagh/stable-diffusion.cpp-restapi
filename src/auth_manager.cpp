@@ -213,11 +213,16 @@ const std::vector<std::string>& AuthManager::always_allowed_path_prefixes() {
     //             <img>/<video> requests, so the WebUI links the output URLs
     //             directly. Treated like /ui/ static assets.
     // /thumb/   → thumbnails for the gallery; same reasoning.
+    // /webdav/  → enforced by HTTP Basic in the WebDAV pre-routing branch
+    //             of RequestHandlers; the Bearer middleware MUST NOT 401 here
+    //             or DAV clients (Finder, Explorer, dolphin) won't see the
+    //             Basic challenge they need.
     static const std::vector<std::string> prefixes = {
         "/ui/",
         "/docs/",
         "/output/",
         "/thumb/",
+        "/webdav/",
     };
     return prefixes;
 }

@@ -206,5 +206,23 @@ struct LoadUpscalerRequest {
     }
 };
 
+// Response for POST /models/upload (multipart/form-data).
+// NOTE: The request itself is multipart and is registered without a JSON
+// body schema — the OpenAPI spec currently only documents this response.
+// TODO: enrich the OpenAPI registration to declare a multipart/form-data
+// request body once SchemaBuilder grows multipart support.
+struct UploadModelResponse {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("UploadModelResponse", "Result of a model file upload")
+            .required_field("success", schema::FieldType::Boolean, "Whether the upload succeeded")
+            .required_field("filename", schema::FieldType::String, "Stored filename")
+            .required_field("model_type", schema::FieldType::String, "Model type the file was stored under")
+            .required_field("size_bytes", schema::FieldType::Integer, "Size of the stored file in bytes")
+            .required_field("full_path", schema::FieldType::String, "Absolute path of the stored file on the server")
+            .optional_field("subfolder", schema::FieldType::String, "Subfolder under the model_type directory (if any)")
+            .build();
+    }
+};
+
 } // namespace api
 } // namespace sdcpp

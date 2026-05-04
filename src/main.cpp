@@ -315,8 +315,12 @@ int main(int argc, char* argv[]) {
         httplib::Server server;
         g_server = &server;
 
-        // Set server options
-        server.set_payload_max_length(1024 * 1024 * 100);  // 100MB max for image uploads
+        // Set server options.
+        // 50 GiB ceiling so multipart model uploads (POST /models/upload) can
+        // accept large checkpoints. Image uploads remain orders of magnitude
+        // smaller; this only sets the upper bound. v1 limitation: cpp-httplib
+        // buffers multipart bodies in memory — keep that in mind when sizing.
+        server.set_payload_max_length(static_cast<size_t>(50) * 1024 * 1024 * 1024);
 
         // Set error logger for debugging HTTP connection issues
         server.set_error_logger([](const httplib::Error& err, const httplib::Request* req) {
@@ -363,6 +367,7 @@ int main(int argc, char* argv[]) {
         // Initialize Request Handlers and register routes
         std::cout << "Registering API routes..." << std::endl;
         sdcpp::RequestHandlers handlers(model_manager, queue_manager, auth_manager,
+                                        config,
                                         config.paths.output, webui_path, config.assistant,
                                         config_path, docs_path);
         handlers.register_routes(server);

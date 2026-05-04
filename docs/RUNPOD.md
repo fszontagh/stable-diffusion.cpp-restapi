@@ -251,6 +251,86 @@ POST https://<pod-id>-8080.proxy.runpod.net/mcp
 
 Standard JSON-RPC 2.0 / Streamable HTTP transport. See `docs/MCP.md`.
 
+### WebDAV (mount models / output as a network drive)
+
+The server exposes the workspace volume over WebDAV at `/webdav/`,
+authenticated with HTTP Basic using the same `auth.username` /
+`auth.password` configured for the REST API. Two roots are exposed:
+
+| URL                                          | Filesystem (in pod)             |
+|----------------------------------------------|---------------------------------|
+| `https://<pod>/webdav/output/`               | `/workspace/output/`            |
+| `https://<pod>/webdav/models/<type>/`        | `/workspace/models/<type>/`     |
+
+`<type>` is one of `checkpoints`, `diffusion_models`, `vae`, `loras`,
+`clip`, `t5`, `controlnet`, `llm`, `esrgan`, `taesd`, `embeddings`.
+
+#### Mount commands
+
+**macOS Finder (Cmd + K):**
+
+```
+Server Address: https://<pod-id>-8080.proxy.runpod.net/webdav/
+```
+
+Enter the configured username + password when prompted. Finder mounts
+both `output/` and `models/` as subfolders. macOS may complain about
+`LOCK` not being supported — that's expected (v1 doesn't implement
+`LOCK`/`UNLOCK`). Reads, writes, and renames work fine.
+
+**Windows Explorer:**
+
+Right-click "This PC" → Map network drive → Folder:
+
+```
+\\<pod-id>-8080.proxy.runpod.net@SSL\webdav\
+```
+
+Or use `net use`:
+
+```cmd
+net use Z: \\<pod-id>-8080.proxy.runpod.net@SSL\webdav\ /user:admin <password>
+```
+
+(Windows over the RunPod proxy — TLS only — needs the `@SSL` suffix.)
+
+**GNOME Files (Nautilus):**
+
+`Other Locations` → `Connect to Server`:
+
+```
+davs://admin@<pod-id>-8080.proxy.runpod.net/webdav/
+```
+
+**KDE Dolphin:**
+
+Same URL with `webdavs://` prefix:
+
+```
+webdavs://admin@<pod-id>-8080.proxy.runpod.net/webdav/
+```
+
+**Linux `mount.davfs`:**
+
+```bash
+sudo apt install davfs2
+sudo mount -t davfs https://<pod-id>-8080.proxy.runpod.net/webdav/ /mnt/sdcpp \
+    -o username=admin
+```
+
+#### Notes
+
+- WebDAV uses **HTTP Basic** auth (separate from the REST `Bearer` token).
+  Both share the same configured username + password.
+- Maximum upload is bounded by the server's global payload limit (50 GiB).
+  Single-file PUT uploads up to that size work but are buffered in memory
+  end-to-end — same constraint as `POST /models/upload`.
+- Path traversal (`..`) is rejected with `400`; unknown `<type>` returns
+  `404`. The server never serves files outside `/workspace/`.
+- `LOCK` / `UNLOCK` return `405 Method Not Allowed` (deferred to a
+  later version). All other DAV operations work: `OPTIONS`, `GET`,
+  `HEAD`, `PROPFIND`, `PUT`, `DELETE`, `MKCOL`, `MOVE`, `COPY`.
+
 ## Stopping, restarting, deleting
 
 | Action | What persists | Cost |

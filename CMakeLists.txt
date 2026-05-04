@@ -99,11 +99,20 @@ endif()
 # sd.cpp's thirdparty bundles an older httplib without WebSocket support, and CMake's
 # include path deduplication causes the old version to take priority.
 # Instead, we add the include path manually with BEFORE to ensure correct version.
+#
+# PATCH: cpp-httplib v0.36.0 rejects unknown HTTP methods at parse_request_line()
+# (httplib.h ~line 10717 has a closed allow-list of GET/HEAD/POST/PUT/DELETE/CONNECT/
+# OPTIONS/TRACE/PATCH/PRI). For WebDAV we need PROPFIND/MKCOL/MOVE/COPY/LOCK/UNLOCK
+# to reach our pre-routing handler. The patch_command appends those to the set.
+# This is idempotent — re-running CMake on an already-patched tree is a no-op.
 FetchContent_Declare(
     httplib
     GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
     GIT_TAG        v0.36.0
     GIT_SHALLOW    TRUE
+    PATCH_COMMAND  ${CMAKE_COMMAND} -DHTTPLIB_HEADER=<SOURCE_DIR>/httplib.h
+                   -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/PatchHttplibWebDAV.cmake
+    UPDATE_DISCONNECTED 1
 )
 FetchContent_MakeAvailable(httplib)
 

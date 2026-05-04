@@ -54,5 +54,9 @@
         "username": "admin",
         "password": "CHANGE_ME_BEFORE_DEPLOY",
         "token_ttl_minutes": 1440
+    },
+    "webdav": {
+        "enabled": true,
+        "max_upload_size_mb": 51200
     }
 }

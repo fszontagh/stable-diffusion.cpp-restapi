@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
-import { api, type ModelInfo, type ConvertParams } from '../api/client'
+import { api, ApiError, type ModelInfo, type ConvertParams } from '../api/client'
 import Modal from '../components/Modal.vue'
 import SkeletonCard from '../components/SkeletonCard.vue'
 
@@ -150,6 +150,132 @@ async function handleConvert() {
   }
 }
 
+// ─── Upload modal state ──────────────────────────────────────────────
+const showUploadModal = ref(false)
+const uploadFile = ref<File | null>(null)
+const uploadModelType = ref<string>('checkpoint')
+const uploadSubfolder = ref<string>('')
+const uploading = ref(false)
+const uploadProgress = ref(0)        // 0..1
+const uploadLoaded = ref(0)          // bytes
+const uploadTotal = ref(0)           // bytes
+const uploadDragging = ref(false)
+let uploadAbortController: AbortController | null = null
+const uploadFileInput = ref<HTMLInputElement | null>(null)
+
+// Reuse the modelTypes list but drop the empty ("All Types") sentinel —
+// uploads must target a concrete type.
+const uploadModelTypeOptions = computed(() =>
+  modelTypes.filter(t => t.value !== '')
+)
+
+function openUploadModal() {
+  uploadFile.value = null
+  uploadModelType.value = 'checkpoint'
+  uploadSubfolder.value = ''
+  uploadProgress.value = 0
+  uploadLoaded.value = 0
+  uploadTotal.value = 0
+  showUploadModal.value = true
+}
+
+function closeUploadModal() {
+  if (uploading.value) {
+    cancelUpload()
+  }
+  showUploadModal.value = false
+}
+
+function pickUploadFile() {
+  uploadFileInput.value?.click()
+}
+
+function onUploadFileChange(ev: Event) {
+  const target = ev.target as HTMLInputElement
+  const f = target.files?.[0]
+  if (f) uploadFile.value = f
+}
+
+function onUploadDrop(ev: DragEvent) {
+  ev.preventDefault()
+  uploadDragging.value = false
+  const f = ev.dataTransfer?.files?.[0]
+  if (f) uploadFile.value = f
+}
+
+function onUploadDragOver(ev: DragEvent) {
+  ev.preventDefault()
+  uploadDragging.value = true
+}
+
+function onUploadDragLeave() {
+  uploadDragging.value = false
+}
+
+function cancelUpload() {
+  if (uploadAbortController) {
+    uploadAbortController.abort()
+    uploadAbortController = null
+  }
+}
+
+async function startUpload() {
+  if (!uploadFile.value) {
+    store.showToast('Choose a file first', 'error')
+    return
+  }
+  if (!uploadModelType.value) {
+    store.showToast('Select a model type', 'error')
+    return
+  }
+
+  // Client-side guards mirroring the server validation, so users get
+  // immediate feedback instead of a 400 after a long upload.
+  const lower = uploadFile.value.name.toLowerCase()
+  const supported = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.gguf']
+  if (!supported.some(ext => lower.endsWith(ext))) {
+    store.showToast('Unsupported file extension', 'error')
+    return
+  }
+  if (uploadSubfolder.value.includes('..') || uploadSubfolder.value.startsWith('/')) {
+    store.showToast('Subfolder must be relative and must not contain "..".', 'error')
+    return
+  }
+
+  uploading.value = true
+  uploadProgress.value = 0
+  uploadLoaded.value = 0
+  uploadTotal.value = uploadFile.value.size
+  uploadAbortController = new AbortController()
+
+  try {
+    const result = await api.uploadModel(
+      uploadFile.value,
+      uploadModelType.value,
+      uploadSubfolder.value || undefined,
+      (loaded, total) => {
+        uploadLoaded.value = loaded
+        uploadTotal.value = total
+        uploadProgress.value = total > 0 ? loaded / total : 0
+      },
+      uploadAbortController.signal
+    )
+    store.showToast(`Uploaded ${result.filename} (${formatSize(result.size_bytes)})`, 'success')
+    showUploadModal.value = false
+    // Pull the freshly scanned list so the new model is visible.
+    await store.fetchModels()
+  } catch (e) {
+    if (e instanceof ApiError && e.message === 'Upload cancelled') {
+      store.showToast('Upload cancelled', 'info')
+    } else {
+      store.showToast(e instanceof Error ? e.message : 'Upload failed', 'error')
+    }
+  } finally {
+    uploading.value = false
+    uploadAbortController = null
+  }
+}
+
 onMounted(() => {
   store.fetchModels()
   store.fetchOptions()  // Fetch options to get quantization types
@@ -183,6 +309,9 @@ onMounted(() => {
         </div>
         <button class="btn btn-secondary" @click="store.refreshModels()" :disabled="store.loading">
           &#8635; Refresh
+        </button>
+        <button class="btn btn-primary" @click="openUploadModal">
+          &#8593; Upload
         </button>
       </div>
     </div>
@@ -299,6 +428,100 @@ onMounted(() => {
         <button class="btn btn-primary" @click="handleConvert" :disabled="converting">
           <span v-if="converting" class="spinner"></span>
           {{ converting ? 'Converting...' : 'Start Conversion' }}
+        </button>
+      </template>
+    </Modal>
+
+    <!-- Upload Model Modal -->
+    <Modal :show="showUploadModal" title="Upload Model" @close="closeUploadModal">
+      <div class="convert-info">
+        <p>Upload a model file from your computer to the server. Use this when you can't reach this machine via scp/runpodctl.</p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Model Type</label>
+        <select v-model="uploadModelType" class="form-select" :disabled="uploading">
+          <option v-for="t in uploadModelTypeOptions" :key="t.value" :value="t.value">
+            {{ t.label }}
+          </option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Subfolder (optional)</label>
+        <input
+          v-model="uploadSubfolder"
+          type="text"
+          class="form-input"
+          placeholder="e.g. SDXL/character"
+          :disabled="uploading"
+        />
+        <div class="form-hint">
+          Relative path under the type directory. Must not start with "/" or contain "..".
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">File</label>
+        <div
+          :class="['upload-dropzone', { dragging: uploadDragging, has_file: !!uploadFile, disabled: uploading }]"
+          @click="!uploading && pickUploadFile()"
+          @drop="onUploadDrop"
+          @dragover="onUploadDragOver"
+          @dragleave="onUploadDragLeave"
+        >
+          <input
+            ref="uploadFileInput"
+            type="file"
+            accept=".safetensors,.ckpt,.pt,.pth,.bin,.gguf"
+            style="display:none"
+            @change="onUploadFileChange"
+          />
+          <template v-if="uploadFile">
+            <div class="upload-filename">{{ uploadFile.name }}</div>
+            <div class="upload-meta">{{ formatSize(uploadFile.size) }}</div>
+            <button
+              v-if="!uploading"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              @click.stop="uploadFile = null"
+            >Choose another file</button>
+          </template>
+          <template v-else>
+            <div class="upload-prompt">Drop a model file here, or click to browse</div>
+            <div class="upload-meta">.safetensors / .gguf / .ckpt / .pt / .pth / .bin</div>
+          </template>
+        </div>
+      </div>
+
+      <div v-if="uploading" class="upload-progress">
+        <div class="upload-progress-bar">
+          <div class="upload-progress-fill" :style="{ width: (uploadProgress * 100).toFixed(1) + '%' }"></div>
+        </div>
+        <div class="upload-progress-text">
+          {{ formatSize(uploadLoaded) }} / {{ formatSize(uploadTotal) }}
+          ({{ (uploadProgress * 100).toFixed(1) }}%)
+        </div>
+      </div>
+
+      <template #footer>
+        <button
+          v-if="!uploading"
+          class="btn btn-secondary"
+          @click="closeUploadModal"
+        >Cancel</button>
+        <button
+          v-else
+          class="btn btn-secondary"
+          @click="cancelUpload"
+        >Abort Upload</button>
+        <button
+          class="btn btn-primary"
+          @click="startUpload"
+          :disabled="uploading || !uploadFile"
+        >
+          <span v-if="uploading" class="spinner"></span>
+          {{ uploading ? 'Uploading...' : 'Upload' }}
         </button>
       </template>
     </Modal>
@@ -428,5 +651,76 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* Upload modal styles */
+.upload-dropzone {
+  border: 2px dashed var(--border-color, #555);
+  border-radius: var(--border-radius);
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  background: var(--bg-tertiary);
+}
+
+.upload-dropzone:hover {
+  border-color: var(--accent-primary);
+}
+
+.upload-dropzone.dragging {
+  border-color: var(--accent-primary);
+  background: var(--bg-secondary);
+}
+
+.upload-dropzone.has_file {
+  border-style: solid;
+}
+
+.upload-dropzone.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.upload-prompt {
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.upload-filename {
+  font-weight: 600;
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+
+.upload-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.upload-progress {
+  margin-top: 12px;
+}
+
+.upload-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.upload-progress-fill {
+  height: 100%;
+  background: var(--accent-primary);
+  transition: width 0.15s linear;
+}
+
+.upload-progress-text {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: right;
 }
 </style>

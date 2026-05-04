@@ -59,5 +59,21 @@ export const useAuthStore = defineStore('auth', () => {
     writeLocalStorage(STORAGE_USER_KEY, null)
   }
 
-  return { token, expiresAt, username, isAuthenticated, setToken, clear }
+  /**
+   * Return the credentials this store knows about.
+   *
+   * IMPORTANT: by design we do NOT persist the user's password — only the
+   * bearer token + username. So `password` here is always `null`. The mount
+   * dialog (and any future feature that needs the raw password to embed in
+   * an external file or URL) must ask the user to retype it on demand.
+   *
+   * This method exists to make that contract explicit in code, and to give
+   * us a single place to wire up a password-cached-in-memory mode later if
+   * we ever want one (e.g. session-only, never written to disk).
+   */
+  function getCredentials(): { username: string | null; password: string | null } {
+    return { username: username.value, password: null }
+  }
+
+  return { token, expiresAt, username, isAuthenticated, setToken, clear, getCredentials }
 })

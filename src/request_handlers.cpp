@@ -22,6 +22,16 @@
 #include <cmath>
 #include <optional>
 #include <regex>
+#include <vector>
+#include <array>
+#include <cstdint>
+#include <chrono>
+#ifndef _WIN32
+#include <unistd.h>  // getpid() for atomic-rename temp files in WebDAV PUT
+#else
+#include <process.h>
+#define getpid _getpid
+#endif
 
 #include "stb_image.h"
 #include "stb_image_write.h"
@@ -32,12 +42,14 @@ namespace sdcpp {
 
 RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queue_manager,
                                  AuthManager& auth_manager,
+                                 const Config& config,
                                  const std::string& output_dir, const std::string& webui_dir,
                                  const AssistantConfig& assistant_config,
                                  const std::string& config_file_path,
                                  const std::string& docs_dir)
     : model_manager_(model_manager), queue_manager_(queue_manager),
       auth_manager_(auth_manager),
+      paths_config_(config.paths),
       output_dir_(output_dir), webui_dir_(webui_dir), docs_dir_(docs_dir)
     // ArchitectureManager uses config directory (where model_architectures.json lives), not output directory
     , architecture_manager_(std::make_unique<ArchitectureManager>(
@@ -99,9 +111,60 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     // Auth middleware — runs before any route handler. The /auth/login
     // endpoint and a small allowlist (health, openapi.json, static UI / docs)
     // bypass it. Everything else must present `Authorization: Bearer <token>`.
-    if (auth_manager_.enabled()) {
+    //
+    // The /webdav/ prefix is a special case: WebDAV clients (Finder, Explorer,
+    // dolphin, davfs) speak HTTP Basic, not Bearer. The Bearer middleware
+    // skips /webdav/ via AuthManager::is_always_allowed(), and we dispatch
+    // the WebDAV-specific methods (PROPFIND/MKCOL/MOVE/COPY/OPTIONS) below
+    // after enforcing Basic auth ourselves. GET/HEAD/PUT/DELETE on /webdav/
+    // are registered as normal routes and gated by handle_webdav_get/put/delete.
+    {
         server.set_pre_routing_handler(
             [this](const httplib::Request& req, httplib::Response& res) -> httplib::Server::HandlerResponse {
+                // ── WebDAV branch ─────────────────────────────────────
+                // Runs even when the global auth_manager is disabled — the
+                // pre-routing handler is the only place we can intercept
+                // the custom HTTP methods (PROPFIND, MKCOL, MOVE, COPY).
+                bool is_webdav_path =
+                    req.path == "/webdav" ||
+                    (req.path.size() >= 8 && req.path.compare(0, 8, "/webdav/") == 0);
+                if (is_webdav_path) {
+                    if (!verify_basic_auth(req)) {
+                        send_webdav_unauthorized(res);
+                        return httplib::Server::HandlerResponse::Handled;
+                    }
+                    if (req.method == "OPTIONS"  || req.method == "PROPFIND" ||
+                        req.method == "MKCOL"    || req.method == "MOVE"     ||
+                        req.method == "COPY") {
+                        // Custom HTTP methods are handled here in pre_routing,
+                        // before cpp-httplib reads the body. If the request
+                        // had a body (PROPFIND XML, etc.), those bytes are
+                        // still on the wire. Force Connection: close so
+                        // they don't poison the next keep-alive request.
+                        res.set_header("Connection", "close");
+                        if (req.method == "OPTIONS")  return handle_webdav_options(req, res);
+                        if (req.method == "PROPFIND") return handle_webdav_propfind(req, res);
+                        if (req.method == "MKCOL")    return handle_webdav_mkcol(req, res);
+                        if (req.method == "MOVE")     return handle_webdav_move(req, res);
+                        if (req.method == "COPY")     return handle_webdav_copy(req, res);
+                    }
+                    if (req.method == "LOCK" || req.method == "UNLOCK") {
+                        // v1: not implemented. macOS Finder soft-fails but
+                        // continues; Windows Explorer also tolerates 405 here.
+                        res.status = 405;
+                        res.set_header("Allow", "OPTIONS, GET, HEAD, PROPFIND, PUT, DELETE, MKCOL, MOVE, COPY");
+                        return httplib::Server::HandlerResponse::Handled;
+                    }
+                    // GET / HEAD / PUT / DELETE fall through to the regular
+                    // route handlers registered below.
+                    return httplib::Server::HandlerResponse::Unhandled;
+                }
+
+                // ── Bearer-token branch (everything else) ────────────
+                if (!auth_manager_.enabled()) {
+                    return httplib::Server::HandlerResponse::Unhandled;
+                }
+
                 // Always allow CORS preflight — browsers can't attach Authorization
                 // to OPTIONS requests in many cases, and the handler itself decides
                 // whether to permit the actual subsequent request.
@@ -109,7 +172,7 @@ void RequestHandlers::register_routes(httplib::Server& server) {
                     return httplib::Server::HandlerResponse::Unhandled;
                 }
 
-                // Allowlist (health, openapi, login, /ui/, /docs/, /output/, /thumb/).
+                // Allowlist (health, openapi, login, /ui/, /docs/, /output/, /thumb/, /webdav/).
                 if (AuthManager::is_always_allowed(req.path)) {
                     return httplib::Server::HandlerResponse::Unhandled;
                 }
@@ -159,9 +222,11 @@ void RequestHandlers::register_routes(httplib::Server& server) {
                 // the Authorization header instead and re-read it where needed.)
                 return httplib::Server::HandlerResponse::Unhandled;
             });
-        std::cout << "[Auth] Pre-routing auth middleware installed" << std::endl;
-    } else {
-        std::cout << "[Auth] Pre-routing auth middleware NOT installed (auth disabled)" << std::endl;
+        if (auth_manager_.enabled()) {
+            std::cout << "[Auth] Pre-routing auth middleware installed (Bearer + WebDAV/Basic)" << std::endl;
+        } else {
+            std::cout << "[Auth] Pre-routing handler installed for WebDAV (Bearer auth disabled)" << std::endl;
+        }
     }
 
     // ── Health & Status ──────────────────────────────────────────────
@@ -222,6 +287,16 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         server, "GET", "/models/paths",
         "Get configured model storage paths", "Models", 200,
         [this](auto& req, auto& res) { handle_get_model_paths(req, res); });
+
+    // Multipart/form-data upload — request body schema is NOT modeled in
+    // the OpenAPI spec yet (SchemaBuilder doesn't have multipart support).
+    // The endpoint is auth-protected automatically via the pre-routing
+    // middleware. See handle_upload_model() for the field contract.
+    api.addEndpoint<void, UploadModelResponse>(
+        server, "POST", "/models/upload",
+        "Upload a model file (multipart/form-data: file, model_type, [filename], [subfolder])",
+        "Models", 201,
+        [this](auto& req, auto& res) { handle_upload_model(req, res); });
 
     // ── Model Downloads ──────────────────────────────────────────────
     api.addEndpoint<DownloadModelRequest, DownloadModelResponse>(
@@ -518,6 +593,27 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         "Detect architecture of a model", "Architectures", 200,
         [this](auto& req, auto& res) { handle_detect_architecture(req, res); })
         .query("model", FT::String, "Model name to detect", true);
+
+    // ── WebDAV (read+write file mount) ───────────────────────────────
+    // OPTIONS / PROPFIND / MKCOL / MOVE / COPY are dispatched by the
+    // pre-routing handler above (so we can intercept the custom HTTP
+    // methods before cpp-httplib's regular dispatch sees them). What
+    // remains here are the standard methods that cpp-httplib already
+    // routes natively. They run AFTER the pre-routing handler has done
+    // Basic auth, so by the time they fire, the request is authenticated.
+    // cpp-httplib's Server::routing() dispatches HEAD requests to the GET
+    // handler chain (line ~11412 of httplib.h: GET || HEAD → get_handlers_).
+    // The framework strips the response body for HEAD before sending. So a
+    // single Get() registration covers both verbs.
+    server.Get(R"(/webdav/(.*))", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_webdav_get(req, res, /*head_only=*/(req.method == "HEAD"));
+    });
+    server.Put(R"(/webdav/(.*))", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_webdav_put(req, res);
+    });
+    server.Delete(R"(/webdav/(.*))", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_webdav_delete(req, res);
+    });
 
     // ── OpenAPI Schema ───────────────────────────────────────────────
     api.serveOpenApiSpec(server, "/openapi.json");
@@ -3157,6 +3253,217 @@ void RequestHandlers::handle_get_model_paths(const httplib::Request& /*req*/, ht
     send_json(res, paths_config);
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// POST /models/upload — multipart/form-data upload of a model file.
+//
+// Form fields:
+//   file       (required) — the binary file part
+//   model_type (required) — checkpoint|diffusion|vae|lora|clip|t5|
+//                           embedding|controlnet|llm|esrgan|taesd
+//   filename   (optional) — overrides the multipart Content-Disposition
+//                           filename if present
+//   subfolder  (optional) — relative path under the model_type directory;
+//                           rejected if it contains ".." or starts with "/"
+//
+// v1 LIMITATION: cpp-httplib's multipart parser buffers the full file in
+// memory (req.form.files[<key>].content). The server's max payload length
+// in main.cpp gates how large an upload can be; once that's exceeded the
+// request is rejected with 413 by httplib before reaching this handler.
+// TODO: switch to streaming multipart parsing once cpp-httplib offers it
+// or once we replace the parser, and write directly to disk like
+// DownloadManager does for downloads.
+// ──────────────────────────────────────────────────────────────────────
+void RequestHandlers::handle_upload_model(const httplib::Request& req, httplib::Response& res) {
+    if (!req.is_multipart_form_data()) {
+        send_error(res, "Content-Type must be multipart/form-data", 400);
+        return;
+    }
+
+    // model_type is sent as a regular text field.
+    std::string model_type;
+    if (req.form.has_field("model_type")) {
+        model_type = req.form.get_field("model_type");
+    }
+    if (model_type.empty()) {
+        send_error(res, "model_type form field is required", 400);
+        return;
+    }
+
+    // Validate against the supported set used by DownloadManager and the
+    // OpenAPI MODEL_TYPE_VALUES list. string_to_model_type silently maps
+    // unknown values to Checkpoint, so we validate explicitly first.
+    static const std::vector<std::string> kValidTypes = {
+        "checkpoint", "diffusion", "vae", "lora", "clip", "t5",
+        "embedding", "controlnet", "llm", "esrgan", "taesd"
+    };
+    if (std::find(kValidTypes.begin(), kValidTypes.end(), model_type) == kValidTypes.end()) {
+        send_error(res, "Invalid model_type. Valid: checkpoint, diffusion, vae, lora, clip, t5, embedding, controlnet, llm, esrgan, taesd", 400);
+        return;
+    }
+
+    // The file part is mandatory.
+    if (!req.form.has_file("file")) {
+        send_error(res, "file form field is required", 400);
+        return;
+    }
+    const auto file_part = req.form.get_file("file");
+
+    // Determine the destination filename. Explicit "filename" form field
+    // wins; otherwise fall back to the Content-Disposition filename from
+    // the file part itself.
+    std::string filename_override;
+    if (req.form.has_field("filename")) {
+        filename_override = req.form.get_field("filename");
+    }
+    std::string filename = filename_override.empty() ? file_part.filename : filename_override;
+    if (filename.empty()) {
+        send_error(res, "filename could not be determined (provide one or set Content-Disposition filename)", 400);
+        return;
+    }
+
+    // Defense-in-depth: strip any path components a malicious client may
+    // have stuffed into the filename. Only the basename is honoured;
+    // subdirectory placement must come from the explicit `subfolder`
+    // form field (which we validate separately below).
+    {
+        fs::path fname_path(filename);
+        filename = fname_path.filename().string();
+        if (filename.empty() || filename == "." || filename == "..") {
+            send_error(res, "filename is invalid", 400);
+            return;
+        }
+    }
+
+    // Extension whitelist mirrors DownloadManager::is_supported_extension.
+    fs::path filename_path(filename);
+    if (!DownloadManager::is_supported_extension(filename_path.extension().string())) {
+        send_error(res,
+                   "Unsupported file extension. Supported: .safetensors, .ckpt, .pt, .pth, .bin, .gguf",
+                   400);
+        return;
+    }
+
+    // Subfolder validation — block traversal and absolute paths.
+    std::string subfolder;
+    if (req.form.has_field("subfolder")) {
+        subfolder = req.form.get_field("subfolder");
+    }
+    if (!subfolder.empty()) {
+        if (subfolder.front() == '/' || subfolder.front() == '\\') {
+            send_error(res, "subfolder must be relative (must not start with '/')", 400);
+            return;
+        }
+        if (subfolder.find("..") != std::string::npos) {
+            send_error(res, "subfolder must not contain '..'", 400);
+            return;
+        }
+    }
+
+    // Resolve destination directory from the model paths config.
+    auto paths_config = model_manager_.get_paths_config();
+    static const std::map<std::string, std::string> kTypeKey = {
+        {"checkpoint", "checkpoints"},
+        {"diffusion",  "diffusion_models"},
+        {"vae",        "vae"},
+        {"lora",       "lora"},
+        {"clip",       "clip"},
+        {"t5",         "t5"},
+        {"embedding",  "embeddings"},
+        {"controlnet", "controlnet"},
+        {"llm",        "llm"},
+        {"esrgan",     "esrgan"},
+        {"taesd",      "taesd"},
+    };
+    auto key_it = kTypeKey.find(model_type);
+    if (key_it == kTypeKey.end() ||
+        !paths_config.contains(key_it->second) ||
+        !paths_config[key_it->second].is_string()) {
+        send_error(res, "Server has no directory configured for model_type=" + model_type, 500);
+        return;
+    }
+    fs::path base_dir(paths_config[key_it->second].get<std::string>());
+    fs::path dest_dir = subfolder.empty() ? base_dir : (base_dir / subfolder);
+    fs::path dest_path = dest_dir / filename;
+
+    // Sanity check the resolved destination really lives under base_dir.
+    // weakly_canonical handles components that don't exist yet (the
+    // destination file itself), unlike canonical().
+    try {
+        fs::path canonical_base = fs::weakly_canonical(base_dir);
+        fs::path canonical_dest = fs::weakly_canonical(dest_path);
+        auto base_str = canonical_base.string();
+        auto dest_str = canonical_dest.string();
+        if (dest_str.size() < base_str.size() ||
+            dest_str.compare(0, base_str.size(), base_str) != 0) {
+            send_error(res, "Resolved destination path escapes the model directory", 400);
+            return;
+        }
+    } catch (const std::exception& e) {
+        send_error(res, std::string("Failed to resolve destination path: ") + e.what(), 500);
+        return;
+    }
+
+    // Refuse to clobber an existing file (use the convert/rename flow
+    // for replacements; uploads are append-only).
+    std::error_code ec;
+    if (fs::exists(dest_path, ec) && fs::file_size(dest_path, ec) > 0) {
+        send_error(res, "A file with that name already exists at " + dest_path.string(), 409);
+        return;
+    }
+
+    // Ensure the parent directory exists.
+    fs::create_directories(dest_dir, ec);
+    if (ec) {
+        send_error(res, "Failed to create destination directory: " + ec.message(), 500);
+        return;
+    }
+
+    // Write the in-memory buffer to disk. v1 path: the parser already
+    // buffered everything; we just persist it in one pass.
+    {
+        std::ofstream ofs(dest_path, std::ios::binary | std::ios::trunc);
+        if (!ofs) {
+            send_error(res, "Failed to open destination file for writing", 500);
+            return;
+        }
+        ofs.write(file_part.content.data(),
+                  static_cast<std::streamsize>(file_part.content.size()));
+        if (!ofs) {
+            // Best-effort cleanup so we don't leave a half-written model behind.
+            std::error_code rm_ec;
+            fs::remove(dest_path, rm_ec);
+            send_error(res, "Failed to write upload to disk", 500);
+            return;
+        }
+    }
+
+    const size_t bytes_written = file_part.content.size();
+    std::cout << "[RequestHandlers] Uploaded " << bytes_written << " bytes to "
+              << dest_path.string() << " (model_type=" << model_type << ")" << std::endl;
+
+    // Refresh the in-memory model index so the new file is visible to
+    // /models, the WebUI, and load operations without an explicit refresh.
+    try {
+        model_manager_.scan_models();
+    } catch (const std::exception& e) {
+        std::cerr << "[RequestHandlers] scan_models after upload failed: "
+                  << e.what() << std::endl;
+        // Non-fatal — the file is on disk; clients can call /models/refresh.
+    }
+
+    nlohmann::json body = {
+        {"success",    true},
+        {"filename",   filename},
+        {"model_type", model_type},
+        {"size_bytes", bytes_written},
+        {"full_path",  dest_path.string()},
+    };
+    if (!subfolder.empty()) {
+        body["subfolder"] = subfolder;
+    }
+    send_json(res, body, 201);
+}
+
 // ==================== Settings Handlers ====================
 
 void RequestHandlers::handle_get_generation_defaults(const httplib::Request& /*req*/, httplib::Response& res) {
@@ -3323,6 +3630,892 @@ void RequestHandlers::handle_reset_settings(const httplib::Request& /*req*/, htt
     } catch (const std::exception& e) {
         send_error(res, std::string("Failed to reset settings: ") + e.what(), 500);
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// WebDAV implementation
+// ─────────────────────────────────────────────────────────────────────
+
+namespace {
+
+// URL-decode a percent-encoded path component. Stops at '?' (query) — but
+// httplib already strips the query string off req.path, so this is just
+// belt-and-braces.
+std::string url_decode(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '+') {
+            out.push_back(' ');
+        } else if (s[i] == '%' && i + 2 < s.size()) {
+            int v = 0;
+            char hi = s[i + 1], lo = s[i + 2];
+            auto hexv = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+                if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+                return -1;
+            };
+            int a = hexv(hi), b = hexv(lo);
+            if (a < 0 || b < 0) {
+                out.push_back(s[i]);
+            } else {
+                v = (a << 4) | b;
+                out.push_back(static_cast<char>(v));
+                i += 2;
+            }
+        } else {
+            out.push_back(s[i]);
+        }
+    }
+    return out;
+}
+
+// URL-encode a single path segment for inclusion in <D:href>. Percent-encodes
+// everything that isn't a "safe" path character per RFC 3986 §3.3.
+std::string url_encode_segment(const std::string& s) {
+    static const char* hex = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(s.size());
+    for (unsigned char c : s) {
+        bool safe = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                    (c >= '0' && c <= '9') ||
+                    c == '-' || c == '_' || c == '.' || c == '~';
+        if (safe) {
+            out.push_back(static_cast<char>(c));
+        } else {
+            out.push_back('%');
+            out.push_back(hex[c >> 4]);
+            out.push_back(hex[c & 0x0F]);
+        }
+    }
+    return out;
+}
+
+// XML-escape a string for inclusion as a text node or attribute value.
+std::string xml_escape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        switch (c) {
+            case '&':  out += "&amp;";  break;
+            case '<':  out += "&lt;";   break;
+            case '>':  out += "&gt;";   break;
+            case '"':  out += "&quot;"; break;
+            case '\'': out += "&apos;"; break;
+            default:   out.push_back(c); break;
+        }
+    }
+    return out;
+}
+
+// Format a filesystem time as RFC 1123 (HTTP-date), e.g.
+// "Fri, 03 May 2024 12:34:56 GMT".
+std::string rfc1123_from_filetime(std::filesystem::file_time_type ft) {
+    namespace fs = std::filesystem;
+    namespace ch = std::chrono;
+    auto sctp = ch::time_point_cast<ch::system_clock::duration>(
+        ft - fs::file_time_type::clock::now() + ch::system_clock::now());
+    std::time_t tt = ch::system_clock::to_time_t(sctp);
+    std::tm tm{};
+#if defined(_WIN32)
+    gmtime_s(&tm, &tt);
+#else
+    gmtime_r(&tt, &tm);
+#endif
+    char buf[64];
+    std::strftime(buf, sizeof(buf), "%a, %d %b %Y %H:%M:%S GMT", &tm);
+    return std::string(buf);
+}
+
+// Decode a base64-encoded credentials blob (the bit after "Basic ").
+// Tolerates both standard and URL-safe alphabets; ignores trailing padding
+// and whitespace. Returns empty on garbage input.
+std::string base64_decode(const std::string& s) {
+    // Build the decode table once. Function-local static = thread-safe init.
+    static const std::array<int8_t, 256> T = []() {
+        std::array<int8_t, 256> tbl{};
+        for (auto& c : tbl) c = -1;
+        const char* alpha =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        for (int i = 0; i < 64; ++i) {
+            tbl[(unsigned char)alpha[i]] = static_cast<int8_t>(i);
+        }
+        tbl[(unsigned char)'-'] = 62;  // URL-safe variant
+        tbl[(unsigned char)'_'] = 63;  // URL-safe variant
+        return tbl;
+    }();
+
+    std::string out;
+    out.reserve((s.size() / 4) * 3);
+    uint32_t buf = 0;
+    int have = 0;
+    for (char c : s) {
+        if (c == '=' || c == ' ' || c == '\r' || c == '\n' || c == '\t') continue;
+        int8_t v = T[(unsigned char)c];
+        if (v < 0) return {};  // invalid char
+        buf = (buf << 6) | static_cast<uint32_t>(v);
+        have += 6;
+        if (have >= 8) {
+            have -= 8;
+            out.push_back(static_cast<char>((buf >> have) & 0xFF));
+        }
+    }
+    return out;
+}
+
+// Map an extension to a Content-Type. Small built-in table — we don't want
+// to drag in libmagic for this. Defaults to application/octet-stream.
+std::string mime_for_extension(const std::filesystem::path& p) {
+    std::string ext = p.extension().string();
+    for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (ext == ".png")  return "image/png";
+    if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
+    if (ext == ".webp") return "image/webp";
+    if (ext == ".gif")  return "image/gif";
+    if (ext == ".bmp")  return "image/bmp";
+    if (ext == ".mp4")  return "video/mp4";
+    if (ext == ".webm") return "video/webm";
+    if (ext == ".json") return "application/json";
+    if (ext == ".txt")  return "text/plain; charset=utf-8";
+    if (ext == ".md")   return "text/markdown; charset=utf-8";
+    if (ext == ".html") return "text/html; charset=utf-8";
+    if (ext == ".safetensors") return "application/octet-stream";
+    if (ext == ".gguf")        return "application/octet-stream";
+    if (ext == ".ckpt" || ext == ".pt" || ext == ".pth" || ext == ".bin")
+        return "application/octet-stream";
+    return "application/octet-stream";
+}
+
+}  // namespace
+
+// Walk the segments of a URL-decoded /webdav/... path and collapse `.`/`/`
+// and reject any `..` segment. Returns the path tail relative to the root
+// (e.g. for "/webdav/output/foo/bar.png" with root "/webdav/output", returns
+// "foo/bar.png").
+static std::optional<std::string>
+sanitize_relative_segments(const std::string& tail) {
+    std::vector<std::string> segs;
+    size_t i = 0;
+    while (i < tail.size()) {
+        size_t j = tail.find('/', i);
+        if (j == std::string::npos) j = tail.size();
+        std::string seg = tail.substr(i, j - i);
+        if (!seg.empty() && seg != ".") {
+            if (seg == "..") {
+                return std::nullopt;  // traversal attempt
+            }
+            // Reject NUL or control bytes — should never occur after URL decode.
+            for (char c : seg) {
+                if (static_cast<unsigned char>(c) < 0x20) return std::nullopt;
+            }
+            segs.push_back(seg);
+        }
+        i = j + 1;
+    }
+    std::string out;
+    for (size_t k = 0; k < segs.size(); ++k) {
+        if (k) out.push_back('/');
+        out += segs[k];
+    }
+    return out;
+}
+
+std::optional<std::filesystem::path>
+RequestHandlers::resolve_webdav_path(const std::string& url_path,
+                                     std::string& out_url_root) const {
+    namespace fs = std::filesystem;
+    if (url_path.size() < 8 || url_path.compare(0, 8, "/webdav/") != 0) {
+        return std::nullopt;
+    }
+    std::string raw_after = url_path.substr(8);  // strip "/webdav/"
+    std::string after = url_decode(raw_after);
+
+    // Determine root: "output" or "models/<type>".
+    fs::path root_dir;
+    std::string url_root;  // the URL prefix that maps to root_dir, no trailing slash
+    std::string tail;      // the part after the root's URL prefix
+
+    auto starts_with = [&](const std::string& s, const std::string& p) {
+        return s.size() >= p.size() && s.compare(0, p.size(), p) == 0;
+    };
+
+    if (after == "output" || starts_with(after, "output/")) {
+        if (paths_config_.output.empty()) return std::nullopt;
+        root_dir = paths_config_.output;
+        url_root = "/webdav/output";
+        tail = (after == "output") ? "" : after.substr(7);
+    } else if (after == "models" || starts_with(after, "models/")) {
+        // Need /webdav/models/<type>/...
+        std::string after_models = (after == "models") ? "" : after.substr(7);
+        // Extract <type>
+        size_t slash = after_models.find('/');
+        std::string type = (slash == std::string::npos) ? after_models : after_models.substr(0, slash);
+        std::string rest = (slash == std::string::npos) ? "" : after_models.substr(slash + 1);
+
+        if (type.empty()) {
+            // /webdav/models/ — pseudo-root; no real filesystem mapping.
+            // Caller must handle this case (typically PROPFIND lists the
+            // available types). Signal "models pseudo-root" by returning a
+            // sentinel: empty path with url_root = "/webdav/models".
+            out_url_root = "/webdav/models";
+            return fs::path();  // empty path → caller treats as pseudo-collection
+        }
+
+        const std::string* dir = nullptr;
+        if      (type == "checkpoints")       dir = &paths_config_.checkpoints;
+        else if (type == "diffusion_models")  dir = &paths_config_.diffusion_models;
+        else if (type == "vae")               dir = &paths_config_.vae;
+        else if (type == "loras" || type == "lora") dir = &paths_config_.lora;
+        else if (type == "clip")              dir = &paths_config_.clip;
+        else if (type == "t5")                dir = &paths_config_.t5;
+        else if (type == "controlnet")        dir = &paths_config_.controlnet;
+        else if (type == "llm")               dir = &paths_config_.llm;
+        else if (type == "esrgan")            dir = &paths_config_.esrgan;
+        else if (type == "taesd")             dir = &paths_config_.taesd;
+        else if (type == "embeddings")        dir = &paths_config_.embeddings;
+        else return std::nullopt;             // unknown type → 404
+
+        if (dir->empty()) return std::nullopt;
+        root_dir = *dir;
+        // We intentionally normalize "lora" → "loras" in the canonical URL.
+        std::string canonical_type = (type == "lora") ? "loras" : type;
+        url_root = "/webdav/models/" + canonical_type;
+        tail = rest;
+    } else {
+        return std::nullopt;
+    }
+
+    auto sanitized = sanitize_relative_segments(tail);
+    if (!sanitized.has_value()) return std::nullopt;
+
+    out_url_root = url_root;
+    fs::path full = root_dir;
+    if (!sanitized->empty()) {
+        full /= *sanitized;
+    }
+    return full;
+}
+
+void RequestHandlers::send_webdav_unauthorized(httplib::Response& res) const {
+    res.status = 401;
+    res.set_header("WWW-Authenticate", "Basic realm=\"sdcpp-restapi\"");
+    res.set_header("Content-Type", "text/plain; charset=utf-8");
+    res.body = "401 Unauthorized — WebDAV requires HTTP Basic credentials.";
+}
+
+// Pick 400 (path traversal) vs 404 (unknown root / unconfigured type) when
+// resolve_webdav_path returned nullopt. Centralized so all DAV verbs agree.
+static int webdav_resolve_failure_status(const std::string& url_path) {
+    std::string decoded;
+    // Inline copy of url_decode (we're in a different translation-unit-internal
+    // namespace context here — keep it simple).
+    decoded.reserve(url_path.size());
+    for (size_t i = 0; i < url_path.size(); ++i) {
+        if (url_path[i] == '%' && i + 2 < url_path.size()) {
+            auto hex = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+                if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+                return -1;
+            };
+            int a = hex(url_path[i + 1]), b = hex(url_path[i + 2]);
+            if (a >= 0 && b >= 0) { decoded.push_back(static_cast<char>((a << 4) | b)); i += 2; continue; }
+        }
+        decoded.push_back(url_path[i]);
+    }
+    // Any literal ".." segment → traversal attempt → 400.
+    auto has_dotdot = [](const std::string& s) {
+        size_t i = 0;
+        while (i < s.size()) {
+            size_t j = s.find('/', i);
+            if (j == std::string::npos) j = s.size();
+            if (s.compare(i, j - i, "..") == 0) return true;
+            i = j + 1;
+        }
+        return false;
+    };
+    return has_dotdot(decoded) ? 400 : 404;
+}
+
+bool RequestHandlers::verify_basic_auth(const httplib::Request& req) const {
+    // If the global auth manager is disabled, /webdav/ is also unauthenticated.
+    // (This mirrors REST behavior: turning auth off opens everything.)
+    if (!auth_manager_.enabled()) return true;
+    std::string h = req.get_header_value("Authorization");
+    const std::string prefix = "Basic ";
+    if (h.size() <= prefix.size() || h.compare(0, prefix.size(), prefix) != 0) {
+        return false;
+    }
+    std::string encoded = h.substr(prefix.size());
+    // Trim whitespace.
+    while (!encoded.empty() && (encoded.front() == ' ' || encoded.front() == '\t')) encoded.erase(0, 1);
+    while (!encoded.empty() && (encoded.back()  == ' ' || encoded.back()  == '\t')) encoded.pop_back();
+    std::string decoded = base64_decode(encoded);
+    if (decoded.empty()) return false;
+    auto colon = decoded.find(':');
+    if (colon == std::string::npos) return false;
+    std::string user = decoded.substr(0, colon);
+    std::string pass = decoded.substr(colon + 1);
+    return auth_manager_.verify_credentials(user, pass);
+}
+
+httplib::Server::HandlerResponse
+RequestHandlers::handle_webdav_options(const httplib::Request& /*req*/, httplib::Response& res) {
+    // Compliance class 1 (basic DAV); class 2 (LOCK/UNLOCK) is NOT advertised
+    // because we don't implement it. macOS Finder gripes about missing class
+    // 2 in logs but mounts and reads/writes fine; Windows Explorer is happy
+    // with class 1 alone. Some clients (cadaver, davfs2) require class 2 for
+    // write — they'll still work because we return 405 for LOCK and the
+    // clients fall back to lock-free PUT. A future v1.1 will add LOCK/UNLOCK.
+    res.status = 200;
+    res.set_header("DAV", "1");
+    res.set_header("MS-Author-Via", "DAV");
+    res.set_header("Allow",
+                   "OPTIONS, GET, HEAD, PROPFIND, PUT, DELETE, MKCOL, MOVE, COPY");
+    // 0-byte body, but set content-length explicitly so clients don't hang.
+    res.set_header("Content-Length", "0");
+    return httplib::Server::HandlerResponse::Handled;
+}
+
+namespace {
+
+// Build a single <D:response> block for one filesystem entry.
+// `href` is the absolute URL path (already URL-encoded); `display_name`
+// is the (XML-escaped) human-readable name.
+void append_propfind_response(std::string& out,
+                              const std::string& href_encoded,
+                              const std::string& display_name_escaped,
+                              bool is_collection,
+                              uintmax_t size,
+                              const std::string& last_modified_rfc1123,
+                              const std::string& content_type) {
+    out += "<D:response>";
+    out += "<D:href>" + href_encoded + "</D:href>";
+    out += "<D:propstat>";
+    out += "<D:prop>";
+    out += "<D:displayname>" + display_name_escaped + "</D:displayname>";
+    if (is_collection) {
+        out += "<D:resourcetype><D:collection/></D:resourcetype>";
+        out += "<D:getcontentlength>0</D:getcontentlength>";
+    } else {
+        out += "<D:resourcetype/>";
+        out += "<D:getcontentlength>" + std::to_string(size) + "</D:getcontentlength>";
+        if (!content_type.empty()) {
+            out += "<D:getcontenttype>" + xml_escape(content_type) + "</D:getcontenttype>";
+        }
+    }
+    if (!last_modified_rfc1123.empty()) {
+        out += "<D:getlastmodified>" + last_modified_rfc1123 + "</D:getlastmodified>";
+    }
+    out += "</D:prop>";
+    out += "<D:status>HTTP/1.1 200 OK</D:status>";
+    out += "</D:propstat>";
+    out += "</D:response>";
+}
+
+}  // namespace
+
+httplib::Server::HandlerResponse
+RequestHandlers::handle_webdav_propfind(const httplib::Request& req, httplib::Response& res) {
+    namespace fs = std::filesystem;
+
+    // Depth: 0, 1, or "infinity". We treat "infinity" as 1 to avoid recursive
+    // blowup on /webdav/models/diffusion_models/ (could contain dozens of GB).
+    std::string depth_hdr = req.get_header_value("Depth");
+    int depth = 1;
+    if (depth_hdr == "0") depth = 0;
+    else if (depth_hdr == "1") depth = 1;
+    else depth = 1;  // default + "infinity" both clamped to 1
+
+    // Pseudo-roots that don't resolve to a single filesystem directory:
+    //   /webdav/                — top-level: lists "output" + "models"
+    //   /webdav/models/         — lists the configured model-type subdirs
+    bool is_top_level_pseudo  = (req.path == "/webdav/" || req.path == "/webdav");
+    bool is_models_pseudo_root = false;
+    std::string url_root;
+    fs::path full;
+
+    if (is_top_level_pseudo) {
+        url_root = "/webdav";
+    } else {
+        auto maybe_path = resolve_webdav_path(req.path, url_root);
+        if (!maybe_path.has_value()) {
+            res.status = webdav_resolve_failure_status(req.path);
+            res.body = (res.status == 400) ? "Invalid WebDAV path (`..` not permitted)"
+                                            : "Not found";
+            return httplib::Server::HandlerResponse::Handled;
+        }
+        is_models_pseudo_root = (url_root == "/webdav/models" && maybe_path->empty());
+        full = *maybe_path;
+    }
+
+    std::string body;
+    body.reserve(2048);
+    body += "<?xml version=\"1.0\" encoding=\"utf-8\"?>";
+    body += "<D:multistatus xmlns:D=\"DAV:\">";
+
+    auto self_href = [&](const std::string& canonical_url, bool is_dir) {
+        std::string s = canonical_url;
+        if (is_dir && (s.empty() || s.back() != '/')) s.push_back('/');
+        return xml_escape(s);
+    };
+
+    if (is_top_level_pseudo) {
+        // Self entry.
+        append_propfind_response(body, self_href("/webdav/", true), xml_escape("webdav"),
+                                 true, 0, "", "");
+        if (depth >= 1) {
+            append_propfind_response(body, self_href("/webdav/output/", true),
+                                     xml_escape("output"), true, 0, "", "");
+            append_propfind_response(body, self_href("/webdav/models/", true),
+                                     xml_escape("models"), true, 0, "", "");
+        }
+    } else if (is_models_pseudo_root) {
+        append_propfind_response(body, self_href("/webdav/models/", true),
+                                 xml_escape("models"), true, 0, "", "");
+        if (depth >= 1) {
+            // Each non-empty configured model dir becomes a collection child.
+            struct Entry { const char* name; const std::string* dir; };
+            const Entry entries[] = {
+                {"checkpoints",      &paths_config_.checkpoints},
+                {"diffusion_models", &paths_config_.diffusion_models},
+                {"vae",              &paths_config_.vae},
+                {"loras",            &paths_config_.lora},
+                {"clip",             &paths_config_.clip},
+                {"t5",               &paths_config_.t5},
+                {"controlnet",       &paths_config_.controlnet},
+                {"llm",              &paths_config_.llm},
+                {"esrgan",           &paths_config_.esrgan},
+                {"taesd",            &paths_config_.taesd},
+                {"embeddings",       &paths_config_.embeddings},
+            };
+            for (const auto& e : entries) {
+                if (e.dir->empty()) continue;
+                std::string href = "/webdav/models/" + std::string(e.name) + "/";
+                append_propfind_response(body, xml_escape(href),
+                                         xml_escape(e.name),
+                                         true, 0, "", "");
+            }
+        }
+    } else {
+        // Real filesystem path.
+        std::error_code ec;
+        if (!fs::exists(full, ec)) {
+            res.status = 404;
+            res.body = "Not found";
+            return httplib::Server::HandlerResponse::Handled;
+        }
+        bool is_dir = fs::is_directory(full, ec);
+
+        // Self entry.
+        std::string self_url = url_root;
+        // The remainder after url_root, if any, is encoded path tail.
+        // For PROPFIND, the canonical href should match the request path
+        // (with a trailing slash for directories).
+        std::string canonical_self = req.path;
+        // Normalize trailing slash on directories.
+        if (is_dir && (canonical_self.empty() || canonical_self.back() != '/')) {
+            canonical_self.push_back('/');
+        }
+        std::string self_name = full.filename().string();
+        if (self_name.empty()) self_name = url_root.substr(url_root.find_last_of('/') + 1);
+
+        uintmax_t self_size = is_dir ? 0 : fs::file_size(full, ec);
+        std::string lastmod;
+        auto ft = fs::last_write_time(full, ec);
+        if (!ec) lastmod = rfc1123_from_filetime(ft);
+        std::string ctype = is_dir ? "" : mime_for_extension(full);
+        append_propfind_response(body, xml_escape(canonical_self),
+                                 xml_escape(self_name),
+                                 is_dir, self_size, lastmod, ctype);
+
+        // Children (depth >= 1, only for directories).
+        if (is_dir && depth >= 1) {
+            std::vector<fs::directory_entry> kids;
+            for (auto& de : fs::directory_iterator(full, fs::directory_options::skip_permission_denied, ec)) {
+                kids.push_back(de);
+                // Cap at a large but bounded number to prevent OOM on
+                // pathological directories (e.g. someone dumped 100k files).
+                if (kids.size() >= 5000) break;
+            }
+            std::sort(kids.begin(), kids.end(),
+                      [](const fs::directory_entry& a, const fs::directory_entry& b) {
+                          return a.path().filename().string() < b.path().filename().string();
+                      });
+            for (auto& de : kids) {
+                std::error_code ec2;
+                bool kdir = de.is_directory(ec2);
+                std::string kname = de.path().filename().string();
+                std::string khref = canonical_self + url_encode_segment(kname);
+                if (kdir) khref.push_back('/');
+                uintmax_t ksize = kdir ? 0 : fs::file_size(de.path(), ec2);
+                std::string klm;
+                auto kft = fs::last_write_time(de.path(), ec2);
+                if (!ec2) klm = rfc1123_from_filetime(kft);
+                std::string kct = kdir ? "" : mime_for_extension(de.path());
+                append_propfind_response(body, xml_escape(khref),
+                                         xml_escape(kname),
+                                         kdir, ksize, klm, kct);
+            }
+        }
+    }
+
+    body += "</D:multistatus>";
+
+    res.status = 207;
+    res.set_header("DAV", "1");
+    res.set_content(body, "application/xml; charset=utf-8");
+    return httplib::Server::HandlerResponse::Handled;
+}
+
+httplib::Server::HandlerResponse
+RequestHandlers::handle_webdav_mkcol(const httplib::Request& req, httplib::Response& res) {
+    namespace fs = std::filesystem;
+    std::string url_root;
+    auto maybe = resolve_webdav_path(req.path, url_root);
+    if (!maybe.has_value()) {
+        res.status = webdav_resolve_failure_status(req.path);
+        res.body = (res.status == 400) ? "Invalid WebDAV path (`..` not permitted)" : "Not found";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    if (maybe->empty()) {
+        // Pseudo-root (/webdav/, /webdav/models/) — not creatable.
+        res.status = 405;
+        res.body = "Cannot MKCOL on a virtual root";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    std::error_code ec;
+    if (fs::exists(*maybe, ec)) {
+        res.status = 405;
+        res.body = "Already exists";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    // RFC 4918 §9.3: parent must exist; intermediate parents must NOT be created.
+    if (maybe->has_parent_path() && !fs::exists(maybe->parent_path(), ec)) {
+        res.status = 409;
+        res.body = "Parent does not exist";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    if (!fs::create_directory(*maybe, ec)) {
+        res.status = 500;
+        res.body = std::string("mkdir failed: ") + ec.message();
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    res.status = 201;  // Created
+    res.body = "";
+    return httplib::Server::HandlerResponse::Handled;
+}
+
+namespace {
+
+// Take a "Destination: https://host/webdav/foo" header and return just the
+// /webdav/... path part. cpp-httplib doesn't expose its URI parser, so we
+// hand-roll the minimum required.
+std::string extract_dest_path(const std::string& dest) {
+    if (dest.empty()) return "";
+    // Strip scheme://authority if present.
+    size_t i = 0;
+    auto scheme_end = dest.find("://");
+    if (scheme_end != std::string::npos) {
+        size_t authority_start = scheme_end + 3;
+        size_t path_start = dest.find('/', authority_start);
+        if (path_start == std::string::npos) return "";
+        i = path_start;
+    }
+    // Trim a possible fragment / query.
+    std::string path = dest.substr(i);
+    auto q = path.find('?');
+    if (q != std::string::npos) path = path.substr(0, q);
+    auto f = path.find('#');
+    if (f != std::string::npos) path = path.substr(0, f);
+    return path;
+}
+
+}  // namespace
+
+httplib::Server::HandlerResponse
+RequestHandlers::handle_webdav_move(const httplib::Request& req, httplib::Response& res) {
+    namespace fs = std::filesystem;
+    std::string url_root_src;
+    auto src = resolve_webdav_path(req.path, url_root_src);
+    if (!src.has_value() || src->empty()) {
+        res.status = 400;
+        res.body = "Invalid source path";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    std::error_code ec;
+    if (!fs::exists(*src, ec)) {
+        res.status = 404;
+        res.body = "Source not found";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    std::string dest_hdr = req.get_header_value("Destination");
+    std::string dest_path = extract_dest_path(dest_hdr);
+    if (dest_path.empty()) {
+        res.status = 400;
+        res.body = "Missing or invalid Destination header";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    std::string url_root_dst;
+    auto dst = resolve_webdav_path(dest_path, url_root_dst);
+    if (!dst.has_value() || dst->empty()) {
+        res.status = 400;
+        res.body = "Invalid destination path";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    bool overwrite = req.get_header_value("Overwrite") != "F";  // default = T
+    bool dst_exists = fs::exists(*dst, ec);
+    if (dst_exists && !overwrite) {
+        res.status = 412;  // Precondition Failed
+        res.body = "Destination exists and Overwrite: F";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    if (dst_exists) {
+        fs::remove_all(*dst, ec);
+    }
+    fs::rename(*src, *dst, ec);
+    if (ec) {
+        // rename() across mount points fails with EXDEV — fall back to copy+remove.
+        std::error_code ec2;
+        fs::copy(*src, *dst, fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec2);
+        if (ec2) {
+            res.status = 500;
+            res.body = std::string("move failed: ") + ec2.message();
+            return httplib::Server::HandlerResponse::Handled;
+        }
+        fs::remove_all(*src, ec2);
+    }
+    res.status = dst_exists ? 204 : 201;
+    res.body = "";
+    return httplib::Server::HandlerResponse::Handled;
+}
+
+httplib::Server::HandlerResponse
+RequestHandlers::handle_webdav_copy(const httplib::Request& req, httplib::Response& res) {
+    namespace fs = std::filesystem;
+    std::string url_root_src;
+    auto src = resolve_webdav_path(req.path, url_root_src);
+    if (!src.has_value() || src->empty()) {
+        res.status = 400;
+        res.body = "Invalid source path";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    std::error_code ec;
+    if (!fs::exists(*src, ec)) {
+        res.status = 404;
+        res.body = "Source not found";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    std::string dest_hdr = req.get_header_value("Destination");
+    std::string dest_path = extract_dest_path(dest_hdr);
+    if (dest_path.empty()) {
+        res.status = 400;
+        res.body = "Missing or invalid Destination header";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    std::string url_root_dst;
+    auto dst = resolve_webdav_path(dest_path, url_root_dst);
+    if (!dst.has_value() || dst->empty()) {
+        res.status = 400;
+        res.body = "Invalid destination path";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    bool overwrite = req.get_header_value("Overwrite") != "F";
+    bool dst_exists = fs::exists(*dst, ec);
+    if (dst_exists && !overwrite) {
+        res.status = 412;
+        res.body = "Destination exists and Overwrite: F";
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    auto opts = fs::copy_options::recursive | fs::copy_options::overwrite_existing;
+    fs::copy(*src, *dst, opts, ec);
+    if (ec) {
+        res.status = 500;
+        res.body = std::string("copy failed: ") + ec.message();
+        return httplib::Server::HandlerResponse::Handled;
+    }
+    res.status = dst_exists ? 204 : 201;
+    res.body = "";
+    return httplib::Server::HandlerResponse::Handled;
+}
+
+void RequestHandlers::handle_webdav_get(const httplib::Request& req,
+                                        httplib::Response& res, bool head_only) {
+    namespace fs = std::filesystem;
+    std::string url_root;
+    auto maybe = resolve_webdav_path(req.path, url_root);
+    if (!maybe.has_value()) {
+        res.status = webdav_resolve_failure_status(req.path);
+        res.body = (res.status == 400) ? "Invalid WebDAV path (`..` not permitted)" : "Not found";
+        return;
+    }
+    if (maybe->empty()) {
+        // Pseudo-root — Finder/Explorer issue PROPFIND not GET on these.
+        // For curl users: respond with a tiny placeholder.
+        res.status = 200;
+        res.set_content("WebDAV root — use PROPFIND to list collections.\n",
+                        "text/plain; charset=utf-8");
+        return;
+    }
+    std::error_code ec;
+    if (!fs::exists(*maybe, ec)) {
+        res.status = 404;
+        res.body = "Not found";
+        return;
+    }
+    if (fs::is_directory(*maybe, ec)) {
+        // GET on a collection: redirect to PROPFIND. cpp-httplib browsers
+        // don't issue PROPFIND, so emit a minimal HTML index for humans.
+        std::string html =
+            "<!DOCTYPE html><html><body><h1>WebDAV collection</h1>"
+            "<p>Use PROPFIND to enumerate, or mount via a WebDAV client.</p>"
+            "</body></html>";
+        res.status = 200;
+        res.set_content(html, "text/html; charset=utf-8");
+        return;
+    }
+
+    // Regular file. Stream from disk so we don't blow memory on big checkpoints.
+    auto size = fs::file_size(*maybe, ec);
+    if (ec) {
+        res.status = 500;
+        res.body = "stat failed";
+        return;
+    }
+    auto ft = fs::last_write_time(*maybe, ec);
+    std::string lastmod = ec ? "" : rfc1123_from_filetime(ft);
+    std::string ctype = mime_for_extension(*maybe);
+    if (!lastmod.empty()) res.set_header("Last-Modified", lastmod);
+
+    if (head_only) {
+        // For HEAD, populate metadata-only response. cpp-httplib will strip
+        // the body, but we still need Content-Length/Content-Type set.
+        res.status = 200;
+        res.set_header("Content-Length", std::to_string(size));
+        res.set_header("Content-Type", ctype);
+        return;
+    }
+
+    // Use chunked content provider for large files. The lambda owns an
+    // ifstream; cpp-httplib calls it repeatedly until offset == size.
+    auto file_path = *maybe;
+    auto ifs = std::make_shared<std::ifstream>(file_path, std::ios::binary);
+    if (!ifs->is_open()) {
+        res.status = 500;
+        res.body = "open failed";
+        return;
+    }
+    res.status = 200;
+    res.set_content_provider(
+        size, ctype,
+        [ifs](size_t offset, size_t length, httplib::DataSink& sink) -> bool {
+            ifs->seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+            const size_t kChunk = 256 * 1024;
+            std::vector<char> buf(std::min(length, kChunk));
+            ifs->read(buf.data(), static_cast<std::streamsize>(buf.size()));
+            auto n = ifs->gcount();
+            if (n > 0) sink.write(buf.data(), static_cast<size_t>(n));
+            return n > 0;
+        },
+        [ifs](bool /*success*/) { ifs->close(); });
+}
+
+void RequestHandlers::handle_webdav_put(const httplib::Request& req,
+                                        httplib::Response& res) {
+    namespace fs = std::filesystem;
+    std::string url_root;
+    auto maybe = resolve_webdav_path(req.path, url_root);
+    if (!maybe.has_value()) {
+        res.status = webdav_resolve_failure_status(req.path);
+        res.body = (res.status == 400) ? "Invalid WebDAV path (`..` not permitted)" : "Not found";
+        return;
+    }
+    if (maybe->empty()) {
+        res.status = 405;
+        res.body = "Cannot PUT to a virtual root";
+        return;
+    }
+    std::error_code ec;
+    // Parent dir must exist.
+    if (maybe->has_parent_path() && !fs::exists(maybe->parent_path(), ec)) {
+        res.status = 409;
+        res.body = "Parent collection does not exist";
+        return;
+    }
+    if (fs::is_directory(*maybe, ec)) {
+        res.status = 405;
+        res.body = "Cannot PUT over a directory";
+        return;
+    }
+    bool existed = fs::exists(*maybe, ec);
+
+    // Write atomically: write to <name>.webdav.tmp.<pid>, then rename. This
+    // prevents a partial upload from clobbering a good file if the connection
+    // drops. (Many DAV clients chunk uploads; cpp-httplib has buffered the
+    // whole body into req.body by the time we get here.)
+    fs::path tmp_path = *maybe;
+    tmp_path += ".webdav.tmp." + std::to_string(::getpid());
+    {
+        std::ofstream ofs(tmp_path, std::ios::binary | std::ios::trunc);
+        if (!ofs.is_open()) {
+            res.status = 500;
+            res.body = "open for write failed";
+            return;
+        }
+        if (!req.body.empty()) {
+            ofs.write(req.body.data(), static_cast<std::streamsize>(req.body.size()));
+        }
+        ofs.flush();
+        if (!ofs) {
+            res.status = 500;
+            res.body = "write failed";
+            std::error_code ec2;
+            fs::remove(tmp_path, ec2);
+            return;
+        }
+    }
+    fs::rename(tmp_path, *maybe, ec);
+    if (ec) {
+        std::error_code ec2;
+        fs::remove(tmp_path, ec2);
+        res.status = 500;
+        res.body = std::string("rename failed: ") + ec.message();
+        return;
+    }
+    res.status = existed ? 204 : 201;
+    res.body = "";
+}
+
+void RequestHandlers::handle_webdav_delete(const httplib::Request& req,
+                                           httplib::Response& res) {
+    namespace fs = std::filesystem;
+    std::string url_root;
+    auto maybe = resolve_webdav_path(req.path, url_root);
+    if (!maybe.has_value()) {
+        res.status = webdav_resolve_failure_status(req.path);
+        res.body = (res.status == 400) ? "Invalid WebDAV path (`..` not permitted)" : "Not found";
+        return;
+    }
+    if (maybe->empty()) {
+        res.status = 405;
+        res.body = "Cannot DELETE a virtual root";
+        return;
+    }
+    std::error_code ec;
+    if (!fs::exists(*maybe, ec)) {
+        res.status = 404;
+        res.body = "Not found";
+        return;
+    }
+    fs::remove_all(*maybe, ec);
+    if (ec) {
+        res.status = 500;
+        res.body = std::string("delete failed: ") + ec.message();
+        return;
+    }
+    res.status = 204;
+    res.body = "";
 }
 
 } // namespace sdcpp

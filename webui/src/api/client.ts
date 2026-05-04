@@ -767,6 +767,97 @@ class ApiClient {
     return this.request('GET', '/models/paths')
   }
 
+  /**
+   * Upload a model file to the server (multipart/form-data).
+   *
+   * Uses XMLHttpRequest so we can surface real upload progress (fetch's
+   * progress events fire on the response, not the request body).
+   *
+   * @param file       The File / Blob to upload
+   * @param modelType  One of: checkpoint|diffusion|vae|lora|clip|t5|
+   *                   embedding|controlnet|llm|esrgan|taesd
+   * @param subfolder  Optional relative path under the model_type dir
+   * @param onProgress Optional progress callback (loaded, total)
+   * @param signal     Optional AbortSignal — aborting cancels the XHR
+   */
+  async uploadModel(
+    file: File,
+    modelType: string,
+    subfolder?: string,
+    onProgress?: (loaded: number, total: number) => void,
+    signal?: AbortSignal
+  ): Promise<UploadModelResponse> {
+    return new Promise<UploadModelResponse>((resolve, reject) => {
+      const form = new FormData()
+      form.append('file', file, file.name)
+      form.append('model_type', modelType)
+      if (subfolder && subfolder.trim().length > 0) {
+        form.append('subfolder', subfolder.trim())
+      }
+
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', this.baseUrl + '/models/upload', true)
+
+      // Attach bearer token the same way request() does.
+      try {
+        const token = localStorage.getItem('sdcpp_auth_token')
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      } catch {
+        // localStorage unavailable — proceed unauthenticated
+      }
+
+      if (onProgress) {
+        xhr.upload.onprogress = (ev: ProgressEvent) => {
+          if (ev.lengthComputable) {
+            onProgress(ev.loaded, ev.total)
+          }
+        }
+      }
+
+      xhr.onload = () => {
+        let parsed: unknown = null
+        try { parsed = JSON.parse(xhr.responseText) } catch { /* non-JSON body */ }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve((parsed ?? {}) as UploadModelResponse)
+        } else {
+          const msg = (parsed && typeof parsed === 'object' && parsed !== null
+                       && 'error' in parsed && typeof (parsed as Record<string, unknown>).error === 'string')
+            ? (parsed as Record<string, string>).error
+            : ((parsed && typeof parsed === 'object' && parsed !== null
+                && 'message' in parsed && typeof (parsed as Record<string, unknown>).message === 'string')
+                ? (parsed as Record<string, string>).message
+                : `Upload failed with status ${xhr.status}`)
+          // Mirror the request() 401 handling so the user gets bounced to /login.
+          if (xhr.status === 401) {
+            try {
+              localStorage.removeItem('sdcpp_auth_token')
+              localStorage.removeItem('sdcpp_auth_expires_at')
+              localStorage.removeItem('sdcpp_auth_username')
+            } catch { /* private mode — ignore */ }
+            if (typeof window !== 'undefined' &&
+                !window.location.hash.startsWith('#/login')) {
+              const dest = encodeURIComponent(window.location.hash.replace(/^#/, '') || '/')
+              window.location.hash = `#/login?redirect=${dest}`
+            }
+          }
+          reject(new ApiError(msg, xhr.status))
+        }
+      }
+      xhr.onerror = () => reject(new ApiError('Network error during upload', 0))
+      xhr.onabort = () => reject(new ApiError('Upload cancelled', 0))
+
+      if (signal) {
+        if (signal.aborted) {
+          xhr.abort()
+          return
+        }
+        signal.addEventListener('abort', () => xhr.abort(), { once: true })
+      }
+
+      xhr.send(form)
+    })
+  }
+
   // Architectures
   async getArchitectures(): Promise<ArchitecturesResponse> {
     // Cache architectures for 5 minutes (rarely change), with retry
@@ -1314,6 +1405,15 @@ export interface ModelPathsConfig {
   llm: string
   esrgan: string
   taesd: string
+}
+
+export interface UploadModelResponse {
+  success: boolean
+  filename: string
+  model_type: string
+  size_bytes: number
+  full_path: string
+  subfolder?: string
 }
 
 // Architecture Types

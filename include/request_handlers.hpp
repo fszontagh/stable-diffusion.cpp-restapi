@@ -4,6 +4,8 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <memory>
+#include <optional>
+#include <filesystem>
 
 #include "config.hpp"
 #include "architecture_manager.hpp"
@@ -41,6 +43,7 @@ public:
      */
     RequestHandlers(ModelManager& model_manager, QueueManager& queue_manager,
                     AuthManager& auth_manager,
+                    const Config& config,
                     const std::string& output_dir, const std::string& webui_dir = "",
                     const AssistantConfig& assistant_config = AssistantConfig{},
                     const std::string& config_file_path = "",
@@ -59,6 +62,7 @@ private:
     void handle_load_model(const httplib::Request& req, httplib::Response& res);
     void handle_unload_model(const httplib::Request& req, httplib::Response& res);
     void handle_get_model_hash(const httplib::Request& req, httplib::Response& res);
+    void handle_upload_model(const httplib::Request& req, httplib::Response& res);
 
     // Generation endpoints
     void handle_txt2img(const httplib::Request& req, httplib::Response& res);
@@ -127,6 +131,38 @@ private:
     void handle_docs(const httplib::Request& req, httplib::Response& res);
     std::string generate_docs_toc();
 
+    // WebDAV endpoints (under /webdav/)
+    // Auth: HTTP Basic (verified inline; the bearer-token middleware skips this prefix).
+    // Roots:
+    //   /webdav/output/<path>      → config.paths.output
+    //   /webdav/models/<type>/<p>  → config.paths.<type> (type ∈ {checkpoints,
+    //                                  diffusion_models, vae, loras, clip, t5,
+    //                                  controlnet, llm, esrgan, taesd, embeddings})
+    bool verify_basic_auth(const httplib::Request& req) const;
+    // Resolve a /webdav/... URL path to an absolute filesystem path under
+    // a configured root. Returns nullopt for traversal attempts (`..`),
+    // unknown roots, or malformed paths. The resulting path may not exist.
+    // out_url_root is filled with the canonical "/webdav/<root>/<...>"
+    // prefix that maps to a configured filesystem directory (used to build
+    // <D:href> URLs in PROPFIND output).
+    std::optional<std::filesystem::path>
+        resolve_webdav_path(const std::string& url_path,
+                            std::string& out_url_root) const;
+    httplib::Server::HandlerResponse handle_webdav_options(
+        const httplib::Request& req, httplib::Response& res);
+    httplib::Server::HandlerResponse handle_webdav_propfind(
+        const httplib::Request& req, httplib::Response& res);
+    httplib::Server::HandlerResponse handle_webdav_mkcol(
+        const httplib::Request& req, httplib::Response& res);
+    httplib::Server::HandlerResponse handle_webdav_move(
+        const httplib::Request& req, httplib::Response& res);
+    httplib::Server::HandlerResponse handle_webdav_copy(
+        const httplib::Request& req, httplib::Response& res);
+    void handle_webdav_get(const httplib::Request& req, httplib::Response& res, bool head_only);
+    void handle_webdav_put(const httplib::Request& req, httplib::Response& res);
+    void handle_webdav_delete(const httplib::Request& req, httplib::Response& res);
+    void send_webdav_unauthorized(httplib::Response& res) const;
+
     // Architecture endpoints
     void handle_get_architectures(const httplib::Request& req, httplib::Response& res);
     void handle_detect_architecture(const httplib::Request& req, httplib::Response& res);
@@ -171,6 +207,7 @@ private:
     ModelManager& model_manager_;
     QueueManager& queue_manager_;
     AuthManager& auth_manager_;
+    PathsConfig paths_config_;  // Snapshot of configured model/output paths (for WebDAV mapping)
     std::string output_dir_;
     std::string webui_dir_;
     std::string docs_dir_;
