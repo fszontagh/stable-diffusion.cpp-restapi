@@ -1,11 +1,12 @@
 #include "download_manager.hpp"
-#include "httplib_compat.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <regex>
 #include <algorithm>
 #include <chrono>
+#include <cstring>
+#include <curl/curl.h>
 
 namespace fs = std::filesystem;
 
@@ -144,50 +145,135 @@ std::string DownloadManager::extract_filename(const std::string& url, const std:
     return "model.safetensors";
 }
 
+namespace {
+
+// Write callback for libcurl: appends to a std::string (for small responses)
+size_t curl_write_string(void* data, size_t size, size_t nmemb, void* userp) {
+    auto* str = static_cast<std::string*>(userp);
+    size_t bytes = size * nmemb;
+    str->append(static_cast<const char*>(data), bytes);
+    return bytes;
+}
+
+// State carried through the streaming write callback for file downloads
+struct StreamState {
+    std::ofstream* ofs = nullptr;
+    size_t downloaded = 0;
+    size_t total = 0;
+    DownloadProgressCallback progress_callback;
+    std::chrono::steady_clock::time_point start_time;
+};
+
+// Write callback for libcurl: writes chunks to disk and reports progress
+size_t curl_write_stream(void* data, size_t size, size_t nmemb, void* userp) {
+    auto* state = static_cast<StreamState*>(userp);
+    size_t bytes = size * nmemb;
+
+    if (state->ofs) {
+        state->ofs->write(static_cast<const char*>(data), bytes);
+        if (!*state->ofs) {
+            // Returning fewer bytes than received tells libcurl to abort
+            // (CURLE_WRITE_ERROR), which propagates as a download failure.
+            return 0;
+        }
+    }
+
+    state->downloaded += bytes;
+
+    if (state->progress_callback) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - state->start_time).count();
+        size_t speed = elapsed > 0 ? state->downloaded / static_cast<size_t>(elapsed) : state->downloaded;
+        state->progress_callback(state->downloaded, state->total, speed);
+    }
+
+    return bytes;
+}
+
+// Header callback: captures Content-Disposition (Content-Length and Content-Type
+// are read via CURLINFO_* after the transfer; only Content-Disposition needs a
+// header callback because there's no dedicated CURLINFO_ for it).
+size_t curl_capture_disposition(char* buffer, size_t size, size_t nitems, void* userp) {
+    auto* disposition = static_cast<std::string*>(userp);
+    size_t bytes = size * nitems;
+    constexpr const char* kPrefix = "content-disposition:";
+    constexpr size_t kPrefixLen = 20; // strlen("content-disposition:")
+
+    if (bytes >= kPrefixLen) {
+        // Case-insensitive prefix match
+        bool match = true;
+        for (size_t i = 0; i < kPrefixLen; ++i) {
+            char c = buffer[i];
+            if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+            if (c != kPrefix[i]) { match = false; break; }
+        }
+        if (match) {
+            std::string value(buffer + kPrefixLen, bytes - kPrefixLen);
+            // Trim leading whitespace and trailing CRLF
+            size_t start = value.find_first_not_of(" \t");
+            size_t end = value.find_last_not_of(" \t\r\n");
+            if (start != std::string::npos && end != std::string::npos) {
+                *disposition = value.substr(start, end - start + 1);
+            }
+        }
+    }
+
+    return bytes;
+}
+
+// Apply common cURL options used by every request the manager makes.
+void apply_common_curl_options(CURL* curl, long connect_timeout, long total_timeout) {
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SDCpp-RestAPI/1.0");
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, connect_timeout);
+    if (total_timeout > 0) {
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, total_timeout);
+    }
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+    // Use system CA bundle (default). TLS verification stays ON — cpp-httplib's
+    // disabled-verification path was a security hole; libcurl + system CAs
+    // validates HuggingFace's CloudFront cert correctly.
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+}
+
+} // anonymous namespace
+
 std::string DownloadManager::http_get(const std::string& url, int timeout_seconds) {
-    // Parse URL
-    std::regex url_regex("(https?)://([^/:]+)(:\\d+)?(/.*)?");
-    std::smatch match;
-    if (!std::regex_match(url, match, url_regex)) {
-        throw std::runtime_error("Invalid URL: " + url);
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        throw std::runtime_error("HTTP request failed: curl_easy_init returned null");
     }
 
-    std::string scheme = match[1].str();
-    std::string host = match[2].str();
-    std::string port_str = match[3].str();
-    std::string path = match[4].str();
-    if (path.empty()) path = "/";
+    std::string body;
+    char errbuf[CURL_ERROR_SIZE] = {0};
 
-    int port = (scheme == "https") ? 443 : 80;
-    if (!port_str.empty()) {
-        port = std::stoi(port_str.substr(1));
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_string);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
+    apply_common_curl_options(curl, 30L, static_cast<long>(timeout_seconds));
+
+    CURLcode rc = curl_easy_perform(curl);
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_easy_cleanup(curl);
+
+    if (rc != CURLE_OK) {
+        std::string msg = errbuf[0] ? std::string(errbuf) : std::string(curl_easy_strerror(rc));
+        if (http_code) {
+            throw std::runtime_error("HTTP " + std::to_string(http_code) + ": " + msg);
+        }
+        throw std::runtime_error("HTTP request failed: " + msg);
     }
 
-    std::unique_ptr<httplib::Client> client;
-    if (scheme == "https") {
-        client = std::make_unique<httplib::Client>(host, port);
-        client->enable_server_certificate_verification(false);
-    } else {
-        client = std::make_unique<httplib::Client>(host, port);
+    if (http_code != 200) {
+        throw std::runtime_error("HTTP " + std::to_string(http_code));
     }
 
-    client->set_connection_timeout(timeout_seconds);
-    client->set_read_timeout(timeout_seconds);
-    client->set_follow_location(true);
-    client->set_default_headers({
-        {"User-Agent", "SDCpp-RestAPI/1.0"}
-    });
-
-    auto res = client->Get(path);
-    if (!res) {
-        throw std::runtime_error("HTTP request failed: " + httplib::to_string(res.error()));
-    }
-
-    if (res->status != 200) {
-        throw std::runtime_error("HTTP " + std::to_string(res->status) + ": " + res->reason);
-    }
-
-    return res->body;
+    return body;
 }
 
 bool DownloadManager::validate_model_url(const std::string& url) {
@@ -219,59 +305,40 @@ DownloadResult DownloadManager::download_file(
 ) {
     DownloadResult result;
 
-    // Parse URL
-    std::regex url_regex("(https?)://([^/:]+)(:\\d+)?(/.*)?");
-    std::smatch match;
-    if (!std::regex_match(url, match, url_regex)) {
-        result.error_message = "Invalid URL: " + url;
-        return result;
-    }
-
-    std::string scheme = match[1].str();
-    std::string host = match[2].str();
-    std::string port_str = match[3].str();
-    std::string path = match[4].str();
-    if (path.empty()) path = "/";
-
-    int port = (scheme == "https") ? 443 : 80;
-    if (!port_str.empty()) {
-        port = std::stoi(port_str.substr(1));
-    }
-
-    std::unique_ptr<httplib::Client> client;
-    if (scheme == "https") {
-        client = std::make_unique<httplib::Client>(host, port);
-        client->enable_server_certificate_verification(false);
-    } else {
-        client = std::make_unique<httplib::Client>(host, port);
-    }
-
-    client->set_connection_timeout(30);
-    client->set_read_timeout(300);  // 5 minutes for large files
-    client->set_follow_location(true);
-    client->set_default_headers({
-        {"User-Agent", "SDCpp-RestAPI/1.0"}
-    });
-
-    // Track download progress
-    auto start_time = std::chrono::steady_clock::now();
-
-    // First, do a HEAD request to get content info
-    auto head_res = client->Head(path);
+    // ----- HEAD request: probe size, content-type, content-disposition -----
     size_t total_size = 0;
     std::string content_type;
     std::string content_disposition;
+    {
+        CURL* curl = curl_easy_init();
+        if (!curl) {
+            result.error_message = "Download failed: curl_easy_init returned null";
+            return result;
+        }
 
-    if (head_res && head_res->status == 200) {
-        if (head_res->has_header("Content-Length")) {
-            total_size = std::stoull(head_res->get_header_value("Content-Length"));
+        char errbuf[CURL_ERROR_SIZE] = {0};
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_NOBODY, 1L); // HEAD
+        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, curl_capture_disposition);
+        curl_easy_setopt(curl, CURLOPT_HEADERDATA, &content_disposition);
+        curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
+        // HEAD uses a shorter total timeout — the body is empty so 30s is plenty.
+        apply_common_curl_options(curl, 30L, 60L);
+
+        CURLcode rc = curl_easy_perform(curl);
+        if (rc == CURLE_OK) {
+            curl_off_t cl = 0;
+            if (curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &cl) == CURLE_OK && cl > 0) {
+                total_size = static_cast<size_t>(cl);
+            }
+            char* ct = nullptr;
+            if (curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &ct) == CURLE_OK && ct) {
+                content_type = ct;
+            }
         }
-        if (head_res->has_header("Content-Type")) {
-            content_type = head_res->get_header_value("Content-Type");
-        }
-        if (head_res->has_header("Content-Disposition")) {
-            content_disposition = head_res->get_header_value("Content-Disposition");
-        }
+        // HEAD failure isn't fatal — some servers/CDNs reject HEAD on signed
+        // URLs. We still attempt the GET below.
+        curl_easy_cleanup(curl);
     }
 
     // Validate content type - should be binary
@@ -304,41 +371,68 @@ DownloadResult DownloadManager::download_file(
         return result;
     }
 
-    // Download with progress
+    // ----- Streaming GET to disk -----
     std::ofstream ofs(full_path, std::ios::binary);
     if (!ofs) {
         result.error_message = "Failed to create file: " + full_path;
         return result;
     }
 
-    size_t downloaded = 0;
+    StreamState state;
+    state.ofs = &ofs;
+    state.total = total_size;
+    state.progress_callback = progress_callback;
+    state.start_time = std::chrono::steady_clock::now();
 
-    auto res = client->Get(path,
-        [&](const char* data, size_t data_length) {
-            ofs.write(data, data_length);
-            downloaded += data_length;
-
-            if (progress_callback) {
-                auto now = std::chrono::steady_clock::now();
-                auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
-                size_t speed = elapsed > 0 ? downloaded / elapsed : downloaded;
-                progress_callback(downloaded, total_size, speed);
-            }
-
-            return true;  // Continue download
-        });
-
-    ofs.close();
-
-    if (!res) {
-        fs::remove(full_path);  // Clean up partial file
-        result.error_message = "Download failed: " + httplib::to_string(res.error());
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        ofs.close();
+        fs::remove(full_path);
+        result.error_message = "Download failed: curl_easy_init returned null";
         return result;
     }
 
-    if (res->status != 200) {
-        fs::remove(full_path);  // Clean up partial file
-        result.error_message = "Download failed with HTTP " + std::to_string(res->status);
+    char errbuf[CURL_ERROR_SIZE] = {0};
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_stream);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &state);
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
+    // No CURLOPT_TIMEOUT for the body transfer — large model files (10+ GB)
+    // can legitimately take hours on slow links. We rely on LOW_SPEED_LIMIT
+    // to abort genuinely-stalled connections.
+    apply_common_curl_options(curl, 30L, 0L);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);   // abort if <10 B/s for 60s
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 10L);
+
+    CURLcode rc = curl_easy_perform(curl);
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+    // If we didn't have a Content-Length up front, populate content_type from
+    // the GET response (some servers omit it on HEAD).
+    if (content_type.empty()) {
+        char* ct = nullptr;
+        if (curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &ct) == CURLE_OK && ct) {
+            content_type = ct;
+        }
+    }
+
+    curl_easy_cleanup(curl);
+    ofs.close();
+
+    if (rc != CURLE_OK) {
+        fs::remove(full_path); // Clean up partial file
+        std::string msg = errbuf[0] ? std::string(errbuf) : std::string(curl_easy_strerror(rc));
+        result.error_message = "Download failed: " + msg;
+        if (http_code) {
+            result.error_message += " (HTTP " + std::to_string(http_code) + ")";
+        }
+        return result;
+    }
+
+    if (http_code != 0 && http_code != 200) {
+        fs::remove(full_path);
+        result.error_message = "Download failed with HTTP " + std::to_string(http_code);
         return result;
     }
 

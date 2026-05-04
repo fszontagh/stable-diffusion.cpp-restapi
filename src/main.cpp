@@ -27,8 +27,11 @@
 #include "sd_error_capture.hpp"
 #include "stable-diffusion.h"
 
+#include <curl/curl.h>
+
 #ifdef SDCPP_USE_CUDA
 #include <cuda_runtime.h>
+#include "cuda_arch_check.hpp"
 #endif
 
 namespace fs = std::filesystem;
@@ -186,6 +189,13 @@ int main(int argc, char* argv[]) {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
+    // Initialize libcurl globally (used by DownloadManager for model downloads).
+    // Must be called before any threads use curl_easy_*; curl_global_cleanup() is
+    // called after server shutdown below.
+    if (curl_global_init(CURL_GLOBAL_DEFAULT) != 0) {
+        std::cerr << "Warning: curl_global_init failed; downloads may be unstable." << std::endl;
+    }
+
     try {
         // Set up SD logging callback
         sd_set_log_callback(sd_log_callback, nullptr);
@@ -216,6 +226,24 @@ int main(int argc, char* argv[]) {
                       << cudaGetErrorString(cuda_err) << std::endl;
         } else {
             std::cout << "CUDA device scheduling: BlockingSync (low CPU usage)" << std::endl;
+        }
+
+        // Sanity-check that this binary's compiled CUDA archs include the
+        // active GPU's compute capability. Catches the "no kernel image is
+        // available for execution on the device" failure mode that otherwise
+        // only surfaces at first kernel dispatch (mid-inference) — at which
+        // point the abort kills the whole server with a confusing trace.
+        {
+            auto check = sdcpp::cuda::check_arch_compatibility();
+            std::cout << "CUDA arch check: device='" << check.device_name
+                      << "' compute_cap=sm_" << check.device_compute_cap << std::endl;
+            if (!check.ok) {
+                std::cerr << "FATAL: " << check.message << std::endl;
+                return 1;
+            }
+            if (!check.message.empty()) {
+                std::cout << "CUDA arch check: " << check.message << std::endl;
+            }
         }
 #endif
 
@@ -444,8 +472,10 @@ int main(int argc, char* argv[]) {
 
     } catch (const std::exception& e) {
         std::cerr << "Fatal error: " << e.what() << std::endl;
+        curl_global_cleanup();
         return 1;
     }
 
+    curl_global_cleanup();
     return 0;
 }
