@@ -72,9 +72,6 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- API Offline Overlay - renders above everything when disconnected -->
-  <ApiOfflineOverlay />
-  
   <!-- Initial Loading Overlay — only meaningful when authenticated and
        startPolling() is actively fetching; on the login page polling hasn't
        started yet, so showing this would just hide the login form forever. -->
@@ -84,10 +81,15 @@ onUnmounted(() => {
       <p class="loading-text">Loading application...</p>
     </div>
   </div>
-  
+
   <ErrorBoundary>
     <!-- Authenticated shell: full app layout with sidebar / status bar / WS banner -->
     <template v-if="auth.isAuthenticated">
+      <!-- API Offline Overlay — only when the user is logged in. On /login
+           we haven't started polling, so apiAvailable is its initial value
+           (false) and the overlay would cover the login form. -->
+      <ApiOfflineOverlay />
+
       <StatusBar />
 
       <!-- WebSocket disconnected warning banner (HTTP still works) -->
