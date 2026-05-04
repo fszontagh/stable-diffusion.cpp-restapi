@@ -61,8 +61,9 @@ WORKDIR /src
 # COPYs ordered by stability (least → most frequently edited) for cache reuse.
 # Editing a file only invalidates its layer + everything after it.
 
-# 1. CMake config + version (rarely changes)
+# 1. CMake config + helper scripts + version (rarely change)
 COPY CMakeLists.txt VERSION /src/
+COPY cmake/ /src/cmake/
 
 # 2. C++ source — invalidating these correctly forces a recompile
 COPY src/ /src/src/
