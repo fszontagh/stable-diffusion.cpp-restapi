@@ -165,6 +165,19 @@ public:
      * Scan all configured directories for models
      */
     void scan_models();
+
+    /**
+     * If a previous run persisted its last-loaded model identity to disk,
+     * try to load that same model now. Called once at server startup so
+     * queued jobs picked up from /workspace/output/queue_state.json find
+     * a model already loaded — without this they fail with "No model
+     * loaded" because the in-memory model state is lost on restart.
+     *
+     * Returns true if a model was successfully reloaded, false if there
+     * was nothing to restore or the reload failed (last_load_error_ will
+     * have details). Does NOT throw — designed to be best-effort.
+     */
+    bool try_auto_reload_from_disk();
     
     /**
      * Get list of all available models by type
