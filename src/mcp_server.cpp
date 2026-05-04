@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <set>
 
 namespace sdcpp {
 
@@ -210,24 +211,68 @@ json McpServer::handle_list_tools() {
     });
 
     // 2. model — unified model management tool
+    json model_props = {
+        {"action", {{"type", "string"}, {"enum", {"load", "unload", "list"}}, {"description", "Action to perform"}}},
+        {"model_name", {{"type", "string"}, {"description", "Name of the main model file (required for 'load')"}}},
+        {"model_type", {{"type", "string"}, {"description", "Filter/specify model type: checkpoint, diffusion, vae, lora, clip, t5, embedding, controlnet, llm, esrgan, taesd"}}},
+
+        // Component paths (all optional, architecture-dependent)
+        {"vae", {{"type", "string"}, {"description", "VAE model name"}}},
+        {"clip_l", {{"type", "string"}, {"description", "CLIP-L text encoder"}}},
+        {"clip_g", {{"type", "string"}, {"description", "CLIP-G text encoder"}}},
+        {"clip_vision", {{"type", "string"}, {"description", "CLIP vision encoder (IP-Adapter)"}}},
+        {"t5xxl", {{"type", "string"}, {"description", "T5-XXL text encoder"}}},
+        {"controlnet", {{"type", "string"}, {"description", "ControlNet model"}}},
+        {"llm", {{"type", "string"}, {"description", "LLM for multimodal architectures (Qwen, Anima, Z-Image)"}}},
+        {"llm_vision", {{"type", "string"}, {"description", "LLM vision model"}}},
+        {"taesd", {{"type", "string"}, {"description", "TAESD tiny autoencoder (for previews)"}}},
+        {"high_noise_diffusion_model", {{"type", "string"}, {"description", "High-noise diffusion model (MoE, e.g. Wan)"}}},
+        {"photo_maker", {{"type", "string"}, {"description", "PhotoMaker model"}}},
+
+        // Load options (flat — handler routes these into nested 'options')
+        {"flash_attn", {{"type", "boolean"}, {"description", "Enable Flash Attention (default true)"}}},
+        {"n_threads", {{"type", "integer"}, {"description", "CPU threads, -1 = auto (default -1)"}}},
+        {"keep_clip_on_cpu", {{"type", "boolean"}, {"description", "Keep CLIP on CPU RAM to save VRAM (default true)"}}},
+        {"keep_vae_on_cpu", {{"type", "boolean"}, {"description", "Keep VAE on CPU RAM to save VRAM (default false)"}}},
+        {"keep_controlnet_on_cpu", {{"type", "boolean"}, {"description", "Keep ControlNet on CPU (default false)"}}},
+        {"offload_to_cpu", {{"type", "boolean"}, {"description", "Offload parts of model to CPU when idle (default false)"}}},
+        {"enable_mmap", {{"type", "boolean"}, {"description", "Memory-map weight files (default true)"}}},
+        {"vae_decode_only", {{"type", "boolean"}, {"description", "Drop VAE encoder to save memory (default false)"}}},
+        {"vae_tiling", {{"type", "boolean"}, {"description", "Enable VAE tiling for large images (default false)"}}},
+        {"vae_tile_size_x", {{"type", "integer"}, {"description", "VAE tile width, 0 = auto"}}},
+        {"vae_tile_size_y", {{"type", "integer"}, {"description", "VAE tile height, 0 = auto"}}},
+        {"vae_tile_overlap", {{"type", "number"}, {"description", "VAE tile overlap ratio (0.0-1.0)"}}},
+        {"weight_type", {{"type", "string"}, {"description", "Force weight quantization: f32, f16, bf16, q8_0, q4_0, q4_k, q5_k, q6_k, nvfp4, ..."}}},
+        {"tensor_type_rules", {{"type", "string"}, {"description", "Per-tensor weight regex rules, e.g. '^vae\\.=f16'"}}},
+        {"flow_shift", {{"type", "number"}, {"description", "Flow-matching shift (omit for auto)"}}},
+        {"rng_type", {{"type", "string"}, {"enum", {"cuda", "cpu", "std_default"}}, {"description", "RNG type (default cuda)"}}},
+        {"prediction", {{"type", "string"}, {"description", "Override prediction type: eps, v, edm_v, sd3_flow, flux_flow, flux2_flow"}}},
+        {"lora_apply_mode", {{"type", "string"}, {"enum", {"auto", "immediately", "at_runtime", "runtime"}}, {"description", "LoRA application mode"}}},
+        {"free_params_immediately", {{"type", "boolean"}, {"description", "Drop weights after one generation (default false)"}}}
+#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
+        ,
+        // Experimental VRAM offloading (only when built with SD_EXPERIMENTAL_OFFLOAD=ON)
+        {"offload_mode", {{"type", "string"}, {"enum", {"none", "cond_only", "cond_diffusion", "aggressive", "layer_streaming"}}, {"description", "VRAM offload strategy. Use 'layer_streaming' for models larger than VRAM."}}},
+        {"vram_estimation", {{"type", "string"}, {"enum", {"dryrun", "formula"}}, {"description", "VRAM estimation method (default dryrun)"}}},
+        {"offload_cond_stage", {{"type", "boolean"}, {"description", "Offload LLM/CLIP after conditioning"}}},
+        {"offload_diffusion", {{"type", "boolean"}, {"description", "Offload diffusion after sampling"}}},
+        {"reload_cond_stage", {{"type", "boolean"}, {"description", "Reload LLM/CLIP for next generation"}}},
+        {"reload_diffusion", {{"type", "boolean"}, {"description", "Reload diffusion for next generation"}}},
+        {"target_free_vram_mb", {{"type", "integer"}, {"description", "Target free VRAM before VAE decode in MB, 0 = always offload"}}},
+        {"min_offload_size_mb", {{"type", "integer"}, {"description", "Skip offloading components smaller than this (MB)"}}},
+        {"layer_streaming_enabled", {{"type", "boolean"}, {"description", "Stream U-Net/DiT layers one at a time (for 'layer_streaming' mode)"}}},
+        {"streaming_prefetch_layers", {{"type", "integer"}, {"description", "Layers to prefetch ahead during streaming"}}},
+        {"streaming_keep_layers_behind", {{"type", "integer"}, {"description", "Layers to keep after execution (skip connections)"}}},
+        {"streaming_min_free_vram_mb", {{"type", "integer"}, {"description", "Minimum free VRAM to maintain during streaming (MB)"}}}
+#endif
+    };
     tools.push_back({
         {"name", "model"},
-        {"description", "Manage models: load, unload, or list available models."},
+        {"description", "Manage models: load, unload, or list available models. For 'load', unknown option fields are passed through to the parser — you can set any ModelLoadParams option, not just the ones schema-advertised."},
         {"inputSchema", {
             {"type", "object"},
             {"required", json::array({"action"})},
-            {"properties", {
-                {"action", {{"type", "string"}, {"enum", {"load", "unload", "list"}}, {"description", "Action to perform"}}},
-                {"model_name", {{"type", "string"}, {"description", "Name of the model to load (required for 'load')"}}},
-                {"model_type", {{"type", "string"}, {"description", "Filter/specify model type: checkpoint, diffusion, vae, lora, clip, t5, embedding, controlnet, llm, esrgan, taesd"}}},
-                {"vae", {{"type", "string"}, {"description", "VAE model name (for 'load')"}}},
-                {"clip_l", {{"type", "string"}, {"description", "CLIP-L model name (for 'load')"}}},
-                {"clip_g", {{"type", "string"}, {"description", "CLIP-G model name (for 'load')"}}},
-                {"t5xxl", {{"type", "string"}, {"description", "T5-XXL model name (for 'load')"}}},
-                {"llm", {{"type", "string"}, {"description", "LLM model name for multimodal architectures (for 'load')"}}},
-                {"flash_attn", {{"type", "boolean"}, {"description", "Enable flash attention (for 'load')"}}},
-                {"n_threads", {{"type", "integer"}, {"description", "Number of CPU threads, -1 for auto (for 'load')"}}}
-            }}
+            {"properties", model_props}
         }}
     });
 
@@ -350,7 +395,28 @@ json McpServer::tool_model(const json& args) {
             return make_tool_result("Missing required parameter: model_name", true);
         }
         try {
-            auto params = ModelLoadParams::from_json(args);
+            // Restructure flat MCP args into the shape ModelLoadParams::from_json expects:
+            // top-level component paths + nested "options" for everything else.
+            // ModelLoadParams::from_json reads non-component options from j["options"],
+            // so without this partition any MCP-submitted options would be silently dropped.
+            static const std::set<std::string> kLoadTopLevel = {
+                "model_name", "model_type",
+                "vae", "clip_l", "clip_g", "clip_vision", "t5xxl", "controlnet",
+                "llm", "llm_vision", "taesd", "high_noise_diffusion_model", "photo_maker"
+            };
+            json load_args = json::object();
+            json options = json::object();
+            for (auto it = args.begin(); it != args.end(); ++it) {
+                if (it.key() == "action") continue;
+                if (kLoadTopLevel.count(it.key())) {
+                    load_args[it.key()] = it.value();
+                } else {
+                    options[it.key()] = it.value();
+                }
+            }
+            if (!options.empty()) load_args["options"] = options;
+
+            auto params = ModelLoadParams::from_json(load_args);
             model_manager_.load_model(params);
 
             auto loaded_info = model_manager_.get_loaded_models_info();

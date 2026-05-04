@@ -1,14 +1,20 @@
 #include "model_manager.hpp"
 #include "websocket_server.hpp"
 #include "utils.hpp"
+#include "memory_utils.hpp"
 
 #include <iostream>
+#include <fstream>
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 
 #include "stable-diffusion.h"
+
+#ifdef SDCPP_USE_CUDA
+#include "cuda_arch_check.hpp"
+#endif
 
 namespace fs = std::filesystem;
 
@@ -608,6 +614,35 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         }
     }
 
+    // ===== PHASE 1.5: GPU-format compatibility check =====
+    // Refuse loads of NVFP4/FP8-quantized files on GPUs that don't support
+    // those formats natively — sd.cpp would silently dequantize to fp16 at
+    // load time, doubling/tripling the on-disk size in VRAM and OOM'ing
+    // before any offload mode can engage. We catch it here with a clear
+    // message + suggested alternative instead of letting the user discover
+    // it as a generic "insufficient memory" or kernel-dispatch crash.
+#ifdef SDCPP_USE_CUDA
+    auto add_format_error = [&errors](const std::optional<ModelInfo>& info) {
+        if (!info) return;
+        auto check = sdcpp::cuda::check_model_format_compatibility(info->full_path);
+        if (!check.ok) {
+            std::string err = check.message;
+            if (!check.suggested_alternative.empty()) {
+                err += " " + check.suggested_alternative;
+            }
+            errors.push_back(err);
+        }
+    };
+    add_format_error(model_info);
+    add_format_error(vae_info);
+    add_format_error(llm_info);
+    add_format_error(llm_vision_info);
+    add_format_error(clip_vision_info);
+    add_format_error(taesd_info);
+    add_format_error(high_noise_diffusion_info);
+    add_format_error(photo_maker_info);
+#endif
+
     // If any validation errors, throw with all error messages
     if (!errors.empty()) {
         std::string error_msg = "Model validation failed:\n";
@@ -758,7 +793,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.tae_preview_only = params.tae_preview_only;
     ctx_params.free_params_immediately = params.free_params_immediately;
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
-    // Experimental fork has flow_shift in ctx_params (model load time)
+    // Fork moved flow_shift into sd_ctx_params_t so the offload runtime can
+    // see it at model-load time; upstream still keeps it only on sd_sample_params_t.
     ctx_params.flow_shift = params.flow_shift;
 #endif
     ctx_params.force_sdxl_vae_conv_scale = params.force_sdxl_vae_conv_scale;
@@ -835,6 +871,18 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
               << ", offload_mode=" << params.offload_mode
 #endif
               << std::endl;
+
+    // Pre-flight: verify GPU runtime is usable before we hand control to
+    // sd.cpp/ggml, which would SIGABRT us on a driver/lib mismatch via
+    // GGML_ABORT and freeze the whole service while apport runs.
+    {
+        std::string gpu_err;
+        if (!verify_gpu_runtime(gpu_err)) {
+            last_load_error_ = "GPU runtime not ready: " + gpu_err;
+            std::cerr << "[ModelManager] " << last_load_error_ << std::endl;
+            return false;
+        }
+    }
 
     // Set up progress callback for model loading
     g_loading_model_manager = this;
@@ -966,6 +1014,41 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     // Clear loading state on success
     clear_loading();
 
+    // Persist load identity to disk so that on a server restart we can
+    // auto-reload the same model. Without this, queued jobs picked up from
+    // queue_state.json fail with "No model loaded" because the in-memory
+    // model state is lost. Best-effort: write failures don't fail the load.
+    try {
+        nlohmann::json persisted = nlohmann::json::object();
+        persisted["model_name"] = params.model_name;
+        persisted["model_type"] = model_type_to_string(params.model_type);
+        if (params.vae)         persisted["vae"]         = *params.vae;
+        if (params.clip_l)      persisted["clip_l"]      = *params.clip_l;
+        if (params.clip_g)      persisted["clip_g"]      = *params.clip_g;
+        if (params.clip_vision) persisted["clip_vision"] = *params.clip_vision;
+        if (params.t5xxl)       persisted["t5xxl"]       = *params.t5xxl;
+        if (params.controlnet)  persisted["controlnet"]  = *params.controlnet;
+        if (params.llm)         persisted["llm"]         = *params.llm;
+        if (params.llm_vision)  persisted["llm_vision"]  = *params.llm_vision;
+        if (params.taesd)       persisted["taesd"]       = *params.taesd;
+        if (params.high_noise_diffusion_model)
+            persisted["high_noise_diffusion_model"] = *params.high_noise_diffusion_model;
+        if (params.photo_maker) persisted["photo_maker"] = *params.photo_maker;
+        // loaded_options_ already has the full set of load options in the
+        // shape ModelLoadParams::from_json expects under the "options" key.
+        persisted["options"] = loaded_options_;
+
+        fs::path persist_path = fs::path(config_.paths.output) / "last_loaded_model.json";
+        std::ofstream f(persist_path);
+        if (f) {
+            f << persisted.dump(2);
+            std::cout << "[ModelManager] Load identity persisted to " << persist_path << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[ModelManager] Warning: failed to persist load identity: "
+                  << e.what() << std::endl;
+    }
+
     std::cout << "[ModelManager] Model architecture: " << loaded_model_architecture_ << std::endl;
     std::cout << "[ModelManager] Model loaded successfully" << std::endl;
 
@@ -981,11 +1064,64 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     return true;
 }
 
+bool ModelManager::try_auto_reload_from_disk() {
+    fs::path persist_path = fs::path(config_.paths.output) / "last_loaded_model.json";
+    if (!fs::exists(persist_path)) {
+        return false;  // Nothing to restore — first run, or user explicitly unloaded
+    }
+
+    nlohmann::json j;
+    try {
+        std::ifstream f(persist_path);
+        if (!f) return false;
+        f >> j;
+    } catch (const std::exception& e) {
+        std::cerr << "[ModelManager] Could not read " << persist_path << ": "
+                  << e.what() << std::endl;
+        return false;
+    }
+
+    std::cout << "[ModelManager] Found persisted load state: "
+              << j.value("model_name", "<unknown>") << " ("
+              << j.value("model_type", "<unknown>") << "). "
+              << "Attempting auto-reload after restart." << std::endl;
+
+    ModelLoadParams params;
+    try {
+        params = ModelLoadParams::from_json(j);
+    } catch (const std::exception& e) {
+        std::cerr << "[ModelManager] Persisted load state is invalid: "
+                  << e.what() << ". Removing the file." << std::endl;
+        std::error_code ec;
+        fs::remove(persist_path, ec);
+        return false;
+    }
+
+    bool ok = load_model(params);
+    if (!ok) {
+        std::cerr << "[ModelManager] Auto-reload failed: " << last_load_error_
+                  << std::endl
+                  << "[ModelManager] Queued jobs will fail with 'No model "
+                  << "loaded' until you load one manually." << std::endl;
+        return false;
+    }
+
+    std::cout << "[ModelManager] Auto-reload succeeded." << std::endl;
+    return true;
+}
+
 void ModelManager::unload_model() {
     std::lock_guard<std::mutex> lock(context_mutex_);
 
     // Clear error state when unloading
     last_load_error_.clear();
+
+    // Remove the persisted load identity so the next server restart doesn't
+    // auto-reload a model the user explicitly unloaded.
+    {
+        std::error_code ec;
+        fs::remove(fs::path(config_.paths.output) / "last_loaded_model.json", ec);
+    }
 
     if (context_ != nullptr) {
         std::string model_name = loaded_model_name_;  // Capture before clearing

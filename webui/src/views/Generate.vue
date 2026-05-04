@@ -511,23 +511,31 @@ const debouncedSaveSettings = useDebounceFn(() => {
 
 // LoRA settings persistence
 async function saveLoraSettings() {
-  try {
-    const currentPrefs = store.uiPreferences || {} as any
-    const loraLists = (currentPrefs as any).lora_lists || {}
+  const currentPrefs = store.uiPreferences || {} as any
+  const loraLists = (currentPrefs as any).lora_lists || {}
 
-    // img_edit shares txt2img LoRA settings
-    const loraMode = mode.value === 'img_edit' ? 'txt2img' : mode.value
-    await api.updateUIPreferences({
-      ...currentPrefs,
-      lora_settings: loraSettings.value,
-      lora_lists: {
-        ...loraLists,
-        [loraMode]: {
-          positive: positiveLoraList.value,
-          negative: negativeLoraList.value
-        }
+  // img_edit shares txt2img LoRA settings
+  const loraMode = mode.value === 'img_edit' ? 'txt2img' : mode.value
+  const newPrefs = {
+    ...currentPrefs,
+    lora_settings: loraSettings.value,
+    lora_lists: {
+      ...loraLists,
+      [loraMode]: {
+        positive: positiveLoraList.value,
+        negative: negativeLoraList.value
       }
-    })
+    }
+  }
+
+  // Optimistic local cache update so a remount during the in-flight write
+  // (e.g. navigating to Queue and back) sees the new lora_lists immediately.
+  // Without this the next loadLoraSettingsForMode() reads stale store data
+  // and the watcher then writes that stale data back, dropping the LoRA.
+  store.uiPreferences = newPrefs
+
+  try {
+    await api.updateUIPreferences(newPrefs)
   } catch (e) {
     console.error('Failed to save LoRA settings:', e)
   }
@@ -575,7 +583,7 @@ function handleClickOutside(event: MouseEvent) {
 const samplers = computed(() =>
   store.samplers.length > 0
     ? store.samplers
-    : ['euler', 'euler_a', 'heun', 'dpm2', 'dpm++2s_a', 'dpm++2m', 'dpm++2mv2', 'ipndm', 'ipndm_v', 'lcm', 'ddim_trailing', 'tcd', 'res_multistep', 'res_2s']
+    : ['euler', 'euler_a', 'heun', 'dpm2', 'dpm++2s_a', 'dpm++2m', 'dpm++2mv2', 'ipndm', 'ipndm_v', 'lcm', 'ddim_trailing', 'tcd', 'res_multistep', 'res_2s', 'er_sde']
 )
 
 const schedulers = computed(() =>
@@ -650,6 +658,7 @@ const recommended = computed((): RecommendedSettings | null => {
     height?: number
     slg_scale?: number
     cache_mode?: string
+    easycache?: boolean
   }
   return {
     sampler: defaults.sampler || 'euler',

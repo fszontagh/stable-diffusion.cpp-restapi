@@ -58,4 +58,17 @@ MemoryInfo get_memory_info();
  */
 std::string format_bytes(uint64_t bytes);
 
+/**
+ * Pre-flight check: is the configured GPU runtime healthy enough to load a
+ * model? Called BEFORE new_sd_ctx() so we can fail with a clean error message
+ * instead of being SIGABRT'd by ggml's CUDA_CHECK on a driver/lib mismatch.
+ *
+ * Returns true if it's safe to proceed. On false, populates `error_out` with
+ * a user-readable explanation (e.g. "no CUDA device", "driver/lib mismatch").
+ *
+ * Implementation lives in memory_utils.cpp — see that file for the policy
+ * questions (how thorough, what counts as healthy).
+ */
+bool verify_gpu_runtime(std::string& error_out);
+
 } // namespace sdcpp
