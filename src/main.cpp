@@ -42,6 +42,30 @@ namespace fs = std::filesystem;
  * Captures SD_LOG_ERROR messages for job error reporting
  * Only outputs debug/info in debug builds (SDCPP_DEBUG=1)
  */
+// Minimum sd.cpp log level forwarded to the server log. Set from config
+// (server.sd_log_level: "debug" | "info" | "warn" | "error" | "off") at
+// startup. Default mirrors the previous release-mode behavior (warn+).
+static std::atomic<int> g_sd_log_threshold{static_cast<int>(SD_LOG_WARN)};
+
+// off > error > warn > info > debug. SD_LOG_DEBUG=0..ERROR=3 in ggml-style
+// so we just compare against the int value of the floor; "off" = INT_MAX.
+static constexpr int kSdLogOff = 99;
+
+void set_sd_log_threshold_from_string(const std::string& level) {
+    int t;
+    if      (level == "debug") t = static_cast<int>(SD_LOG_DEBUG);
+    else if (level == "info")  t = static_cast<int>(SD_LOG_INFO);
+    else if (level == "warn")  t = static_cast<int>(SD_LOG_WARN);
+    else if (level == "error") t = static_cast<int>(SD_LOG_ERROR);
+    else if (level == "off")   t = kSdLogOff;
+    else {
+        std::cerr << "[Config] unknown sd_log_level '" << level
+                  << "', falling back to 'warn'" << std::endl;
+        t = static_cast<int>(SD_LOG_WARN);
+    }
+    g_sd_log_threshold.store(t, std::memory_order_relaxed);
+}
+
 void sd_log_callback(sd_log_level_t level, const char* text, void* /*data*/) {
     // Remove trailing newline if present
     std::string msg(text);
@@ -49,28 +73,23 @@ void sd_log_callback(sd_log_level_t level, const char* text, void* /*data*/) {
         msg.pop_back();
     }
 
-    // Capture errors for job failure reporting
+    // Capture errors for job failure reporting (independent of forwarding).
     if (level == SD_LOG_ERROR) {
         sdcpp::capture_sd_error(msg);
     }
 
-#if SDCPP_DEBUG
-    const char* level_str = "";
-    switch (level) {
-        case SD_LOG_DEBUG: level_str = "DEBUG"; break;
-        case SD_LOG_INFO: level_str = "INFO"; break;
-        case SD_LOG_WARN: level_str = "WARN"; break;
-        case SD_LOG_ERROR: level_str = "ERROR"; break;
-        default: level_str = "???"; break;
+    if (static_cast<int>(level) < g_sd_log_threshold.load(std::memory_order_relaxed)) {
+        return;
     }
-    std::cout << "[SD:" << level_str << "] " << msg << std::endl;
-#else
-    // In release mode, only show warnings and errors
-    if (level >= SD_LOG_WARN) {
-        const char* level_str = (level == SD_LOG_WARN) ? "WARN" : "ERROR";
-        std::cerr << "[SD:" << level_str << "] " << msg << std::endl;
-    }
-#endif
+
+    const char* level_str = (level == SD_LOG_DEBUG) ? "DEBUG"
+                          : (level == SD_LOG_INFO)  ? "INFO"
+                          : (level == SD_LOG_WARN)  ? "WARN"
+                          : (level == SD_LOG_ERROR) ? "ERROR"
+                                                    : "???";
+    // Errors/warnings to stderr, info/debug to stdout. journald captures both.
+    std::ostream& out = (level >= SD_LOG_WARN) ? std::cerr : std::cout;
+    out << "[SD:" << level_str << "] " << msg << std::endl;
 }
 
 // Global flag for graceful shutdown
@@ -208,6 +227,10 @@ int main(int argc, char* argv[]) {
         // Validate configuration
         std::cout << "Validating configuration..." << std::endl;
         config.validate();
+
+        // Apply sd.cpp log forwarding floor from config.
+        set_sd_log_threshold_from_string(config.server.sd_log_level);
+        std::cout << "SD log level: " << config.server.sd_log_level << std::endl;
 
         // Ensure output directory exists
         fs::path output_path(config.paths.output);

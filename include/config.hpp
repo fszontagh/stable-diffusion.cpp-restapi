@@ -13,6 +13,10 @@ struct ServerConfig {
     int port = 8080;
     int ws_port = 0;  // DEPRECATED: WebSocket now uses same port as HTTP. Ignored if set.
     int threads = 8;
+    // Floor for forwarding stable-diffusion.cpp's own log messages to the
+    // server log. One of: "debug", "info", "warn", "error", "off". Default
+    // "warn" matches the previous release-mode behavior.
+    std::string sd_log_level = "warn";
 };
 
 /**
