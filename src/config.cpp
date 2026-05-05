@@ -15,7 +15,8 @@ void to_json(nlohmann::json& j, const ServerConfig& c) {
         {"host", c.host},
         {"port", c.port},
         {"ws_port", c.ws_port},
-        {"threads", c.threads}
+        {"threads", c.threads},
+        {"sd_log_level", c.sd_log_level}
     };
 }
 
@@ -24,6 +25,7 @@ void from_json(const nlohmann::json& j, ServerConfig& c) {
     c.port = j.value("port", 8080);
     c.ws_port = j.value("ws_port", 0);  // deprecated, kept for backward compat
     c.threads = j.value("threads", 8);
+    c.sd_log_level = j.value("sd_log_level", std::string{"warn"});
 }
 
 // PathsConfig JSON serialization
