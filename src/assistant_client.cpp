@@ -11,10 +11,166 @@
 #include <filesystem>
 #include <algorithm>
 #include <regex>
+#include <thread>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
 namespace sdcpp {
+
+namespace {
+
+// LLM provider transient-failure retry policy.
+//
+// Hosted Ollama (ollama.com), self-hosted instances behind a load balancer,
+// and OpenAI-compatible gateways routinely return 502/503 on cold start, drop
+// connections during model swap, and rate-limit with 429. Without retries the
+// user sees an opaque "Failed to get tool response" toast and has to retype
+// their prompt. The helpers below classify a single httplib outcome and a
+// thin wrapper retries the worth-retrying categories with bounded backoff.
+
+struct LlmAttemptOutcome {
+    bool ok = false;          // Got a usable 200 response.
+    bool retryable = false;   // Failure category is transient.
+    std::string category;     // "ok", "timeout", "transport", "rate_limited",
+                              // "server", "auth", "not_found", "client", "http_<n>"
+    std::string user_message; // Friendly message for end-user / log
+};
+
+bool is_retryable_status(int status) {
+    switch (status) {
+        case 408:  // request timeout
+        case 425:  // too early
+        case 429:  // rate limit (also handled specially for Retry-After)
+        case 500:  // internal server error
+        case 502:  // bad gateway
+        case 503:  // service unavailable
+        case 504:  // gateway timeout
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Parse Retry-After (delta-seconds form). Returns -1 if absent/invalid.
+// Clamped to [0, max_seconds] so a buggy/hostile server can't stall us.
+int parse_retry_after_seconds(const httplib::Result& res, int max_seconds) {
+    if (!res || !res->has_header("Retry-After")) return -1;
+    try {
+        int v = std::stoi(res->get_header_value("Retry-After"));
+        if (v < 0) return -1;
+        if (v > max_seconds) v = max_seconds;
+        return v;
+    } catch (...) {
+        return -1;
+    }
+}
+
+LlmAttemptOutcome classify_attempt(const httplib::Result& res) {
+    LlmAttemptOutcome out;
+    if (res && res->status == 200) {
+        out.ok = true;
+        out.category = "ok";
+        return out;
+    }
+
+    if (!res) {
+        // Transport-level failure. Distinguish timeout vs. other for
+        // user-facing wording.
+        auto err = res.error();
+        std::string err_str = httplib::to_string(err);
+        if (err == httplib::Error::Read ||
+            err == httplib::Error::Write ||
+            err == httplib::Error::ConnectionTimeout ||
+            err == httplib::Error::Timeout) {
+            out.category = "timeout";
+            out.user_message = "LLM request timed out (" + err_str + ")";
+        } else {
+            out.category = "transport";
+            out.user_message = "Cannot reach LLM server (" + err_str + ")";
+        }
+        out.retryable = true;
+        return out;
+    }
+
+    int s = res->status;
+    if (s == 401 || s == 403) {
+        out.category = "auth";
+        out.user_message = "LLM rejected our credentials (HTTP " + std::to_string(s) +
+                           "). Check api_key in assistant settings.";
+    } else if (s == 404) {
+        out.category = "not_found";
+        out.user_message = "LLM endpoint or model not found (HTTP 404). "
+                           "Check endpoint URL and model name.";
+    } else if (s == 400 || s == 422) {
+        out.category = "client";
+        out.user_message = "LLM rejected the request (HTTP " + std::to_string(s) + ")";
+        if (!res->body.empty()) {
+            out.user_message += ": " + res->body.substr(0, 200);
+        }
+    } else if (s == 429) {
+        out.category = "rate_limited";
+        out.user_message = "LLM provider is rate-limiting requests (HTTP 429)";
+        out.retryable = true;
+    } else if (is_retryable_status(s)) {
+        out.category = "server";
+        out.user_message = "LLM server returned HTTP " + std::to_string(s) +
+                           " (transient)";
+        out.retryable = true;
+    } else {
+        out.category = "http_" + std::to_string(s);
+        out.user_message = "LLM API error: HTTP " + std::to_string(s);
+        if (!res->body.empty()) {
+            out.user_message += ": " + res->body.substr(0, 200);
+        }
+    }
+    return out;
+}
+
+// Wrap a single non-streaming POST with bounded exponential backoff.
+// Initial backoff doubles up to max_backoff_ms; honors Retry-After header
+// when the server provided one.
+struct RetryResult {
+    httplib::Result result;
+    LlmAttemptOutcome outcome;
+    int attempts = 0;
+};
+
+RetryResult post_with_retry(
+    httplib::Client& client,
+    const std::string& path,
+    const httplib::Headers& headers,
+    const std::string& body,
+    const char* content_type,
+    int max_attempts = 3
+) {
+    RetryResult rr;
+    int backoff_ms = 500;
+    constexpr int max_backoff_ms = 8000;
+
+    for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+        rr.attempts = attempt;
+        rr.result = client.Post(path.c_str(), headers, body, content_type);
+        rr.outcome = classify_attempt(rr.result);
+
+        if (rr.outcome.ok) return rr;
+        if (!rr.outcome.retryable || attempt >= max_attempts) return rr;
+
+        int sleep_ms = backoff_ms;
+        int retry_after = parse_retry_after_seconds(rr.result, max_backoff_ms / 1000);
+        if (retry_after >= 0) sleep_ms = retry_after * 1000;
+
+        std::cerr << "[AssistantClient] Retry " << attempt << "/" << max_attempts
+                  << " in " << sleep_ms << "ms (" << rr.outcome.category
+                  << "): " << rr.outcome.user_message << std::endl;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+        backoff_ms = std::min(backoff_ms * 2, max_backoff_ms);
+    }
+    return rr;
+}
+
+} // anonymous namespace
 
 // ConversationMessage JSON serialization
 nlohmann::json ConversationMessage::to_json() const {
@@ -896,25 +1052,21 @@ AssistantResponse AssistantClient::chat(const std::string& user_message,
         std::cout << "[AssistantClient] Sending chat request (iteration " << iteration + 1
                   << ") to " << config_.endpoint << "/api/chat" << std::endl;
 
-        // Make request
-        auto res = client.Post("/api/chat", headers, request_body.dump(), "application/json");
+        auto rr = post_with_retry(client, "/api/chat", headers,
+                                   request_body.dump(), "application/json");
 
-        if (!res) {
-            response.error = "Failed to connect to LLM server: " + httplib::to_string(res.error());
-            std::cerr << "[AssistantClient] Connection error: " << response.error.value() << std::endl;
-            return response;
-        }
-
-        if (res->status != 200) {
-            response.error = "LLM API error: HTTP " + std::to_string(res->status);
-            std::cerr << "[AssistantClient] API error: " << res->status << " - " << res->body << std::endl;
+        if (!rr.outcome.ok) {
+            response.error = rr.outcome.user_message;
+            std::cerr << "[AssistantClient] Request failed after " << rr.attempts
+                      << " attempt(s) [" << rr.outcome.category << "]: "
+                      << rr.outcome.user_message << std::endl;
             return response;
         }
 
         // Parse response
         nlohmann::json response_json;
         try {
-            response_json = nlohmann::json::parse(res->body);
+            response_json = nlohmann::json::parse(rr.result->body);
         } catch (const nlohmann::json::exception& e) {
             response.error = "Failed to parse LLM response: " + std::string(e.what());
             return response;
@@ -1192,17 +1344,23 @@ bool AssistantClient::chat_stream(
 
         std::cout << "[AssistantClient] Stream: tool iteration " << iteration + 1 << std::endl;
 
-        auto res = client.Post("/api/chat", headers, request_body.dump(), "application/json");
-        if (!res || res->status != 200) {
-            callback("error", {{"error", "Failed to get tool response"}});
+        auto rr = post_with_retry(client, "/api/chat", headers,
+                                   request_body.dump(), "application/json");
+        if (!rr.outcome.ok) {
+            std::cerr << "[AssistantClient] Stream: tool POST failed after "
+                      << rr.attempts << " attempt(s) [" << rr.outcome.category
+                      << "]: " << rr.outcome.user_message << std::endl;
+            callback("error", {{"error", rr.outcome.user_message},
+                               {"category", rr.outcome.category}});
             return false;
         }
 
         nlohmann::json response_json;
         try {
-            response_json = nlohmann::json::parse(res->body);
+            response_json = nlohmann::json::parse(rr.result->body);
         } catch (...) {
-            callback("error", {{"error", "Failed to parse tool response"}});
+            callback("error", {{"error", "Failed to parse tool response"},
+                               {"category", "parse"}});
             return false;
         }
 
@@ -1344,76 +1502,114 @@ bool AssistantClient::chat_stream(
     // accumulated_thinking already declared before tool loop - continues accumulating here
     bool success = true;
 
-    // Use content receiver for streaming
-    auto stream_res = client.Post(
-        "/api/chat",
-        headers,
-        stream_request.dump(),
-        "application/json",
-        [&](const char* data, size_t data_length) {
-            std::string chunk(data, data_length);
+    // Streaming retry: only safe to retry while we haven't emitted any chunk
+    // to the user yet. Once thinking/content has been forwarded to the WebUI,
+    // a retry would replay tokens and confuse the conversation.
+    constexpr int kStreamMaxAttempts = 3;
+    int stream_backoff_ms = 500;
+    constexpr int kStreamMaxBackoffMs = 8000;
+    httplib::Result stream_res;
+    LlmAttemptOutcome stream_outcome;
+    int stream_attempts = 0;
 
-            // Ollama returns NDJSON - multiple JSON objects separated by newlines
-            std::istringstream stream(chunk);
-            std::string line;
-            while (std::getline(stream, line)) {
-                if (line.empty()) continue;
+    for (int attempt = 1; attempt <= kStreamMaxAttempts; ++attempt) {
+        stream_attempts = attempt;
+        bool had_emitted = false;  // any thinking/content delivered to caller?
 
-                try {
-                    auto json = nlohmann::json::parse(line);
+        stream_res = client.Post(
+            "/api/chat",
+            headers,
+            stream_request.dump(),
+            "application/json",
+            [&](const char* data, size_t data_length) {
+                std::string chunk(data, data_length);
 
-                    if (json.contains("message")) {
-                        const auto& msg = json["message"];
+                // Ollama returns NDJSON - multiple JSON objects separated by newlines
+                std::istringstream stream(chunk);
+                std::string line;
+                while (std::getline(stream, line)) {
+                    if (line.empty()) continue;
 
-                        // Check for thinking content (ensure it's a non-empty string)
-                        if (msg.contains("thinking") && msg["thinking"].is_string()) {
-                            std::string thinking = msg["thinking"].get<std::string>();
-                            if (!thinking.empty()) {
-                                accumulated_thinking += thinking;
-                                std::cout << "[AssistantClient] Stream: emitting thinking chunk (" << thinking.size() << " bytes)" << std::endl;
-                                if (!callback("thinking", {{"content", thinking}})) {
-                                    std::cerr << "[AssistantClient] Stream: callback failed for thinking" << std::endl;
-                                    return false;
+                    try {
+                        auto json = nlohmann::json::parse(line);
+
+                        if (json.contains("message")) {
+                            const auto& msg = json["message"];
+
+                            // Check for thinking content (ensure it's a non-empty string)
+                            if (msg.contains("thinking") && msg["thinking"].is_string()) {
+                                std::string thinking = msg["thinking"].get<std::string>();
+                                if (!thinking.empty()) {
+                                    accumulated_thinking += thinking;
+                                    had_emitted = true;
+                                    std::cout << "[AssistantClient] Stream: emitting thinking chunk (" << thinking.size() << " bytes)" << std::endl;
+                                    if (!callback("thinking", {{"content", thinking}})) {
+                                        std::cerr << "[AssistantClient] Stream: callback failed for thinking" << std::endl;
+                                        return false;
+                                    }
+                                }
+                            }
+
+                            // Check for regular content (ensure it's a non-empty string)
+                            if (msg.contains("content") && msg["content"].is_string()) {
+                                std::string content = msg["content"].get<std::string>();
+                                if (!content.empty()) {
+                                    accumulated_content += content;
+                                    had_emitted = true;
+                                    std::cout << "[AssistantClient] Stream: emitting content chunk (" << content.size() << " bytes)" << std::endl;
+                                    if (!callback("content", {{"content", content}})) {
+                                        std::cerr << "[AssistantClient] Stream: callback failed for content" << std::endl;
+                                        return false;
+                                    }
                                 }
                             }
                         }
 
-                        // Check for regular content (ensure it's a non-empty string)
-                        if (msg.contains("content") && msg["content"].is_string()) {
-                            std::string content = msg["content"].get<std::string>();
-                            if (!content.empty()) {
-                                accumulated_content += content;
-                                std::cout << "[AssistantClient] Stream: emitting content chunk (" << content.size() << " bytes)" << std::endl;
-                                if (!callback("content", {{"content", content}})) {
-                                    std::cerr << "[AssistantClient] Stream: callback failed for content" << std::endl;
-                                    return false;
-                                }
-                            }
+                        // Check if done
+                        if (json.value("done", false)) {
+                            // Done streaming
+                            return true;
                         }
+                    } catch (const nlohmann::json::exception& e) {
+                        // Skip malformed lines
+                        std::cerr << "[AssistantClient] Stream: JSON parse error on line: " << line << " - " << e.what() << std::endl;
                     }
-
-                    // Check if done
-                    if (json.value("done", false)) {
-                        // Done streaming
-                        return true;
-                    }
-                } catch (const nlohmann::json::exception& e) {
-                    // Skip malformed lines
-                    std::cerr << "[AssistantClient] Stream: JSON parse error on line: " << line << " - " << e.what() << std::endl;
                 }
+                return true;
             }
-            return true;
-        }
-    );
+        );
 
-    if (!stream_res) {
-        std::cerr << "[AssistantClient] Stream: request failed - no response" << std::endl;
-        callback("error", {{"error", "Stream request failed - no response from server"}});
-        success = false;
-    } else if (stream_res->status != 200) {
-        std::cerr << "[AssistantClient] Stream: request failed - status " << stream_res->status
-                  << ", body: " << stream_res->body.substr(0, 500) << std::endl;
-        callback("error", {{"error", "Stream request failed with status " + std::to_string(stream_res->status)}});
+        stream_outcome = classify_attempt(stream_res);
+        if (stream_outcome.ok) break;
+
+        // Don't retry if we already streamed any tokens — would replay to user.
+        if (had_emitted) break;
+        if (!stream_outcome.retryable || attempt >= kStreamMaxAttempts) break;
+
+        int sleep_ms = stream_backoff_ms;
+        int retry_after = parse_retry_after_seconds(stream_res, kStreamMaxBackoffMs / 1000);
+        if (retry_after >= 0) sleep_ms = retry_after * 1000;
+
+        std::cerr << "[AssistantClient] Stream retry " << attempt << "/"
+                  << kStreamMaxAttempts << " in " << sleep_ms << "ms ("
+                  << stream_outcome.category << "): "
+                  << stream_outcome.user_message << std::endl;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+        stream_backoff_ms = std::min(stream_backoff_ms * 2, kStreamMaxBackoffMs);
+
+        // Reset per-attempt accumulators so a partial pre-emit hiccup doesn't
+        // leak into the next attempt's accounting (had_emitted is reset at the
+        // top of the loop; accumulated_* are guarded by had_emitted == false).
+    }
+
+    if (!stream_outcome.ok) {
+        std::cerr << "[AssistantClient] Stream: request failed after "
+                  << stream_attempts << " attempt(s) ["
+                  << stream_outcome.category << "]: "
+                  << stream_outcome.user_message << std::endl;
+        callback("error", {{"error", stream_outcome.user_message},
+                           {"category", stream_outcome.category}});
         success = false;
     }
 

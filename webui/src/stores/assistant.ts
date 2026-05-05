@@ -933,11 +933,24 @@ export const useAssistantStore = defineStore('assistant', () => {
             hasSuggestion.value = false
             isLoading.value = false
           },
-          onError: (error: string) => {
+          onError: (error: string, category?: string) => {
             messages.value[msgIndex].isStreaming = false
             messages.value[msgIndex].content = `Error: ${error}`
             lastError.value = error
-            appStore.showToast(`Assistant error: ${error}`, 'error')
+            // Friendlier prefix per error category — backend already retried
+            // transient categories (server, timeout, rate_limited) up to 3x,
+            // so by the time we see one here it's exhausted retries.
+            const prefix = ({
+              auth: 'LLM auth failure',
+              not_found: 'LLM not found',
+              client: 'LLM rejected request',
+              rate_limited: 'LLM rate limit (retries exhausted)',
+              timeout: 'LLM timeout (retries exhausted)',
+              transport: 'LLM unreachable (retries exhausted)',
+              server: 'LLM server error (retries exhausted)',
+              parse: 'LLM response malformed',
+            } as Record<string, string>)[category || ''] || 'Assistant error'
+            appStore.showToast(`${prefix}: ${error}`, 'error')
             isLoading.value = false
           }
         }

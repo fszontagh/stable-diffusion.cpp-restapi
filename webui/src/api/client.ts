@@ -1036,7 +1036,7 @@ class ApiClient {
                   })
                   break
                 case 'error':
-                  callbacks.onError?.(data.error || 'Unknown streaming error')
+                  callbacks.onError?.(data.error || 'Unknown streaming error', data.category)
                   break
               }
             } catch (e) {
@@ -1243,7 +1243,7 @@ export interface AssistantStreamCallbacks {
   onThinking?: (thinking: string) => void
   onToolCall?: (toolCall: ToolCallInfo) => void
   onDone?: (response: AssistantChatResponse) => void
-  onError?: (error: string) => void
+  onError?: (error: string, category?: string) => void
 }
 
 export interface AssistantHistoryResponse {
