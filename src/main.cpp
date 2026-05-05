@@ -439,13 +439,23 @@ int main(int argc, char* argv[]) {
 #endif
 
         // If a previous run persisted a loaded-model identity, try to
-        // re-load that model now — before the queue worker picks up jobs
-        // from the persisted queue state. Without this, queued jobs fail
-        // immediately with "No model loaded" after any server restart.
-        // Best-effort: if reload fails (model file moved/deleted, OOM, etc.)
-        // the queue worker still starts and surfaces the failure per-job.
-        std::cout << "Checking for persisted model state..." << std::endl;
-        model_manager.try_auto_reload_from_disk();
+        // re-load that model now. This used to run synchronously, but bf16
+        // models can take 5+ minutes to load — blocking the HTTP server
+        // from listening for that whole window. Now we spawn a detached
+        // thread; the HTTP server starts listening immediately and the
+        // model loads in parallel. Queued jobs that need a model will
+        // wait via the existing model_loading state machine; new ones
+        // submitted before the load completes will fail with "No model
+        // loaded" same as before, which is honest behavior.
+        std::cout << "Checking for persisted model state (async)..." << std::endl;
+        std::thread([&model_manager]() {
+            try {
+                model_manager.try_auto_reload_from_disk();
+            } catch (const std::exception& e) {
+                std::cerr << "[main] (async) auto-reload threw: "
+                          << e.what() << std::endl;
+            }
+        }).detach();
 
         // Start the queue worker
         std::cout << "Starting queue worker..." << std::endl;
