@@ -301,26 +301,25 @@ onMounted(() => {
 
     <!-- Filters -->
     <div class="filters card">
-      <div class="form-row">
-        <div class="form-group" style="flex: 2">
-          <input
-            v-model="searchQuery"
-            type="text"
-            class="form-input"
-            placeholder="Search models..."
-          />
-        </div>
-        <div class="form-group" style="flex: 1">
-          <select v-model="selectedType" class="form-select">
-            <option v-for="type in modelTypes" :key="type.value" :value="type.value">
-              {{ type.label }}
-            </option>
-          </select>
-        </div>
-        <button class="btn btn-secondary" @click="store.refreshModels()" :disabled="store.loading">
+      <!-- Custom flex toolbar instead of .form-row (which is a grid that
+           would force the buttons into 200px-min columns of their own and
+           ignore the flex:2 / flex:1 hints on the inputs). -->
+      <div class="models-filter-row">
+        <input
+          v-model="searchQuery"
+          type="text"
+          class="form-input filter-search"
+          placeholder="Search models..."
+        />
+        <select v-model="selectedType" class="form-select filter-type">
+          <option v-for="type in modelTypes" :key="type.value" :value="type.value">
+            {{ type.label }}
+          </option>
+        </select>
+        <button class="btn btn-secondary filter-btn" @click="store.refreshModels()" :disabled="store.loading">
           &#8635; Refresh
         </button>
-        <button class="btn btn-primary" @click="openUploadModal">
+        <button class="btn btn-primary filter-btn" @click="openUploadModal">
           &#8593; Upload
         </button>
       </div>
@@ -543,10 +542,24 @@ onMounted(() => {
   margin-bottom: 24px;
 }
 
-.filters .form-row {
+/* Toolbar row: search grows, type select stays modest, refresh + upload
+   take only their natural width. align-items:stretch makes buttons match
+   input height exactly so the row reads as one bar. */
+.models-filter-row {
   display: flex;
-  gap: 16px;
-  align-items: flex-end;
+  gap: 12px;
+  align-items: stretch;
+}
+.filter-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.filter-type {
+  flex: 0 0 200px;
+}
+.filter-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .models-grid {

@@ -1850,17 +1850,20 @@ async function handleSubmit() {
   margin: 0 auto;
 }
 
-/* Resolution row with swap button between W/H inputs */
+/* Resolution row with swap button between W/H inputs.
+   .form-row is a CSS grid with auto-fit min 200px columns — without an
+   override the swap button would get its own 200px-wide column. Force
+   the columns to (1fr | auto | 1fr) so the button takes only its own
+   width and the inputs share the rest. align-items:end pins the button
+   bottom to the input bottom (otherwise grid items stretch). */
 .form-row-resolution {
+  grid-template-columns: 1fr auto 1fr;
   align-items: end;
 }
 
 .resolution-swap {
-  flex: 0 0 auto;
-  align-self: end;
-  margin-bottom: 1px; /* align with input baseline */
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;       /* matches .form-input height (10+14+10+font line-height) */
   padding: 0;
   font-size: 18px;
   line-height: 1;
