@@ -203,6 +203,11 @@ const std::unordered_set<std::string>& AuthManager::always_allowed_exact_paths()
         "/ui/",
         "/docs",
         "/docs/",
+        // llms.txt convention (https://llmstxt.org/) — discoverable
+        // by AI agents without needing credentials. Lists pointers to
+        // /openapi.json and /docs/* so an agent can self-orient.
+        "/llms.txt",
+        "/llm.txt",
     };
     return paths;
 }

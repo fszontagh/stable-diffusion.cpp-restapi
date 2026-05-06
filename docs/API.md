@@ -11,16 +11,21 @@ REST API for stable-diffusion.cpp image and video generation.
 
 ## Table of Contents
 
+- [Authentication](#authentication)
+  - [Login](#login)
+  - [Logout](#logout)
 - [Health Check](#health-check)
 - [Memory](#memory)
 - [Model Management](#model-management)
   - [List Models](#list-models)
   - [Refresh Models](#refresh-models)
+  - [Upload Model](#upload-model)
   - [Load Model](#load-model)
   - [Unload Model](#unload-model)
   - [Get Model Hash](#get-model-hash)
 - [Image Generation](#image-generation)
   - [Text to Image](#text-to-image)
+    - [Prompt Expansion](#prompt-expansion)
   - [Image to Image](#image-to-image)
   - [Text to Video](#text-to-video)
   - [Upscale](#upscale)
@@ -50,6 +55,9 @@ REST API for stable-diffusion.cpp image and video generation.
   - [Get UI Preferences](#get-ui-preferences)
   - [Update UI Preferences](#update-ui-preferences)
   - [Reset Settings](#reset-settings)
+- [Output Settings](#output-settings)
+  - [Get Output Settings](#get-output-settings)
+  - [Update Output Settings](#update-output-settings)
 - [File Browser & Output Serving](#file-browser--output-serving)
 - [Server Options](#server-options)
   - [Get Options](#get-options)
@@ -75,6 +83,74 @@ REST API for stable-diffusion.cpp image and video generation.
 - [WebSocket Support](#websocket-support)
 - [Error Responses](#error-responses)
 - [Data Types](#data-types)
+
+---
+
+## Authentication
+
+When the server is built with auth enabled and a username/password is configured (`auth.username` + `auth.password` in `config.json`, or via `SDCPP_AUTH_USERNAME` / `SDCPP_AUTH_PASSWORD` env vars), most endpoints require authentication. The two transports are:
+
+- **Bearer token** — programmatic clients (REST, MCP). Obtain a token by POSTing credentials to `/auth/login` and pass it as `Authorization: Bearer <token>` on subsequent requests.
+- **HttpOnly cookie** — the WebUI. The same `/auth/login` endpoint sets a `Set-Cookie: sdcpp_session=<token>; HttpOnly; SameSite=Strict` header when called from a browser; the cookie is automatically attached to all subsequent requests and to the WebSocket handshake (browsers can't set custom headers on WS).
+
+Endpoints exempt from auth: `/login` (the static HTML page), `/login.css`, `/auth/login`, `/health`, `/openapi.json`, `/docs/`, `/ui/` (the SPA shell), and `/webdav/` (which uses HTTP Basic).
+
+### Login
+
+#### `POST /auth/login`
+
+Exchange username + password for a session token (REST) or set a session cookie (browser).
+
+**Request Body:**
+
+```json
+{
+    "username": "fszontagh",
+    "password": "your-password-here"
+}
+```
+
+**Success Response (200):**
+
+```json
+{
+    "token": "9f3a1e2d4b8c6f0a..."
+}
+```
+
+The response also sets an `HttpOnly; SameSite=Strict` cookie on browser clients. CLI/script clients should capture `token` and use it on subsequent requests:
+
+```bash
+curl -H "Authorization: Bearer 9f3a1e2d4b8c6f0a..." http://localhost:8080/queue
+```
+
+**Error Response (401):**
+
+```json
+{
+    "error": "Invalid credentials"
+}
+```
+
+Failed login attempts are delayed by 200 ms server-side to slow down brute force. The credential comparison is constant-time.
+
+---
+
+### Logout
+
+#### `POST /auth/logout`
+
+Invalidate the current session token (and clear the cookie if the call is browser-driven).
+
+**Request Body:** None required (the token is taken from the request — Bearer header or cookie).
+
+**Success Response (200):**
+
+```json
+{
+    "success": true
+}
+```
 
 ---
 
@@ -111,7 +187,37 @@ Check server status, loaded model, and all loaded components.
     },
     "upscaler_loaded": false,
     "upscaler_name": null,
-    "ws_port": 8081,
+    "ws_enabled": true,
+    "load_options": {
+        "n_threads": -1,
+        "flash_attn": true,
+        "enable_mmap": true,
+        "vae_decode_only": true,
+        "vae_conv_direct": true,
+        "diffusion_conv_direct": false,
+        "vae_tiling": false,
+        "weight_type": "",
+        "rng_type": "cuda",
+        "lora_apply_mode": "auto",
+        "offload_mode": "none",
+        "vram_estimation": "dryrun",
+        "offload_cond_stage": true,
+        "offload_diffusion": false,
+        "reload_cond_stage": true,
+        "reload_diffusion": true,
+        "target_free_vram_mb": 0,
+        "min_offload_size_mb": 0,
+        "log_offload_events": true,
+        "free_params_immediately": false,
+        "tae_preview_only": false,
+        "chroma_use_dit_mask": true,
+        "chroma_use_t5_mask": false,
+        "chroma_t5_mask_pad": 1,
+        "layer_streaming_enabled": false,
+        "streaming_prefetch_layers": 1,
+        "streaming_keep_layers_behind": 0,
+        "streaming_min_free_vram_mb": 0
+    },
     "memory": {
         "system": {
             "total_bytes": 34359738368,
@@ -165,7 +271,8 @@ Check server status, loaded model, and all loaded components.
     "loaded_components": {},
     "upscaler_loaded": false,
     "upscaler_name": null,
-    "ws_port": 8081,
+    "ws_enabled": true,
+    "load_options": {},
     "memory": { "..." : "..." },
     "features": {
         "experimental_offload": false
@@ -197,7 +304,8 @@ Check server status, loaded model, and all loaded components.
 | `loaded_components.llm_vision` | string\|null | Loaded LLM vision model name |
 | `upscaler_loaded` | boolean | Whether an upscaler is currently loaded |
 | `upscaler_name` | string\|null | Name of loaded upscaler model, or null |
-| `ws_port` | integer\|null | WebSocket port for real-time updates, or null if disabled |
+| `ws_enabled` | boolean | Whether the WebSocket endpoint is compiled in and listening (clients connect to `ws://<host>:<port>/ws` on the same port as the REST API) |
+| `load_options` | object | The full set of load options the currently-loaded model was loaded with — `n_threads`, `flash_attn`, `enable_mmap`, `vae_decode_only`, `vae_conv_direct`, `diffusion_conv_direct`, `vae_tiling`, `weight_type`, `rng_type`, `lora_apply_mode`, `offload_mode`, `vram_estimation`, `offload_cond_stage`, `offload_diffusion`, `reload_cond_stage`, `reload_diffusion`, `target_free_vram_mb`, `min_offload_size_mb`, `log_offload_events`, `free_params_immediately`, `tae_preview_only`, `chroma_use_dit_mask`, `chroma_use_t5_mask`, `chroma_t5_mask_pad`, plus layer-streaming fields when offload is enabled. Empty object `{}` when no model is loaded. Useful for the WebUI to restore "Edit" form state from the actual server side. |
 | `memory` | object | System, process, and GPU memory information (see [Memory](#memory)) |
 | `features` | object | Feature flags |
 | `features.experimental_offload` | boolean | Whether experimental VRAM offloading is compiled in |
@@ -392,6 +500,42 @@ Force a rescan of model directories.
     "models": [ ... ]
 }
 ```
+
+---
+
+### Upload Model
+
+#### `POST /models/upload`
+
+Upload a model file from the client to the server's model directory. The file is written to the directory matching the chosen `model_type` (`checkpoints/`, `diffusion_models/`, `vae/`, `lora/`, etc.) under whatever the server config has set for that path.
+
+**Content-Type:** `multipart/form-data`
+
+**Form fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | binary | Yes | The model file (`.safetensors`, `.gguf`, `.ckpt`, `.pth`, `.bin`, `.pt` accepted depending on type) |
+| `model_type` | string | Yes | One of: `checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `llm`, `esrgan`, `taesd` |
+| `subfolder` | string | No | Optional subfolder under the type's root directory (e.g. `SDXL`, `anime`). Created if it doesn't exist. |
+| `filename` | string | No | Override the destination filename. Defaults to the uploaded file's name. |
+
+**Success Response (200):**
+
+```json
+{
+    "success": true,
+    "model_name": "SDXL/my_model.safetensors",
+    "size_bytes": 6938041632
+}
+```
+
+**Error Responses:**
+
+- `400` — invalid `model_type`, missing `file`, or filename collision (server refuses to overwrite an existing model — pre-rename or delete the existing one first).
+- `413` — file exceeds the server's max upload size limit (configurable in the build).
+
+After a successful upload the server triggers an internal model rescan, so the new file is immediately visible to subsequent `GET /models` calls.
 
 ---
 
@@ -712,14 +856,69 @@ Generate images from text prompt.
 | `upscale` | boolean | No | false | Enable upscaling after generation (requires upscaler loaded) |
 | `upscale_repeats` | integer | No | 1 | Number of times to run upscaler |
 | `upscale_auto_unload` | boolean | No | true | Unload upscaler after use |
+| `expand_prompt` | boolean | No | false | If `true`, parse `prompt` for dynamic-prompts syntax (`{a\|b\|c}`, `{N$$a\|b\|c}`) and create one queue item per variation. See [Prompt Expansion](#prompt-expansion) below. |
 
-**Success Response (202 Accepted):**
+#### Prompt Expansion
+
+When `expand_prompt: true` is set, the server parses the `prompt` field for inline dynamic-prompts syntax (a1111-DynamicPrompts compatible) and expands it combinatorially into multiple queue items, all sharing a single `variation_group_id`.
+
+Supported syntax:
+
+| Form | Meaning | Example | Expands to |
+|------|---------|---------|------------|
+| `{a\|b\|c}` | Alternation — one item per choice | `{red\|blue} apple` | 2 prompts |
+| `{N$$a\|b\|c\|d}` | Pick-N — one item per N-element subset, joined by `, ` | `{2$$a1\|a2\|a3}` | 3 prompts (`a1, a2`, `a1, a3`, `a2, a3`) |
+| Nested | Any `{…}` may contain further `{…}` | `{cat\|{red\|blue} dog}` | 3 prompts |
+| Escapes | `\{`, `\}`, `\|`, `\\` | `a \{literal\} brace` | 1 prompt with literal braces |
+
+Hard limit: a single request may not produce more than **200 variations** — the server returns 400 with a clear error otherwise.
+
+The expansion submission response is shaped differently from a regular submission. It carries `group_id`, `variation_count`, and `job_ids[]` instead of a single `job_id`:
+
+```json
+{
+    "group_id": "8a2f3d61-1c4e-4b87-9d2a-3f7e0c5d4e92",
+    "variation_count": 12,
+    "job_ids": [
+        "9b7c1d3e-...", "...", ...
+    ],
+    "status": "pending",
+    "position": 12
+}
+```
+
+Each created job has these extra fields under `params`:
+- `variation_group_id` (string) — the same UUID as `group_id`.
+- `variation_index` (integer) — 0-based position of this variation in the expansion.
+- `variation_total` (integer) — count of variations in the group.
+- `variation_template` (string) — the original templated prompt (for UI display).
+
+When the server-side toggle `output_group_folders` is on (default; see [Output Settings](#output-settings)), each grouped job's outputs land in `<output>/<group_id>/<job_id>/` instead of the flat `<output>/<job_id>/`. URLs returned in the job's `outputs` array reflect that path.
+
+**Success Response (202 Accepted) — single-prompt submission (no `expand_prompt`, or prompt has no template syntax):**
 
 ```json
 {
     "job_id": "550e8400-e29b-41d4-a716-446655440000",
     "status": "pending",
     "position": 1
+}
+```
+
+**Success Response (202 Accepted) — `expand_prompt: true`:**
+
+```json
+{
+    "group_id": "8a2f3d61-1c4e-4b87-9d2a-3f7e0c5d4e92",
+    "variation_count": 4,
+    "job_ids": [
+        "9b7c1d3e-aaaa-...",
+        "9b7c1d3e-bbbb-...",
+        "9b7c1d3e-cccc-...",
+        "9b7c1d3e-dddd-..."
+    ],
+    "status": "pending",
+    "position": 4
 }
 ```
 
@@ -730,6 +929,11 @@ Generate images from text prompt.
     "error": "No model loaded"
 }
 ```
+
+Other 400 errors specific to expansion:
+- `"Prompt template error: <detail>"` — malformed syntax (mismatched braces, pick-N count > options).
+- `"Prompt template would create N jobs, exceeds limit of 200..."` — explosion guard tripped.
+- `"Prompt template expanded to 0 variations"` — degenerate template.
 
 ---
 
@@ -771,10 +975,11 @@ Generate images from an existing image and text prompt.
 | `mask_image_base64` | string | No | - | Base64-encoded mask image for inpainting (white = repaint, black = keep) |
 | `control_image_base64` | string | No | - | Base64-encoded pre-processed control image (requires ControlNet) |
 | `control_strength` | float | No | 0.9 | ControlNet influence strength (0.0 - 1.0) |
+| `expand_prompt` | boolean | No | false | If `true`, parse `prompt` for `{a\|b\|c}` / `{N$$a\|b\|c}` syntax and create one queue item per variation. See [Prompt Expansion](#prompt-expansion) under `/txt2img`. |
 
-All other parameters are the same as [Text to Image](#text-to-image) including advanced guidance (SLG, distilled_guidance), reference images, VAE tiling, EasyCache, PhotoMaker, and upscaling.
+All other parameters are the same as [Text to Image](#text-to-image) including advanced guidance (SLG, distilled_guidance), reference images, VAE tiling, EasyCache, PhotoMaker, upscaling, and the `expand_prompt` flag.
 
-**Success Response (202 Accepted):**
+**Success Response (202 Accepted) — single-prompt submission:**
 
 ```json
 {
@@ -783,6 +988,8 @@ All other parameters are the same as [Text to Image](#text-to-image) including a
     "position": 1
 }
 ```
+
+When `expand_prompt: true`, the response contains `group_id`, `variation_count`, and `job_ids[]` instead of `job_id` — see [Prompt Expansion](#prompt-expansion) under `/txt2img` for details.
 
 ---
 
@@ -855,8 +1062,9 @@ Generate video frames from text prompt (requires video-capable model like Wan).
 | `easycache_threshold` | float | No | 0.2 | Cache reuse threshold |
 | `easycache_start` | float | No | 0.15 | Cache start percent |
 | `easycache_end` | float | No | 0.95 | Cache end percent |
+| `expand_prompt` | boolean | No | false | If `true`, parse `prompt` for `{a\|b\|c}` / `{N$$a\|b\|c}` syntax and create one queue item per variation. See [Prompt Expansion](#prompt-expansion) under `/txt2img`. |
 
-**Success Response (202 Accepted):**
+**Success Response (202 Accepted) — single-prompt submission:**
 
 ```json
 {
@@ -865,6 +1073,8 @@ Generate video frames from text prompt (requires video-capable model like Wan).
     "position": 1
 }
 ```
+
+When `expand_prompt: true`, the response contains `group_id`, `variation_count`, and `job_ids[]` instead of `job_id` — see [Prompt Expansion](#prompt-expansion) under `/txt2img`.
 
 ---
 
@@ -1638,6 +1848,52 @@ Reset all settings to defaults.
 {
     "success": true,
     "message": "Settings reset to defaults"
+}
+```
+
+---
+
+## Output Settings
+
+Server-side toggle controlling how outputs of [prompt-expansion](#prompt-expansion) jobs are organized on disk.
+
+### Get Output Settings
+
+#### `GET /settings/output`
+
+**Success Response (200):**
+
+```json
+{
+    "output_group_folders": true
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `output_group_folders` | boolean | When `true`, jobs created via `expand_prompt` write outputs into `<output_dir>/<group_id>/<job_id>/` instead of the flat `<output_dir>/<job_id>/`. Default `true`. |
+
+---
+
+### Update Output Settings
+
+#### `PUT /settings/output`
+
+Toggle the per-group output folder structure at runtime. The change applies to subsequently created jobs only — already-completed jobs keep their existing on-disk locations.
+
+**Request Body:**
+
+```json
+{
+    "output_group_folders": false
+}
+```
+
+**Success Response (200):**
+
+```json
+{
+    "output_group_folders": false
 }
 ```
 

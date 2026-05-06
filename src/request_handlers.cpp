@@ -689,6 +689,45 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     // ── OpenAPI Schema ───────────────────────────────────────────────
     api.serveOpenApiSpec(server, "/openapi.json");
 
+    // ── llms.txt (LLM discoverability) ───────────────────────────────
+    // Convention from https://llmstxt.org/ — a markdown file at the root
+    // of a service that an LLM agent can fetch without auth to learn
+    // what's here and where the machine-readable docs live. Both /llms.txt
+    // (canonical) and /llm.txt (common typo) serve the same content.
+    auto serve_llms_txt = [](const httplib::Request& /*req*/, httplib::Response& res) {
+        static const char* body =
+            "# sdcpp-restapi\n"
+            "\n"
+            "> A REST API wrapping stable-diffusion.cpp for image and video generation.\n"
+            "> Provides HTTP endpoints, WebSocket progress streaming, an MCP server, and\n"
+            "> a Vue.js WebUI. Supports a1111-style dynamic-prompts (`{a|b|c}`) with\n"
+            "> per-variation queue items grouped under a shared `variation_group_id`.\n"
+            "\n"
+            "## Authentication\n"
+            "\n"
+            "Most endpoints require a session token. Obtain one by POSTing\n"
+            "`{username, password}` JSON to `/auth/login`, then send\n"
+            "`Authorization: Bearer <token>` on subsequent requests. Browser clients\n"
+            "use an HttpOnly cookie set by the same endpoint.\n"
+            "\n"
+            "Endpoints exempt from auth: `/health`, `/openapi.json`, `/docs/`, `/llms.txt`.\n"
+            "\n"
+            "## API reference\n"
+            "\n"
+            "- [OpenAPI 3.1 schema](/openapi.json) — machine-readable, always in sync with the running build.\n"
+            "- [REST API guide](/docs/API.md) — human-readable, with worked examples.\n"
+            "- [LLM agent guide](/docs/LLM_GUIDE.md) — workflows tailored to autonomous agents.\n"
+            "- [MCP server reference](/docs/MCP.md) — JSON-RPC over `/mcp`, alternative to REST.\n"
+            "\n"
+            "## Optional\n"
+            "\n"
+            "- [Library reference](/docs/LIBRARY_REFERENCE.md) — internal C++ libraries.\n"
+            "- [Health check](/health) — server status, loaded model, memory snapshot.\n";
+        res.set_content(body, "text/markdown; charset=utf-8");
+    };
+    server.Get("/llms.txt", serve_llms_txt);
+    server.Get("/llm.txt", serve_llms_txt);
+
     std::cout << "[Routes] All API routes registered. OpenAPI spec available at /openapi.json" << std::endl;
 }
 
