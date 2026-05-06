@@ -223,32 +223,18 @@ onMounted(async () => {
       loadParams.value.controlnet = store.loadedComponents.controlnet || ''
       loadParams.value.llm = store.loadedComponents.llm || ''
 
-      // Pre-populate load options from currently loaded model
+      // Pre-populate load options from currently loaded model.
+      // Spread store.loadOptions wholesale so every field the backend exposes
+      // is restored — without this, fields not explicitly listed (e.g.
+      // vae_conv_direct, diffusion_conv_direct, vae_tiling, lora_apply_mode,
+      // rng_type, chroma_*, prediction, free_params_immediately, log_offload_events,
+      // min_offload_size_mb, ...) get silently dropped on edit. The pre-existing
+      // loadParams.options layer underneath provides defaults for any field the
+      // backend didn't return (undefined keys are not enumerated by spread).
       if (store.loadOptions) {
         loadParams.value.options = {
           ...loadParams.value.options,
-          n_threads: store.loadOptions.n_threads ?? loadParams.value.options?.n_threads ?? -1,
-          keep_clip_on_cpu: store.loadOptions.keep_clip_on_cpu ?? loadParams.value.options?.keep_clip_on_cpu ?? true,
-          keep_vae_on_cpu: store.loadOptions.keep_vae_on_cpu ?? loadParams.value.options?.keep_vae_on_cpu ?? false,
-          keep_controlnet_on_cpu: store.loadOptions.keep_controlnet_on_cpu ?? loadParams.value.options?.keep_controlnet_on_cpu ?? false,
-          flash_attn: store.loadOptions.flash_attn ?? loadParams.value.options?.flash_attn ?? true,
-          offload_to_cpu: store.loadOptions.offload_to_cpu ?? loadParams.value.options?.offload_to_cpu ?? false,
-          enable_mmap: store.loadOptions.enable_mmap ?? loadParams.value.options?.enable_mmap ?? true,
-          vae_decode_only: store.loadOptions.vae_decode_only ?? loadParams.value.options?.vae_decode_only ?? false,
-          tae_preview_only: store.loadOptions.tae_preview_only ?? loadParams.value.options?.tae_preview_only ?? false,
-          weight_type: store.loadOptions.weight_type ?? loadParams.value.options?.weight_type,
-          offload_mode: store.loadOptions.offload_mode ?? loadParams.value.options?.offload_mode ?? 'none',
-          vram_estimation: store.loadOptions.vram_estimation ?? loadParams.value.options?.vram_estimation ?? 'dryrun',
-          offload_cond_stage: store.loadOptions.offload_cond_stage ?? loadParams.value.options?.offload_cond_stage ?? true,
-          offload_diffusion: store.loadOptions.offload_diffusion ?? loadParams.value.options?.offload_diffusion ?? false,
-          reload_cond_stage: store.loadOptions.reload_cond_stage ?? loadParams.value.options?.reload_cond_stage ?? true,
-          reload_diffusion: store.loadOptions.reload_diffusion ?? loadParams.value.options?.reload_diffusion ?? true,
-          target_free_vram_mb: store.loadOptions.target_free_vram_mb ?? loadParams.value.options?.target_free_vram_mb ?? 0,
-          // Layer streaming options
-          layer_streaming_enabled: store.loadOptions.layer_streaming_enabled ?? loadParams.value.options?.layer_streaming_enabled ?? false,
-          streaming_prefetch_layers: store.loadOptions.streaming_prefetch_layers ?? loadParams.value.options?.streaming_prefetch_layers ?? 1,
-          streaming_keep_layers_behind: store.loadOptions.streaming_keep_layers_behind ?? loadParams.value.options?.streaming_keep_layers_behind ?? 0,
-          streaming_min_free_vram_mb: store.loadOptions.streaming_min_free_vram_mb ?? loadParams.value.options?.streaming_min_free_vram_mb ?? 0
+          ...store.loadOptions,
         }
         restoredFromPriorLoad = true
       }
