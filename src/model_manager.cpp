@@ -792,11 +792,14 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.diffusion_conv_direct = params.diffusion_conv_direct;
     ctx_params.tae_preview_only = params.tae_preview_only;
     ctx_params.free_params_immediately = params.free_params_immediately;
-#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
-    // Fork moved flow_shift into sd_ctx_params_t so the offload runtime can
-    // see it at model-load time; upstream still keeps it only on sd_sample_params_t.
-    ctx_params.flow_shift = params.flow_shift;
-#endif
+    // Note: flow_shift lives on sd_sample_params_t (per-generation), not
+    // sd_ctx_params_t. The fork's old feature/vram-offloading branch
+    // duplicated it on the ctx params for early-bind reasons; v2 reverted
+    // that and follows upstream. flow_shift propagation in this codebase
+    // happens via sd_wrapper.cpp's gen_params.sample_params.flow_shift =
+    // params.flow_shift in each of generate_txt2img / generate_img2img /
+    // generate_txt2vid (still per-call, still load-time-tunable through
+    // ModelLoadParams.flow_shift which feeds the per-call default).
     ctx_params.force_sdxl_vae_conv_scale = params.force_sdxl_vae_conv_scale;
 
     // Set weight type if specified
@@ -862,9 +865,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
               << ", offload_to_cpu=" << ctx_params.offload_params_to_cpu
               << ", free_params_immediately=" << ctx_params.free_params_immediately
               << ", tae_preview_only=" << ctx_params.tae_preview_only
-#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
-              << ", flow_shift=" << (std::isinf(ctx_params.flow_shift) ? "auto" : std::to_string(ctx_params.flow_shift))
-#endif
+              << ", flow_shift=" << (std::isinf(params.flow_shift) ? "auto" : std::to_string(params.flow_shift))
               << ", rng=" << params.rng_type
               << ", lora_mode=" << params.lora_apply_mode
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
