@@ -37,10 +37,30 @@ const dateGroups = ref<QueueDateGroup[]>([])
 const showModelConfirmModal = ref(false)
 const pendingRestartJob = ref<Job | null>(null)
 
-// Reload settings modal
+// Reload settings modal — the existing "model differs, load it too?" dialog.
+// Triggered AFTER the new selector modal when 'model' is in the selection
+// and the job's model differs from the currently loaded one.
 const showReloadSettingsModal = ref(false)
 const pendingReloadJob = ref<Job | null>(null)
 const loadingModelForReload = ref(false)
+
+// New selective-reload modal: lets the user choose which sections of a
+// queue job to import into the Generate page (prompt, negative, settings,
+// LoRAs, model, advanced). Each section row shows a truncated preview and
+// a hover tooltip with the full value, so the user can verify what they're
+// about to overwrite before committing.
+type ReloadSectionKey = 'prompt' | 'negative' | 'model' | 'settings' | 'loras' | 'advanced'
+interface ReloadSection {
+  key: ReloadSectionKey
+  label: string
+  preview: string     // truncated for display
+  full: string        // full text shown via title= tooltip
+  available: boolean  // false → don't render the row at all (no data on this job)
+  selected: boolean
+}
+const showReloadSelectorModal = ref(false)
+const reloadSelectorJob = ref<Job | null>(null)
+const reloadSections = ref<ReloadSection[]>([])
 
 // Lightbox state
 const showLightbox = ref(false)
@@ -650,34 +670,249 @@ function isModelDifferent(job: Job): boolean {
   return jobModel !== currentModel
 }
 
-// Reload settings: check if model is different and ask user
+// Reload click handler — opens the SELECTOR modal first. The user picks
+// which sections of the job to import, then we either go straight to
+// /generate (no model change needed) or fall through to the existing
+// "model differs, load it too?" modal when 'model' was in the selection.
 function reloadSettings(job: Job) {
   if (!job.params) {
     store.showToast('Job has no parameters to reload', 'warning')
     return
   }
-
-  // Check if model is different
-  if (isModelDifferent(job) && job.model_settings?.model_name) {
-    pendingReloadJob.value = job
-    showReloadSettingsModal.value = true
-    return
-  }
-
-  // No model difference, just reload settings
-  navigateWithSettings(job)
+  reloadSelectorJob.value = job
+  reloadSections.value = buildReloadSections(job)
+  showReloadSelectorModal.value = true
 }
 
-// Navigate to Generate with job settings
-function navigateWithSettings(job: Job) {
-  sessionStorage.setItem('reloadJobParams', JSON.stringify({
+// Build the section list for a given job. Skipped (available:false)
+// sections aren't rendered. Truncates previews to keep the modal compact;
+// the full text is exposed via title= for hover.
+function buildReloadSections(job: Job): ReloadSection[] {
+  const p = (job.params ?? {}) as Record<string, unknown>
+  const truncate = (s: string, n: number) =>
+    s.length > n ? s.slice(0, n).trimEnd() + '…' : s
+  const out: ReloadSection[] = []
+
+  // Prompt
+  const promptStr = typeof p.prompt === 'string' ? p.prompt : ''
+  out.push({
+    key: 'prompt',
+    label: 'Prompt',
+    preview: promptStr ? truncate(promptStr, 70) : '(empty)',
+    full: promptStr || '(empty)',
+    available: !!promptStr,
+    selected: !!promptStr,
+  })
+
+  // Negative prompt
+  const negStr = typeof p.negative_prompt === 'string' ? p.negative_prompt : ''
+  out.push({
+    key: 'negative',
+    label: 'Negative prompt',
+    preview: negStr ? truncate(negStr, 70) : '(none)',
+    full: negStr || '(none)',
+    available: !!negStr,
+    selected: !!negStr,
+  })
+
+  // Model + components — only meaningful if the job recorded them and the
+  // current loaded model differs (else there's nothing to reload).
+  if (job.model_settings?.model_name) {
+    const m = job.model_settings
+    const modelName = m.model_name as string  // narrowed by the if above
+    const compNames: string[] = []
+    const lc = m.loaded_components || {}
+    if (lc.vae) compNames.push('VAE')
+    if (lc.clip_l) compNames.push('CLIP-L')
+    if (lc.clip_g) compNames.push('CLIP-G')
+    if (lc.t5xxl) compNames.push('T5')
+    if (lc.controlnet) compNames.push('CN')
+    if (lc.llm) compNames.push('LLM')
+    const fullLines = [
+      `Model: ${modelName}`,
+      m.model_architecture ? `Architecture: ${m.model_architecture}` : '',
+      lc.vae ? `VAE: ${lc.vae}` : '',
+      lc.clip_l ? `CLIP-L: ${lc.clip_l}` : '',
+      lc.clip_g ? `CLIP-G: ${lc.clip_g}` : '',
+      lc.t5xxl ? `T5-XXL: ${lc.t5xxl}` : '',
+      lc.controlnet ? `ControlNet: ${lc.controlnet}` : '',
+      lc.llm ? `LLM: ${lc.llm}` : '',
+    ].filter(Boolean)
+    out.push({
+      key: 'model',
+      label: 'Model & components',
+      preview: formatComponentName(modelName) + (compNames.length ? ` (+${compNames.join(', ')})` : ''),
+      full: fullLines.join('\n'),
+      available: true,
+      selected: isModelDifferent(job),
+    })
+  }
+
+  // Generation settings — show the most-relevant subset
+  const w = p.width as number | undefined
+  const h = p.height as number | undefined
+  const stepsP = p.steps as number | undefined
+  const cfg = p.cfg_scale as number | undefined
+  const samp = p.sampler as string | undefined
+  const sched = p.scheduler as string | undefined
+  const sd = p.seed as number | undefined
+  const bc = p.batch_count as number | undefined
+  const previewParts: string[] = []
+  if (w && h) previewParts.push(`${w}×${h}`)
+  if (stepsP !== undefined) previewParts.push(`${stepsP} steps`)
+  if (cfg !== undefined) previewParts.push(`cfg ${cfg}`)
+  if (samp) previewParts.push(samp)
+  const settingsAvailable = previewParts.length > 0
+  out.push({
+    key: 'settings',
+    label: 'Generation settings',
+    preview: settingsAvailable ? previewParts.join(' · ') : '(none)',
+    full: [
+      w && h ? `Resolution: ${w}×${h}` : '',
+      stepsP !== undefined ? `Steps: ${stepsP}` : '',
+      cfg !== undefined ? `CFG scale: ${cfg}` : '',
+      samp ? `Sampler: ${samp}` : '',
+      sched ? `Scheduler: ${sched}` : '',
+      sd !== undefined ? `Seed: ${sd}` : '',
+      bc !== undefined && bc > 1 ? `Batch count: ${bc}` : '',
+    ].filter(Boolean).join('\n'),
+    available: settingsAvailable,
+    selected: settingsAvailable,
+  })
+
+  // LoRAs — extract <lora:name:weight> tags from prompt + negative
+  const loraRegex = /<lora:([^:>]+):([0-9.]+)>/g
+  const loraNames: string[] = []
+  const collect = (s: string) => {
+    let m: RegExpExecArray | null
+    while ((m = loraRegex.exec(s)) !== null) {
+      const name = m[1]
+      const w = m[2]
+      loraNames.push(`${name}:${w}`)
+    }
+  }
+  collect(promptStr)
+  collect(negStr)
+  if (loraNames.length > 0) {
+    const previewN = loraNames.length > 2
+      ? `${loraNames.slice(0, 2).join(', ')}, +${loraNames.length - 2}`
+      : loraNames.join(', ')
+    out.push({
+      key: 'loras',
+      label: `LoRAs (${loraNames.length})`,
+      preview: previewN,
+      full: loraNames.join('\n'),
+      available: true,
+      selected: true,
+    })
+  }
+
+  // Advanced — surface anything non-default we know about
+  const advLines: string[] = []
+  const slg = p.slg_scale as number | undefined
+  if (slg !== undefined && slg > 0) advLines.push(`SLG scale: ${slg}`)
+  const cm = p.cache_mode as string | undefined
+  if (cm) advLines.push(`Cache mode: ${cm}`)
+  if (p.vae_tiling) advLines.push('VAE tiling: on')
+  const cs = p.control_strength as number | undefined
+  if (cs !== undefined) advLines.push(`ControlNet strength: ${cs}`)
+  const dg = p.distilled_guidance as number | undefined
+  if (dg !== undefined) advLines.push(`Distilled guidance: ${dg}`)
+  const vf = p.video_frames as number | undefined
+  if (vf) advLines.push(`Video frames: ${vf}`)
+  const fps = p.fps as number | undefined
+  if (fps) advLines.push(`FPS: ${fps}`)
+  const fs = p.flow_shift as number | undefined
+  if (fs !== undefined) advLines.push(`Flow shift: ${fs}`)
+  const strn = p.strength as number | undefined
+  if (strn !== undefined && job.type === 'img2img') advLines.push(`img2img strength: ${strn}`)
+  if (advLines.length > 0) {
+    out.push({
+      key: 'advanced',
+      label: 'Advanced',
+      preview: advLines.length === 1 ? advLines[0] : `${advLines.length} options`,
+      full: advLines.join('\n'),
+      available: true,
+      selected: false,  // off by default — user usually wants the basics
+    })
+  }
+
+  return out.filter(s => s.available)
+}
+
+// Selected-count for the Apply button label.
+function selectedReloadCount(): number {
+  return reloadSections.value.filter(s => s.selected).length
+}
+
+function reloadSelectAll() {
+  for (const s of reloadSections.value) s.selected = true
+}
+function reloadSelectNone() {
+  for (const s of reloadSections.value) s.selected = false
+}
+
+// Apply the user's selection. Branches into the existing model-confirm
+// modal when 'model' is checked AND the job's model differs from current.
+function applyReloadSelection() {
+  const job = reloadSelectorJob.value
+  if (!job) return
+
+  const selected = reloadSections.value.filter(s => s.selected)
+  if (selected.length === 0) {
+    store.showToast('Select at least one section to reload', 'warning')
+    return
+  }
+  const keys = selected.map(s => s.key)
+  const wantsModel = keys.includes('model')
+
+  // Strip 'model' from the keys passed to Generate.vue — model loading is
+  // a backend operation, not a Generate-form section.
+  const generateSections = keys.filter(k => k !== 'model')
+
+  // Close selector modal first.
+  showReloadSelectorModal.value = false
+
+  if (wantsModel && isModelDifferent(job) && job.model_settings?.model_name) {
+    // Hand off to the existing "model differs, load it?" modal. It will
+    // navigate to Generate after the user confirms; we stash the section
+    // selection so Generate.vue applies only what was checked.
+    pendingReloadJob.value = job
+    pendingReloadSelection = generateSections
+    showReloadSettingsModal.value = true
+  } else {
+    navigateWithSettings(job, generateSections)
+  }
+  reloadSelectorJob.value = null
+}
+
+function cancelReloadSelector() {
+  showReloadSelectorModal.value = false
+  reloadSelectorJob.value = null
+  reloadSections.value = []
+}
+
+// Stash for the "load model too" pathway so navigateWithSettings inside
+// loadModelAndReloadSettings() can pass the selection through.
+let pendingReloadSelection: string[] | null = null
+
+// Navigate to Generate with job settings + optional section selection.
+function navigateWithSettings(job: Job, sections?: string[]) {
+  const payload: Record<string, unknown> = {
     type: job.type,
     params: job.params,
-    job_id: job.job_id
-  }))
+    job_id: job.job_id,
+  }
+  if (sections && sections.length > 0) {
+    payload.sections = sections
+  }
+  sessionStorage.setItem('reloadJobParams', JSON.stringify(payload))
 
   router.push('/generate')
-  store.showToast('Settings loaded into Generate form', 'success')
+  const label = sections && sections.length > 0
+    ? `Loaded ${sections.length} section${sections.length > 1 ? 's' : ''} from job`
+    : 'Settings loaded into Generate form'
+  store.showToast(label, 'success')
 }
 
 // Load model and then reload settings (non-blocking - navigates immediately)
@@ -697,8 +932,11 @@ async function loadModelAndReloadSettings() {
   pendingReloadJob.value = null
   loadingModelForReload.value = false
 
-  // Navigate with settings first (user sees settings immediately)
-  navigateWithSettings(job)
+  // Navigate with settings first (user sees settings immediately).
+  // Forward the stashed section selection from the selector modal.
+  const sections = pendingReloadSelection ?? undefined
+  pendingReloadSelection = null
+  navigateWithSettings(job, sections)
 
   // Start model loading in background (non-blocking)
   try {
@@ -746,11 +984,13 @@ async function loadModelAndReloadSettings() {
 // Reload settings without loading model
 function reloadSettingsOnly() {
   const job = pendingReloadJob.value
+  const sections = pendingReloadSelection ?? undefined
   showReloadSettingsModal.value = false
   pendingReloadJob.value = null
+  pendingReloadSelection = null
 
   if (job) {
-    navigateWithSettings(job)
+    navigateWithSettings(job, sections)
   }
 }
 
@@ -759,6 +999,7 @@ function cancelReloadSettings() {
   showReloadSettingsModal.value = false
   pendingReloadJob.value = null
   loadingModelForReload.value = false
+  pendingReloadSelection = null
 }
 
 // Restart a job - check model first
@@ -1727,6 +1968,55 @@ async function sendImageToUpscale(outputPath: string) {
           </button>
           <button class="btn btn-secondary" @click="cancelModelLoad">
             Cancel
+          </button>
+        </div>
+      </div>
+    </Modal>
+
+    <!-- Selective-reload picker.
+         Per-section checkboxes with a truncated preview + tooltip-on-hover
+         showing the full value. Apply hands selection over to either the
+         existing model-confirm modal (if 'model' is checked + differs) or
+         straight to the Generate page via sessionStorage. -->
+    <Modal
+      :show="showReloadSelectorModal"
+      title="Reload from job"
+      @close="cancelReloadSelector"
+    >
+      <div class="reload-selector">
+        <div class="reload-selector-header">
+          <span class="reload-job-meta" v-if="reloadSelectorJob">
+            <span class="reload-job-id">{{ reloadSelectorJob.job_id.slice(0, 8) }}</span>
+            <span :class="['badge', `badge-${reloadSelectorJob.status}`]">{{ reloadSelectorJob.status }}</span>
+            <span class="reload-job-type">{{ getTypeName(reloadSelectorJob.type, reloadSelectorJob) }}</span>
+          </span>
+          <div class="reload-selector-quickactions">
+            <button class="reload-link" type="button" @click="reloadSelectAll">All</button>
+            <span class="reload-link-sep">·</span>
+            <button class="reload-link" type="button" @click="reloadSelectNone">None</button>
+          </div>
+        </div>
+
+        <ul class="reload-section-list">
+          <li v-for="s in reloadSections" :key="s.key" class="reload-section">
+            <label class="reload-row" :title="s.full">
+              <input type="checkbox" v-model="s.selected" />
+              <span class="reload-row-body">
+                <span class="reload-row-label">{{ s.label }}</span>
+                <span class="reload-row-preview">{{ s.preview }}</span>
+              </span>
+            </label>
+          </li>
+        </ul>
+
+        <div class="modal-actions">
+          <button class="btn btn-secondary" @click="cancelReloadSelector">Cancel</button>
+          <button
+            class="btn btn-primary"
+            :disabled="selectedReloadCount() === 0"
+            @click="applyReloadSelection"
+          >
+            Reload {{ selectedReloadCount() }} section{{ selectedReloadCount() === 1 ? '' : 's' }}
           </button>
         </div>
       </div>
@@ -2945,5 +3235,105 @@ async function sendImageToUpscale(outputPath: string) {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
+}
+
+/* Selective reload modal */
+.reload-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 420px;
+  max-width: 600px;
+}
+.reload-selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.reload-job-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.reload-job-id {
+  font-family: var(--font-mono, monospace);
+  color: var(--text-secondary);
+}
+.reload-job-type {
+  color: var(--text-secondary);
+}
+.reload-selector-quickactions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.reload-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--accent-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.reload-link:hover { text-decoration: underline; }
+.reload-link-sep {
+  color: var(--text-muted);
+}
+.reload-section-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reload-section {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: rgba(0, 0, 0, 0.15);
+  transition: border-color 0.15s, background 0.15s;
+}
+.reload-section:hover {
+  border-color: rgba(var(--accent-rgb, 249, 115, 22), 0.5);
+  background: rgba(var(--accent-rgb, 249, 115, 22), 0.04);
+}
+.reload-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.reload-row input[type="checkbox"] {
+  margin-top: 2px;
+  flex: 0 0 auto;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+.reload-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.reload-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.reload-row-preview {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

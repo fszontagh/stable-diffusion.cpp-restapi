@@ -963,14 +963,29 @@ onMounted(async () => {
   if (savedParams) {
     try {
       const data = JSON.parse(savedParams)
-      // Set mode first - suppress prompt restore since loadJobParams will set the prompt
-      suppressPromptRestore = true
+      // Optional section selection from the selective-reload modal. When
+      // missing or empty, full-reload behavior (legacy) is preserved.
+      const selection: Set<ReloadSection> | undefined = Array.isArray(data.sections) && data.sections.length > 0
+        ? new Set(data.sections as ReloadSection[])
+        : undefined
+      // Suppress prompt restore from localStorage only if 'prompt' or 'negative'
+      // is being loaded — otherwise the user's currently-typed prompt should
+      // survive a settings-only reload.
+      const willTouchPrompt = !selection || selection.has('prompt')
+      const willTouchNegative = !selection || selection.has('negative')
+      if (willTouchPrompt || willTouchNegative) {
+        suppressPromptRestore = true
+      }
       if (data.type === 'txt2img' || data.type === 'img2img' || data.type === 'txt2vid') {
         // loadJobParams will set the correct mode (including img_edit for ref_images jobs)
-        // Set the base mode here; loadJobParams below may override to img_edit
-        mode.value = data.type as 'txt2img' | 'img2img' | 'txt2vid'
+        // Set the base mode here; loadJobParams below may override to img_edit.
+        // For partial reloads that don't include 'settings'/'advanced', skip
+        // the mode flip so the user stays on whatever tab they were on.
+        if (!selection || selection.has('settings') || selection.has('advanced')) {
+          mode.value = data.type as 'txt2img' | 'img2img' | 'txt2vid'
+        }
       }
-      loadJobParams(data.type, data.params)
+      loadJobParams(data.type, data.params, selection)
       sessionStorage.removeItem('reloadJobParams')
       // Save these as the current settings for this mode
       saveSettings()
@@ -1113,55 +1128,95 @@ onBeforeUnmount(() => {
   }
 })
 
-function loadJobParams(type: string, params: Record<string, unknown>) {
-  // Set mode based on job type — detect ref_images jobs as image edit
-  if (type === 'txt2img' && (params.ref_images || (typeof params.ref_images_count === 'number' && params.ref_images_count > 0))) {
-    mode.value = 'img_edit'
-  } else if (type === 'txt2img' || type === 'img2img' || type === 'txt2vid') {
-    mode.value = type
+// Section keys understood by selective reload. Keep in sync with Queue.vue's
+// selector modal — both files have to agree on the strings.
+type ReloadSection = 'prompt' | 'negative' | 'settings' | 'loras' | 'advanced'
+
+function loadJobParams(
+  type: string,
+  params: Record<string, unknown>,
+  sections?: Set<ReloadSection>
+) {
+  // sections == undefined means "load everything" (legacy behavior). Otherwise
+  // each block is gated on whether its section is in the selection.
+  const has = (k: ReloadSection) => !sections || sections.has(k)
+
+  // Mode is structural — only flip when we're loading something mode-specific
+  // (settings/advanced). A prompt-only or LoRAs-only reload should leave the
+  // user on whatever tab they're currently using.
+  if (!sections || has('settings') || has('advanced')) {
+    if (type === 'txt2img' && (params.ref_images || (typeof params.ref_images_count === 'number' && params.ref_images_count > 0))) {
+      mode.value = 'img_edit'
+    } else if (type === 'txt2img' || type === 'img2img' || type === 'txt2vid') {
+      mode.value = type
+    }
   }
 
-  // Clear LoRA lists - the prompts will contain LoRA tags that will be auto-parsed
-  positiveLoraList.value = []
-  negativeLoraList.value = []
-
-  // Common params
-  if (params.prompt !== undefined) prompt.value = params.prompt as string
-  if (params.negative_prompt !== undefined) negativePrompt.value = params.negative_prompt as string
-  if (params.width !== undefined) width.value = params.width as number
-  if (params.height !== undefined) height.value = params.height as number
-  if (params.steps !== undefined) steps.value = params.steps as number
-  if (params.cfg_scale !== undefined) cfgScale.value = params.cfg_scale as number
-  if (params.distilled_guidance !== undefined) distilledGuidance.value = params.distilled_guidance as number
-  if (params.seed !== undefined) seed.value = params.seed as number
-  if (params.sampler !== undefined) sampler.value = params.sampler as string
-  if (params.scheduler !== undefined) scheduler.value = params.scheduler as string
-  if (params.batch_count !== undefined) batchCount.value = params.batch_count as number
-  if (params.clip_skip !== undefined) clipSkip.value = params.clip_skip as number
-
-  // img2img params
-  if (params.strength !== undefined) strength.value = params.strength as number
-  // Note: init_image_base64 and mask_image_base64 are not reloaded as they may be too large
-
-  // ControlNet params
-  if (params.control_strength !== undefined) controlStrength.value = params.control_strength as number
-
-  // txt2vid params
-  if (params.video_frames !== undefined) videoFrames.value = params.video_frames as number
-  if (params.fps !== undefined) fps.value = params.fps as number
-  if (params.flow_shift !== undefined) flowShift.value = params.flow_shift as number
-
-  // Advanced params
-  if (params.slg_scale !== undefined) slgScale.value = params.slg_scale as number
-  if (params.cache_mode !== undefined) cacheMode.value = params.cache_mode as string
-  if (params.easycache !== undefined && params.cache_mode === undefined) {
-    cacheMode.value = params.easycache ? 'easycache' : ''
+  // Clear LoRA lists when we're going to repopulate them. The downstream
+  // post-mount extractor (onMounted block) will re-parse <lora:...> tags
+  // out of whichever prompt strings get set below. If the user picked
+  // 'loras' WITHOUT 'prompt' / 'negative' we extract directly from the
+  // job's params here — see "loras-only" path below.
+  if (has('loras')) {
+    positiveLoraList.value = []
+    negativeLoraList.value = []
   }
-  if (params.easycache_threshold !== undefined) easycacheThreshold.value = params.easycache_threshold as number
-  if (params.vae_tiling !== undefined) vaeTiling.value = params.vae_tiling as boolean
-  if (params.vae_tile_size_x !== undefined) vaeTileSizeX.value = params.vae_tile_size_x as number
-  if (params.vae_tile_size_y !== undefined) vaeTileSizeY.value = params.vae_tile_size_y as number
-  if (params.vae_tile_overlap !== undefined) vaeTileOverlap.value = params.vae_tile_overlap as number
+
+  // Prompts
+  if (has('prompt') && params.prompt !== undefined) prompt.value = params.prompt as string
+  if (has('negative') && params.negative_prompt !== undefined) negativePrompt.value = params.negative_prompt as string
+
+  // LoRAs-only path: prompts not being touched, but the user wants the LoRA
+  // panel populated from the job. Extract directly from params.prompt /
+  // params.negative_prompt (don't mutate prompt.value). Skips silently if
+  // models aren't loaded yet (availableLoras empty) — the user will see an
+  // empty LoRA panel and can re-trigger after the model loads.
+  if (has('loras') && !has('prompt') && availableLoras.value.length > 0) {
+    if (typeof params.prompt === 'string') {
+      const { newLoras } = parseLorasFromPrompt(params.prompt, [])
+      if (newLoras.length > 0) positiveLoraList.value = newLoras
+    }
+  }
+  if (has('loras') && !has('negative') && availableLoras.value.length > 0) {
+    if (typeof params.negative_prompt === 'string') {
+      const { newLoras } = parseLorasFromPrompt(params.negative_prompt, [])
+      if (newLoras.length > 0) negativeLoraList.value = newLoras
+    }
+  }
+
+  // Generation settings (resolution, steps, sampler, …)
+  if (has('settings')) {
+    if (params.width !== undefined) width.value = params.width as number
+    if (params.height !== undefined) height.value = params.height as number
+    if (params.steps !== undefined) steps.value = params.steps as number
+    if (params.cfg_scale !== undefined) cfgScale.value = params.cfg_scale as number
+    if (params.distilled_guidance !== undefined) distilledGuidance.value = params.distilled_guidance as number
+    if (params.seed !== undefined) seed.value = params.seed as number
+    if (params.sampler !== undefined) sampler.value = params.sampler as string
+    if (params.scheduler !== undefined) scheduler.value = params.scheduler as string
+    if (params.batch_count !== undefined) batchCount.value = params.batch_count as number
+    if (params.clip_skip !== undefined) clipSkip.value = params.clip_skip as number
+    if (params.video_frames !== undefined) videoFrames.value = params.video_frames as number
+    if (params.fps !== undefined) fps.value = params.fps as number
+    if (params.flow_shift !== undefined) flowShift.value = params.flow_shift as number
+  }
+
+  // Advanced (img2img strength, ControlNet, SLG, cache, VAE tiling, …)
+  if (has('advanced')) {
+    if (params.strength !== undefined) strength.value = params.strength as number
+    // Note: init_image_base64 and mask_image_base64 are not reloaded as they may be too large
+    if (params.control_strength !== undefined) controlStrength.value = params.control_strength as number
+    if (params.slg_scale !== undefined) slgScale.value = params.slg_scale as number
+    if (params.cache_mode !== undefined) cacheMode.value = params.cache_mode as string
+    if (params.easycache !== undefined && params.cache_mode === undefined) {
+      cacheMode.value = params.easycache ? 'easycache' : ''
+    }
+    if (params.easycache_threshold !== undefined) easycacheThreshold.value = params.easycache_threshold as number
+    if (params.vae_tiling !== undefined) vaeTiling.value = params.vae_tiling as boolean
+    if (params.vae_tile_size_x !== undefined) vaeTileSizeX.value = params.vae_tile_size_x as number
+    if (params.vae_tile_size_y !== undefined) vaeTileSizeY.value = params.vae_tile_size_y as number
+    if (params.vae_tile_overlap !== undefined) vaeTileOverlap.value = params.vae_tile_overlap as number
+  }
 }
 
 function setPreset(preset: { w: number; h: number }) {
