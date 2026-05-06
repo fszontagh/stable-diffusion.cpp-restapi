@@ -318,6 +318,30 @@ onUnmounted(() => {
   store.setQueueFilters(undefined)
 })
 
+// Live-ticking "now" used by processing jobs to show elapsed time before
+// completed_at is set. Only ticks while at least one processing job exists in
+// the queue, so an idle queue costs no timers.
+//
+// IMPORTANT: this block must precede the watch() below — the watch is set up
+// with { immediate: true }, which fires its callback synchronously during
+// setup. The callback calls startElapsedTick(), which reads
+// elapsedTickInterval (a let). If the let isn't yet initialized at that
+// point we'd hit a TDZ ReferenceError ("Cannot access 'X' before
+// initialization"). Function declarations are hoisted, lets are not.
+const nowMs = ref(Date.now())
+let elapsedTickInterval: ReturnType<typeof setInterval> | null = null
+function startElapsedTick() {
+  if (elapsedTickInterval) return
+  nowMs.value = Date.now()
+  elapsedTickInterval = setInterval(() => { nowMs.value = Date.now() }, 1000)
+}
+function stopElapsedTick() {
+  if (elapsedTickInterval) {
+    clearInterval(elapsedTickInterval)
+    elapsedTickInterval = null
+  }
+}
+
 // Tick once per second only while at least one job is processing — idle queue
 // has zero timer overhead, and the watcher fires on the next ws update when a
 // job moves into 'processing'.
@@ -360,23 +384,6 @@ function formatElapsed(startStr: string, endMs: number): string {
 
 function formatDuration(startStr: string, endStr: string): string {
   return formatElapsed(startStr, new Date(endStr).getTime())
-}
-
-// Live-ticking "now" used by processing jobs to show elapsed time before
-// completed_at is set. Only ticks while at least one processing job exists in
-// the queue, so an idle queue costs no timers.
-const nowMs = ref(Date.now())
-let elapsedTickInterval: ReturnType<typeof setInterval> | null = null
-function startElapsedTick() {
-  if (elapsedTickInterval) return
-  nowMs.value = Date.now()
-  elapsedTickInterval = setInterval(() => { nowMs.value = Date.now() }, 1000)
-}
-function stopElapsedTick() {
-  if (elapsedTickInterval) {
-    clearInterval(elapsedTickInterval)
-    elapsedTickInterval = null
-  }
 }
 
 function isRefImagesJob(job: Job): boolean {
