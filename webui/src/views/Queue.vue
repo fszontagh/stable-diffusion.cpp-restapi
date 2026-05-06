@@ -37,18 +37,16 @@ const dateGroups = ref<QueueDateGroup[]>([])
 const showModelConfirmModal = ref(false)
 const pendingRestartJob = ref<Job | null>(null)
 
-// Reload settings modal — the existing "model differs, load it too?" dialog.
-// Triggered AFTER the new selector modal when 'model' is in the selection
-// and the job's model differs from the currently loaded one.
-const showReloadSettingsModal = ref(false)
-const pendingReloadJob = ref<Job | null>(null)
-const loadingModelForReload = ref(false)
-
-// New selective-reload modal: lets the user choose which sections of a
+// Selective-reload modal: lets the user choose which sections of a
 // queue job to import into the Generate page (prompt, negative, settings,
 // LoRAs, model, advanced). Each section row shows a truncated preview and
 // a hover tooltip with the full value, so the user can verify what they're
 // about to overwrite before committing.
+//
+// (The legacy "model differs, load it too?" follow-up modal was removed —
+// the selector already shows the model name + components and a checkbox
+// for the user to opt in to the model swap, so a second confirmation
+// dialog was redundant.)
 type ReloadSectionKey = 'prompt' | 'negative' | 'model' | 'settings' | 'loras' | 'advanced'
 interface ReloadSection {
   key: ReloadSectionKey
@@ -852,8 +850,12 @@ function reloadSelectNone() {
   for (const s of reloadSections.value) s.selected = false
 }
 
-// Apply the user's selection. Branches into the existing model-confirm
-// modal when 'model' is checked AND the job's model differs from current.
+// Apply the user's selection. The selector modal already shows the model
+// name + components and the "model differs" highlight, so checking the
+// "Model & components" box IS the user's confirmation — we kick the model
+// load directly here without a second dialog. Navigation to /generate is
+// non-blocking (model load runs in the background; the status bar shows
+// progress).
 function applyReloadSelection() {
   const job = reloadSelectorJob.value
   if (!job) return
@@ -872,18 +874,15 @@ function applyReloadSelection() {
 
   // Close selector modal first.
   showReloadSelectorModal.value = false
-
-  if (wantsModel && isModelDifferent(job) && job.model_settings?.model_name) {
-    // Hand off to the existing "model differs, load it?" modal. It will
-    // navigate to Generate after the user confirms; we stash the section
-    // selection so Generate.vue applies only what was checked.
-    pendingReloadJob.value = job
-    pendingReloadSelection = generateSections
-    showReloadSettingsModal.value = true
-  } else {
-    navigateWithSettings(job, generateSections)
-  }
   reloadSelectorJob.value = null
+
+  // Navigate immediately so the user sees the form populate. If 'model'
+  // was checked AND the loaded model differs, kick the load in the
+  // background — the StatusBar progress bar tracks it from there.
+  navigateWithSettings(job, generateSections)
+  if (wantsModel && isModelDifferent(job) && job.model_settings?.model_name) {
+    void loadModelInBackground(job)
+  }
 }
 
 function cancelReloadSelector() {
@@ -892,9 +891,50 @@ function cancelReloadSelector() {
   reloadSections.value = []
 }
 
-// Stash for the "load model too" pathway so navigateWithSettings inside
-// loadModelAndReloadSettings() can pass the selection through.
-let pendingReloadSelection: string[] | null = null
+// Background model swap triggered by the "Model & components" checkbox.
+// Reads the job's recorded components + load_options and hands them to
+// /models/load. Failures surface as a toast — the form is already
+// populated from navigateWithSettings, so the user can retry the load
+// from the ModelLoad page if needed.
+async function loadModelInBackground(job: Job) {
+  const settings = job.model_settings
+  if (!settings?.model_name) return
+
+  try {
+    if (store.modelLoaded && store.modelName !== settings.model_name) {
+      store.showToast('Unloading current model...', 'info')
+      await api.unloadModel()
+    }
+
+    store.showToast(`Loading model: ${settings.model_name}...`, 'info')
+
+    const loadParams: LoadModelParams = {
+      model_name: settings.model_name,
+      model_type: settings.model_type === 'diffusion' ? 'diffusion' : 'checkpoint',
+    }
+    if (settings.loaded_components) {
+      const lc = settings.loaded_components
+      if (lc.vae) loadParams.vae = lc.vae
+      if (lc.clip_l) loadParams.clip_l = lc.clip_l
+      if (lc.clip_g) loadParams.clip_g = lc.clip_g
+      if (lc.t5xxl) loadParams.t5xxl = lc.t5xxl
+      if (lc.controlnet) loadParams.controlnet = lc.controlnet
+      if (lc.llm) loadParams.llm = lc.llm
+      if (lc.llm_vision) loadParams.llm_vision = lc.llm_vision
+    }
+    if (settings.load_options) {
+      loadParams.options = settings.load_options
+    }
+
+    api.loadModel(loadParams).then(() => {
+      store.showToast('Model loaded successfully', 'success')
+    }).catch((e) => {
+      store.showToast(e instanceof Error ? e.message : 'Failed to load model', 'error')
+    })
+  } catch (e) {
+    store.showToast(e instanceof Error ? e.message : 'Failed to start model loading', 'error')
+  }
+}
 
 // Navigate to Generate with job settings + optional section selection.
 function navigateWithSettings(job: Job, sections?: string[]) {
@@ -913,93 +953,6 @@ function navigateWithSettings(job: Job, sections?: string[]) {
     ? `Loaded ${sections.length} section${sections.length > 1 ? 's' : ''} from job`
     : 'Settings loaded into Generate form'
   store.showToast(label, 'success')
-}
-
-// Load model and then reload settings (non-blocking - navigates immediately)
-async function loadModelAndReloadSettings() {
-  const job = pendingReloadJob.value
-  if (!job?.model_settings) return
-
-  const settings = job.model_settings
-  if (!settings.model_name) {
-    store.showToast('Job has no model information', 'error')
-    cancelReloadSettings()
-    return
-  }
-
-  // Close modal and navigate immediately - model loads in background
-  showReloadSettingsModal.value = false
-  pendingReloadJob.value = null
-  loadingModelForReload.value = false
-
-  // Navigate with settings first (user sees settings immediately).
-  // Forward the stashed section selection from the selector modal.
-  const sections = pendingReloadSelection ?? undefined
-  pendingReloadSelection = null
-  navigateWithSettings(job, sections)
-
-  // Start model loading in background (non-blocking)
-  try {
-    // Unload current model if different
-    if (store.modelLoaded && store.modelName !== settings.model_name) {
-      store.showToast('Unloading current model...', 'info')
-      await api.unloadModel()
-    }
-
-    store.showToast(`Loading model: ${settings.model_name}...`, 'info')
-
-    // Build load params from job's model settings
-    const loadParams: LoadModelParams = {
-      model_name: settings.model_name,
-      model_type: settings.model_type === 'diffusion' ? 'diffusion' : 'checkpoint'
-    }
-
-    // Add components if they were used
-    if (settings.loaded_components) {
-      if (settings.loaded_components.vae) loadParams.vae = settings.loaded_components.vae
-      if (settings.loaded_components.clip_l) loadParams.clip_l = settings.loaded_components.clip_l
-      if (settings.loaded_components.clip_g) loadParams.clip_g = settings.loaded_components.clip_g
-      if (settings.loaded_components.t5xxl) loadParams.t5xxl = settings.loaded_components.t5xxl
-      if (settings.loaded_components.controlnet) loadParams.controlnet = settings.loaded_components.controlnet
-      if (settings.loaded_components.llm) loadParams.llm = settings.loaded_components.llm
-      if (settings.loaded_components.llm_vision) loadParams.llm_vision = settings.loaded_components.llm_vision
-    }
-
-    // Add load options if stored (critical for correct VRAM usage and behavior)
-    if (settings.load_options) {
-      loadParams.options = settings.load_options
-    }
-
-    // This runs in background - status bar shows progress
-    api.loadModel(loadParams).then(() => {
-      store.showToast('Model loaded successfully', 'success')
-    }).catch((e) => {
-      store.showToast(e instanceof Error ? e.message : 'Failed to load model', 'error')
-    })
-  } catch (e) {
-    store.showToast(e instanceof Error ? e.message : 'Failed to start model loading', 'error')
-  }
-}
-
-// Reload settings without loading model
-function reloadSettingsOnly() {
-  const job = pendingReloadJob.value
-  const sections = pendingReloadSelection ?? undefined
-  showReloadSettingsModal.value = false
-  pendingReloadJob.value = null
-  pendingReloadSelection = null
-
-  if (job) {
-    navigateWithSettings(job, sections)
-  }
-}
-
-// Cancel reload settings dialog
-function cancelReloadSettings() {
-  showReloadSettingsModal.value = false
-  pendingReloadJob.value = null
-  loadingModelForReload.value = false
-  pendingReloadSelection = null
 }
 
 // Restart a job - check model first
@@ -2017,78 +1970,6 @@ async function sendImageToUpscale(outputPath: string) {
             @click="applyReloadSelection"
           >
             Reload {{ selectedReloadCount() }} section{{ selectedReloadCount() === 1 ? '' : 's' }}
-          </button>
-        </div>
-      </div>
-    </Modal>
-
-    <!-- Reload Settings Modal -->
-    <Modal
-      :show="showReloadSettingsModal"
-      title="Reload Settings"
-      @close="cancelReloadSettings"
-    >
-      <div class="model-confirm-content">
-        <p>This job was created with a different model configuration:</p>
-        <div class="model-comparison">
-          <div class="model-item">
-            <span class="model-label">Job's model:</span>
-            <span class="model-name">{{ pendingReloadJob?.model_settings?.model_name || 'Unknown' }}</span>
-          </div>
-          <!-- Show components if available -->
-          <div v-if="pendingReloadJob?.model_settings?.loaded_components" class="model-components">
-            <div v-if="pendingReloadJob.model_settings.loaded_components.vae" class="component-item">
-              <span class="component-label">VAE:</span>
-              <span class="component-value">{{ pendingReloadJob.model_settings.loaded_components.vae }}</span>
-            </div>
-            <div v-if="pendingReloadJob.model_settings.loaded_components.clip_l" class="component-item">
-              <span class="component-label">CLIP-L:</span>
-              <span class="component-value">{{ pendingReloadJob.model_settings.loaded_components.clip_l }}</span>
-            </div>
-            <div v-if="pendingReloadJob.model_settings.loaded_components.clip_g" class="component-item">
-              <span class="component-label">CLIP-G:</span>
-              <span class="component-value">{{ pendingReloadJob.model_settings.loaded_components.clip_g }}</span>
-            </div>
-            <div v-if="pendingReloadJob.model_settings.loaded_components.t5xxl" class="component-item">
-              <span class="component-label">T5-XXL:</span>
-              <span class="component-value">{{ pendingReloadJob.model_settings.loaded_components.t5xxl }}</span>
-            </div>
-            <div v-if="pendingReloadJob.model_settings.loaded_components.llm" class="component-item">
-              <span class="component-label">LLM:</span>
-              <span class="component-value">{{ pendingReloadJob.model_settings.loaded_components.llm }}</span>
-            </div>
-            <div v-if="pendingReloadJob.model_settings.loaded_components.controlnet" class="component-item">
-              <span class="component-label">ControlNet:</span>
-              <span class="component-value">{{ pendingReloadJob.model_settings.loaded_components.controlnet }}</span>
-            </div>
-          </div>
-          <div class="model-item current-model">
-            <span class="model-label">Current model:</span>
-            <span class="model-name">{{ store.modelName || 'None loaded' }}</span>
-          </div>
-        </div>
-        <p class="model-question">Would you like to load the original model too?</p>
-        <div class="modal-actions">
-          <button
-            class="btn btn-primary"
-            @click="loadModelAndReloadSettings"
-            :disabled="loadingModelForReload"
-          >
-            {{ loadingModelForReload ? 'Loading...' : 'Load Model & Reload Settings' }}
-          </button>
-          <button
-            class="btn btn-secondary"
-            @click="reloadSettingsOnly"
-            :disabled="loadingModelForReload"
-          >
-            Settings Only
-          </button>
-          <button
-            class="btn btn-secondary"
-            @click="cancelReloadSettings"
-            :disabled="loadingModelForReload"
-          >
-            Cancel
           </button>
         </div>
       </div>
