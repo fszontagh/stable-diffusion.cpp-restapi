@@ -19,6 +19,11 @@ const loading = ref(false)
 const desktopNotifications = ref(true)
 const theme = ref('default')
 
+// Server-side output preferences (fetched from /settings/output).
+// Mirrors backend QueueManager::group_folders_enabled_ — when on, jobs
+// from expand_prompt land in <output>/<group_id>/<job_id>/.
+const outputGroupFolders = ref(true)
+
 // Generation preferences - mode sub-tab
 const generationMode = ref<'txt2img' | 'img2img' | 'txt2vid'>('txt2img')
 const generationPrefs = ref({
@@ -159,7 +164,8 @@ async function loadSettings() {
       loadUIPreferences(),
       loadGenerationDefaults(),
       loadPreviewSettings(),
-      loadAssistantSettings()
+      loadAssistantSettings(),
+      loadOutputSettings()
     ])
   } catch (e) {
     console.error('Failed to load settings:', e)
@@ -172,6 +178,23 @@ async function loadUIPreferences() {
   const prefs = await api.getUIPreferences()
   desktopNotifications.value = prefs.desktop_notifications
   theme.value = prefs.theme
+}
+
+async function loadOutputSettings() {
+  try {
+    const r = await api.getOutputSettings()
+    outputGroupFolders.value = !!r.output_group_folders
+  } catch (e) {
+    console.error('Failed to load output settings:', e)
+  }
+}
+
+async function saveOutputSettings() {
+  try {
+    await api.setOutputSettings({ output_group_folders: outputGroupFolders.value })
+  } catch (e) {
+    console.error('Failed to save output settings:', e)
+  }
 }
 
 async function loadGenerationDefaults() {
@@ -498,6 +521,20 @@ loadSettings()
                   label="Desktop Notifications"
                   description="Show system notifications when generation completes"
                   @update:model-value="saveUIPreferences"
+                />
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <h4>Output Folders</h4>
+              </div>
+              <div class="settings-card-body">
+                <SwitchField
+                  v-model="outputGroupFolders"
+                  label="Group expand-prompt outputs into a folder per variation group"
+                  description="When enabled, jobs created via {a|b|c} prompt expansion write to <output>/<group_id>/<job_id>/ instead of flat <output>/<job_id>/. Easier to compare variations side-by-side."
+                  @update:model-value="saveOutputSettings"
                 />
               </div>
             </div>

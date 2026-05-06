@@ -953,6 +953,13 @@ class ApiClient {
     return this.request('GET', '/settings/recycle-bin')
   }
 
+  async getOutputSettings(): Promise<{ output_group_folders: boolean }> {
+    return this.request('GET', '/settings/output')
+  }
+  async setOutputSettings(s: { output_group_folders: boolean }): Promise<{ output_group_folders: boolean }> {
+    return this.request('PUT', '/settings/output', s)
+  }
+
   // Restart a job by resubmitting with same params
   async restartJob(job: Job): Promise<JobSubmitResponse> {
     if (!job.params) {
