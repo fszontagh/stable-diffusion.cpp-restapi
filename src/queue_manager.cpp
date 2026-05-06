@@ -1238,14 +1238,35 @@ void QueueManager::update_job_params(const std::string& job_id, const nlohmann::
     }
 }
 
+// Merge typed roundtrip output with the original raw params to preserve fields
+// the typed struct (Txt2ImgParams etc.) doesn't know about — variation_group_id,
+// variation_index, variation_total, variation_template, and any future
+// extension fields. Without this, those fields disappear when process_*_unlocked
+// runs `update_job_params(typed.to_json())`, which breaks both the on-disk
+// group folder routing AND the WebUI's queue-grouping (frontend looks up
+// params.variation_group_id on each card; if it's gone, the group dissolves
+// once a job finishes).
+static nlohmann::json merge_preserve_unknowns(const nlohmann::json& typed_roundtrip,
+                                                const nlohmann::json& raw) {
+    nlohmann::json out = typed_roundtrip;
+    if (!raw.is_object()) return out;
+    for (auto it = raw.begin(); it != raw.end(); ++it) {
+        if (!out.contains(it.key())) {
+            out[it.key()] = it.value();
+        }
+    }
+    return out;
+}
+
 std::vector<std::string> QueueManager::process_txt2img_unlocked(
     const nlohmann::json& job_params,
     const std::string& job_id
 ) {
     auto params = Txt2ImgParams::from_json(job_params);
 
-    // Store properly typed params back to the job
-    nlohmann::json full_params = params.to_json();
+    // Store properly typed params back to the job, preserving any fields the
+    // typed struct doesn't know about (variation_group_id, etc.).
+    nlohmann::json full_params = merge_preserve_unknowns(params.to_json(), job_params);
     update_job_params(job_id, full_params);
 
     // Set batch info for progress tracking
@@ -1262,7 +1283,7 @@ std::vector<std::string> QueueManager::process_txt2img_unlocked(
         ctx, params,
         model_manager_.get_lora_dir(),
         output_dir_,
-        resolve_job_subpath(job_id)
+        resolve_job_subpath(job_id, job_params)
     );
 
     // Save config.json with all parameters (including defaults)
@@ -1277,8 +1298,8 @@ std::vector<std::string> QueueManager::process_img2img_unlocked(
 ) {
     auto params = Img2ImgParams::from_json(job_params);
 
-    // Store properly typed params back to the job
-    nlohmann::json full_params = params.to_json();
+    // Preserve unknown fields (variation_group_id, etc.) — see helper comment.
+    nlohmann::json full_params = merge_preserve_unknowns(params.to_json(), job_params);
     update_job_params(job_id, full_params);
 
     // Set batch info for progress tracking
@@ -1295,7 +1316,7 @@ std::vector<std::string> QueueManager::process_img2img_unlocked(
         ctx, params,
         model_manager_.get_lora_dir(),
         output_dir_,
-        resolve_job_subpath(job_id)
+        resolve_job_subpath(job_id, job_params)
     );
 
     // Save config.json with all parameters (including defaults)
@@ -1310,8 +1331,8 @@ std::vector<std::string> QueueManager::process_txt2vid_unlocked(
 ) {
     auto params = Txt2VidParams::from_json(job_params);
 
-    // Store properly typed params back to the job
-    nlohmann::json full_params = params.to_json();
+    // Preserve unknown fields (variation_group_id, etc.) — see helper comment.
+    nlohmann::json full_params = merge_preserve_unknowns(params.to_json(), job_params);
     update_job_params(job_id, full_params);
 
     // Set batch info for progress tracking (video is always 1 output)
@@ -1328,7 +1349,7 @@ std::vector<std::string> QueueManager::process_txt2vid_unlocked(
         ctx, params,
         model_manager_.get_lora_dir(),
         output_dir_,
-        resolve_job_subpath(job_id)
+        resolve_job_subpath(job_id, job_params)
     );
 
     // Save config.json with all parameters (including defaults)
@@ -1459,14 +1480,11 @@ std::vector<std::string> QueueManager::process_convert_unlocked(
     return { output_path };
 }
 
-std::string QueueManager::resolve_job_subpath(const std::string& job_id) const {
+std::string QueueManager::resolve_job_subpath(const std::string& job_id,
+                                                const nlohmann::json& params) const {
     if (!group_folders_enabled_.load(std::memory_order_relaxed)) {
         return job_id;
     }
-    std::lock_guard<std::mutex> lock(queue_mutex_);
-    auto it = jobs_.find(job_id);
-    if (it == jobs_.end()) return job_id;
-    const auto& params = it->second.params;
     if (params.contains("variation_group_id") && params["variation_group_id"].is_string()) {
         const auto& g = params["variation_group_id"].get_ref<const std::string&>();
         if (!g.empty()) {
@@ -1480,8 +1498,10 @@ void QueueManager::save_job_config(const std::string& job_id, GenerationType typ
     namespace fs = std::filesystem;
 
     // Build the job output directory path. Honors variation-group folders so
-    // config.json lands next to the actual output files.
-    fs::path job_dir = fs::path(output_dir_) / resolve_job_subpath(job_id);
+    // config.json lands next to the actual output files. The `params` passed
+    // here is the merged-with-unknowns roundtrip from process_*_unlocked, so
+    // variation_group_id is still present.
+    fs::path job_dir = fs::path(output_dir_) / resolve_job_subpath(job_id, params);
 
     // Only save if the directory exists (job produced output)
     if (!fs::exists(job_dir)) {

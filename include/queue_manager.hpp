@@ -421,8 +421,16 @@ private:
      * for grouped jobs (when grouping is enabled) or just "<job_id>" otherwise.
      * Used by both process_*_unlocked (passes to SDWrapper as the dir component)
      * and save_job_config (writes config.json into the same dir).
+     *
+     * Takes the params JSON directly (rather than looking up by job_id) so the
+     * caller doesn't have to coordinate with update_job_params(): the typed
+     * roundtrip in process_*_unlocked drops fields the typed struct doesn't
+     * know about (variation_group_id is one), so a post-roundtrip lookup
+     * would miss the group. Callers pass the raw JSON they received from the
+     * worker thread, which still carries variation_group_id.
      */
-    std::string resolve_job_subpath(const std::string& job_id) const;
+    std::string resolve_job_subpath(const std::string& job_id,
+                                    const nlohmann::json& params) const;
 
     // Queue storage
     mutable std::mutex queue_mutex_;
