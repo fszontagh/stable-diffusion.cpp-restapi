@@ -193,31 +193,60 @@ watch(statusFilter, () => {
   fetchWithFilters()
 })
 
-// Sort jobs (server already filtered)
+// Sort jobs. Members of the same variation_group_id MUST stay adjacent
+// regardless of their individual statuses, otherwise the group visually
+// dissolves once jobs start completing at different times. The sort uses a
+// per-job "effective key" that is the GROUP's leading status + most recent
+// created_at when the job is grouped; standalone jobs use their own values.
+//
+// Status priorities: processing < pending < (failed | completed) < cancelled.
+// A group bubbles up to the position of its most-active member.
 const sortedJobs = computed(() => {
   if (!store.queue?.items) return []
-  return [...store.queue.items].sort((a, b) => {
-    // Processing and pending first (active jobs), then failed/completed sorted by time, cancelled last
-    // Failed and completed have same priority so they're sorted by recency together
-    // Deleted items should not appear in normal queue view (filtered by server)
-    const statusOrder: Record<string, number> = { processing: 0, pending: 1, failed: 2, completed: 2, cancelled: 3, deleted: 4 }
-    const aOrder = statusOrder[a.status] ?? 5
-    const bOrder = statusOrder[b.status] ?? 5
-    if (aOrder !== bOrder) return aOrder - bOrder
-    // Same status: jobs sharing a variation_group_id stick together,
-    // then within a group order by variation_index, then by created_at desc.
-    const aGroup = (a.params as { variation_group_id?: string } | undefined)?.variation_group_id ?? ''
-    const bGroup = (b.params as { variation_group_id?: string } | undefined)?.variation_group_id ?? ''
-    if (aGroup !== bGroup) {
-      // Standalone jobs vs grouped jobs: order by created_at desc as before.
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  const items = [...store.queue.items]
+  const statusOrder: Record<string, number> = { processing: 0, pending: 1, failed: 2, completed: 2, cancelled: 3, deleted: 4 }
+  type Params = { variation_group_id?: string; variation_index?: number } | undefined
+
+  // Pre-pass: collect (min status_order, max created_at) per group.
+  const groupMeta = new Map<string, { order: number; created: number }>()
+  for (const j of items) {
+    const gid = (j.params as Params)?.variation_group_id
+    if (!gid) continue
+    const o = statusOrder[j.status] ?? 5
+    const c = new Date(j.created_at).getTime()
+    const prev = groupMeta.get(gid)
+    if (!prev) {
+      groupMeta.set(gid, { order: o, created: c })
+    } else {
+      if (o < prev.order) prev.order = o
+      if (c > prev.created) prev.created = c
     }
-    if (aGroup) {
-      const aIdx = (a.params as { variation_index?: number } | undefined)?.variation_index ?? 0
-      const bIdx = (b.params as { variation_index?: number } | undefined)?.variation_index ?? 0
-      if (aIdx !== bIdx) return aIdx - bIdx
+  }
+
+  function keyOf(j: import('../api/client').Job) {
+    const gid = (j.params as Params)?.variation_group_id ?? ''
+    if (gid && groupMeta.has(gid)) {
+      const m = groupMeta.get(gid)!
+      const idx = (j.params as Params)?.variation_index ?? 0
+      return { order: m.order, created: m.created, gid, idx }
     }
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    return {
+      order: statusOrder[j.status] ?? 5,
+      created: new Date(j.created_at).getTime(),
+      gid: '',
+      idx: 0,
+    }
+  }
+
+  return items.sort((a, b) => {
+    const ka = keyOf(a)
+    const kb = keyOf(b)
+    if (ka.order !== kb.order) return ka.order - kb.order
+    // Stable secondary sort: newer effective-created first.
+    if (ka.created !== kb.created) return kb.created - ka.created
+    // Within the same group, ascending by variation_index.
+    if (ka.gid !== kb.gid) return ka.gid.localeCompare(kb.gid)
+    return ka.idx - kb.idx
   })
 })
 
@@ -244,13 +273,23 @@ function getGroupTotal(j: import('../api/client').Job): number {
   return p?.variation_total || 0
 }
 // Returns true if this job is the FIRST occurrence of its group_id in the
-// sorted list (i.e., where the group header should render).
+// sorted list (i.e., where the group header should render). Now reliable
+// because the new sort guarantees same-group adjacency.
 function isGroupHead(job: import('../api/client').Job, idx: number): boolean {
   const gid = getGroupId(job)
   if (!gid) return false
   if (idx === 0) return true
   const prev = sortedJobs.value[idx - 1]
   return getGroupId(prev) !== gid
+}
+// Returns true if this job is the LAST occurrence of its group_id (so the
+// container's bottom border + bottom-radius render here).
+function isGroupTail(job: import('../api/client').Job, idx: number): boolean {
+  const gid = getGroupId(job)
+  if (!gid) return false
+  if (idx === sortedJobs.value.length - 1) return true
+  const next = sortedJobs.value[idx + 1]
+  return getGroupId(next) !== gid
 }
 // Returns true if the job is in a group AND its group is currently collapsed
 // AND the job is not the first member (the first remains visible to anchor
@@ -1046,7 +1085,11 @@ async function sendImageToUpscale(outputPath: string) {
           :class="[
             'job-card',
             `job-${job.status}`,
-            { 'in-variation-group': !!getGroupId(job) }
+            {
+              'in-variation-group': !!getGroupId(job),
+              'group-first': isGroupHead(job, idx),
+              'group-last': isGroupTail(job, idx),
+            }
           ]"
         >
         <!-- Job Header -->
@@ -2147,24 +2190,30 @@ async function sendImageToUpscale(outputPath: string) {
   color: var(--bg-primary);
 }
 
-/* Variation-group header — clickable to collapse, sticky-ish via solid bg.
-   Same accent color as the in-group card border so the visual link is
-   immediate. */
+/* Variation group container effect.
+   The header + N cards visually form one continuous rounded box: the header
+   has rounded TOP corners + top/left/right border, middle cards have only
+   side borders, the last card has rounded BOTTOM corners + bottom border.
+   Faint accent-tint background unifies the inside. Negative margin between
+   the header and the first card eliminates the gap so the box reads as a
+   single unit. */
 .job-group-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
-  margin-top: 4px;
-  background: rgba(var(--accent-rgb, 249, 115, 22), 0.08);
-  border-left: 3px solid var(--accent-primary);
-  border-radius: var(--border-radius-sm) var(--border-radius-sm) 0 0;
+  padding: 10px 14px;
+  margin-top: 8px;
+  background: rgba(var(--accent-rgb, 249, 115, 22), 0.10);
+  border: 1px solid rgba(var(--accent-rgb, 249, 115, 22), 0.45);
+  border-bottom: none;
+  border-left-width: 3px;
+  border-radius: var(--border-radius) var(--border-radius) 0 0;
   cursor: pointer;
   user-select: none;
   font-size: 12px;
 }
 .job-group-header:hover {
-  background: rgba(var(--accent-rgb, 249, 115, 22), 0.14);
+  background: rgba(var(--accent-rgb, 249, 115, 22), 0.16);
 }
 .group-toggle {
   font-family: var(--font-mono, monospace);
@@ -2183,7 +2232,7 @@ async function sendImageToUpscale(outputPath: string) {
   color: var(--text-secondary);
   font-size: 11px;
   padding: 1px 8px;
-  background: rgba(var(--accent-rgb, 249, 115, 22), 0.15);
+  background: rgba(var(--accent-rgb, 249, 115, 22), 0.18);
   border-radius: 10px;
 }
 .group-template {
@@ -2196,11 +2245,29 @@ async function sendImageToUpscale(outputPath: string) {
   font-size: 11px;
 }
 
-/* Cards that belong to a variation group get a tinted left border so
-   they're visually tied to their group header. */
+/* Cards inside a group: tinted bg + side borders. Top/bottom borders only
+   on first/last to make the column read as one container. */
 .in-variation-group {
-  border-left: 3px solid var(--accent-primary);
+  background: rgba(var(--accent-rgb, 249, 115, 22), 0.04);
+  border-left: 3px solid rgba(var(--accent-rgb, 249, 115, 22), 0.45);
+  border-right: 1px solid rgba(var(--accent-rgb, 249, 115, 22), 0.45);
+  border-radius: 0;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
 }
+.in-variation-group + .in-variation-group {
+  /* Inner separator between adjacent group cards — hairline, not the full
+     accent so it doesn't look like the container is broken. */
+  border-top: 1px dashed rgba(var(--accent-rgb, 249, 115, 22), 0.25);
+}
+.in-variation-group.group-last {
+  border-bottom: 1px solid rgba(var(--accent-rgb, 249, 115, 22), 0.45);
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+  margin-bottom: 8px !important;
+}
+/* group-first carries no top border (the header handles it) and no top
+   radius (the header rounds for it). It just butts directly against the
+   header — the header already has border-bottom:none. */
 
 /* Job ID in footer */
 .job-id-row {
