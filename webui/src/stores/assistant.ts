@@ -226,11 +226,23 @@ export const useAssistantStore = defineStore('assistant', () => {
       let proactivePrompt = ''
 
       switch (eventType) {
-        case 'job_failed':
-          proactivePrompt = `A generation job just failed with error: "${eventData.error}". Please analyze this error and provide a brief, helpful suggestion to fix it. Be concise - this will be shown as a notification.`
+        case 'job_failed': {
+          // Hand the LLM the job_id so it can call get_job and see what
+          // actually failed (type, params, full error). Without this it
+          // sees only a stripped error string and can only guess.
+          const jobId = eventData.job_id ? String(eventData.job_id) : ''
+          proactivePrompt = jobId
+            ? `Job ${jobId} failed with error: "${eventData.error}". ` +
+              `FIRST call get_job with job_id="${jobId}" to inspect the job's type and parameters, ` +
+              `THEN provide a brief, specific suggestion based on what the job was actually doing ` +
+              `(generation vs. conversion vs. download vs. hash). ` +
+              `Do not give generic advice — use the job details to be specific.`
+            : `A job just failed with error: "${eventData.error}". Please analyze this error and provide a brief, helpful suggestion to fix it. Be concise - this will be shown as a notification.`
           break
+        }
         case 'model_load_failed':
-          proactivePrompt = `Failed to load model: "${eventData.error}". Please provide a brief suggestion to resolve this issue.`
+          proactivePrompt = `Failed to load model: "${eventData.error}". ` +
+            `Call get_status to see the loaded-model state and recent_errors, then provide a brief, specific suggestion.`
           break
         case 'error_occurred':
           proactivePrompt = `An error occurred: "${eventData.error}". Please provide a brief, helpful suggestion if this is something the user should address.`
