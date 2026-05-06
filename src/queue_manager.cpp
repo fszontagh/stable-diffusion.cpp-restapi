@@ -641,12 +641,14 @@ bool QueueManager::cancel_job(const std::string& job_id) {
     }
 
     it->second.status = QueueStatus::Cancelled;
+    it->second.completed_at = std::chrono::system_clock::now();
     save_state();
 
     // Broadcast job cancelled event via WebSocket
     if (auto* ws = get_websocket_server()) {
         ws->broadcast(WSEventType::JobCancelled, {
-            {"job_id", job_id}
+            {"job_id", job_id},
+            {"completed_at", utils::time_to_string(it->second.completed_at)}
         });
     }
 
@@ -923,12 +925,16 @@ void QueueManager::worker_thread() {
                     job_type = it->second.type;
                     job_params = it->second.params;
 
-                    // Broadcast status change via WebSocket
+                    // Broadcast status change via WebSocket. Include started_at
+                    // so the frontend can render the live elapsed-time counter
+                    // immediately — it doesn't have access to it otherwise
+                    // until a separate /queue refresh.
                     if (auto* ws = get_websocket_server()) {
                         ws->broadcast(WSEventType::JobStatusChanged, {
                             {"job_id", job_id},
                             {"status", "processing"},
-                            {"previous_status", "pending"}
+                            {"previous_status", "pending"},
+                            {"started_at", utils::time_to_string(it->second.started_at)}
                         });
                     }
 
@@ -986,6 +992,12 @@ void QueueManager::worker_thread() {
                 // Save final progress to job record
                 it->second.progress = final_progress;
 
+                // Set completed_at FIRST so we can include it in the
+                // broadcast — frontend uses it to switch from the live
+                // elapsed-time counter to the static duration display.
+                it->second.completed_at = job_end_time;
+                const std::string completed_at_iso = utils::time_to_string(job_end_time);
+
                 if (success) {
                     it->second.status = QueueStatus::Completed;
                     it->second.outputs = outputs;
@@ -996,7 +1008,8 @@ void QueueManager::worker_thread() {
                             {"job_id", job_id},
                             {"status", "completed"},
                             {"previous_status", "processing"},
-                            {"outputs", outputs}
+                            {"outputs", outputs},
+                            {"completed_at", completed_at_iso}
                         });
                     }
 
@@ -1014,7 +1027,8 @@ void QueueManager::worker_thread() {
                             {"job_id", job_id},
                             {"status", "failed"},
                             {"previous_status", "processing"},
-                            {"error", error_message}
+                            {"error", error_message},
+                            {"completed_at", completed_at_iso}
                         });
                     }
 
@@ -1023,7 +1037,6 @@ void QueueManager::worker_thread() {
                               << " | duration=" << std::fixed << std::setprecision(1) << duration_sec << "s"
                               << " | error=\"" << error_message << "\"" << std::endl;
                 }
-                it->second.completed_at = job_end_time;
             }
         }
 
@@ -1652,7 +1665,8 @@ void QueueManager::fail_linked_job(const std::string& job_id, const std::string&
             ws->broadcast(WSEventType::JobStatusChanged, {
                 {"job_id", job_id},
                 {"status", "failed"},
-                {"error_message", error_message}
+                {"error_message", error_message},
+                {"completed_at", utils::time_to_string(it->second.completed_at)}
             });
         }
     }

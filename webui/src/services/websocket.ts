@@ -33,6 +33,12 @@ export interface JobStatusChangedData {
   previous_status: string
   outputs?: string[]
   error?: string
+  // Timestamps emitted by the backend on the relevant transitions:
+  // started_at on pending->processing; completed_at on the terminal
+  // statuses (completed/failed/cancelled). Frontend writes these onto
+  // the queue item so the duration / live-elapsed display can render.
+  started_at?: string
+  completed_at?: string
 }
 
 export interface JobProgressData {
@@ -53,6 +59,7 @@ export interface JobPreviewData {
 
 export interface JobCancelledData {
   job_id: string
+  completed_at?: string
 }
 
 export interface ModelLoadingProgressData {

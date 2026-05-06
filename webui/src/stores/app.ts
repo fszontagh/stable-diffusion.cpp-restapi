@@ -657,6 +657,16 @@ export const useAppStore = defineStore('app', () => {
             if (data.error) {
               queue.value.items[jobIndex].error = data.error
             }
+            // Timestamps from the backend transition. Without this the
+            // queue item never gets completed_at on a fresh page load,
+            // and the duration chip + live-elapsed counter both stay
+            // hidden after the job finishes.
+            if (data.started_at) {
+              queue.value.items[jobIndex].started_at = data.started_at
+            }
+            if (data.completed_at) {
+              queue.value.items[jobIndex].completed_at = data.completed_at
+            }
           }
         }
 
@@ -776,6 +786,9 @@ export const useAppStore = defineStore('app', () => {
           const job = queue.value.items.find(j => j.job_id === data.job_id)
           if (job) {
             job.status = 'cancelled'
+            if (data.completed_at) {
+              job.completed_at = data.completed_at
+            }
           }
         }
         showToast('Job cancelled', 'warning')
