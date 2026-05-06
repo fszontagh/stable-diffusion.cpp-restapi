@@ -312,7 +312,7 @@ Speedup varies; trade-off is a small quality hit. Default is disabled.
 
 ### Preview system
 
-Progress previews during sampling. Configured server-wide via `config.preview` or runtime via `POST /settings/preview`.
+Progress previews during sampling. Configured server-wide via `config.preview` or runtime via `PUT /preview/settings`.
 
 | Mode | How it works | Cost |
 |---|---|---|
@@ -326,7 +326,7 @@ Additional settings:
 - `max_size`: cap preview dimension in pixels (default 256)
 - `quality`: JPEG quality 1–100 (default 75)
 
-Previews are broadcast over WebSocket as `job_preview` events and are also available at `GET /preview/{job_id}`.
+Previews are broadcast over WebSocket as `job_preview` events and are also available at `GET /jobs/{job_id}/preview`.
 
 ## Generation outputs
 
