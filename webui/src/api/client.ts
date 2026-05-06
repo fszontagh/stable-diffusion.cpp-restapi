@@ -254,6 +254,11 @@ export interface GenerationParams {
   upscale?: boolean
   upscale_repeats?: number
   upscale_auto_unload?: boolean
+
+  // When true, prompt is parsed for {a|b|c} / {N$$a|b|c} dynamic-prompts
+  // syntax and expanded into multiple queue items sharing a variation_group_id.
+  // The response then contains group_id + job_ids[] instead of a single job_id.
+  expand_prompt?: boolean
 }
 
 export interface Img2ImgParams extends GenerationParams {
@@ -448,9 +453,18 @@ export interface QueueFilters {
 }
 
 export interface JobSubmitResponse {
-  job_id: string
+  // Single-job submission: job_id present, group_id/job_ids absent.
+  // Expansion submission: group_id + job_ids present, top-level job_id absent.
+  // Callers should branch on whichever is set. The "first job" is
+  // job_id ?? job_ids?.[0] when a single ID is needed (e.g., for cooldown).
+  job_id?: string
   status: string
   position: number
+
+  // Set only when the request used expand_prompt: true.
+  group_id?: string
+  variation_count?: number
+  job_ids?: string[]
 }
 
 export interface ModelHashResponse {

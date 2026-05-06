@@ -16,6 +16,8 @@ import {
 } from '../api/client'
 import { useAppStore } from './app'
 import { wsService, type JobStatusChangedData } from '../services/websocket'
+import { hasTemplateSyntax } from '../utils/promptTemplate'
+import { openExpandPromptConfirm } from '../composables/useExpandPromptModal'
 
 export const useAssistantStore = defineStore('assistant', () => {
   const appStore = useAppStore()
@@ -1370,6 +1372,27 @@ export const useAssistantStore = defineStore('assistant', () => {
               break
             }
 
+            // If the assistant's prompt contains dynamic-prompt template
+            // syntax, raise the SAME confirmation modal a user would see —
+            // the LLM doesn't get to silently fan out into N queue items.
+            // The user explicitly approves (with full count + variation
+            // preview) before any jobs are created.
+            if (hasTemplateSyntax(jobParams.prompt)) {
+              const conf = await openExpandPromptConfirm({
+                prompt: jobParams.prompt,
+                batchCount: jobParams.batch_count ?? 1,
+                jobType: genType === 'img2img' ? 'img2img'
+                       : genType === 'txt2vid' ? 'txt2vid'
+                       : 'txt2img',
+                source: 'assistant',
+              })
+              if (!conf.confirmed) {
+                errors.push('Generation cancelled by user (template-expansion preview).')
+                break
+              }
+              jobParams.expand_prompt = true
+            }
+
             try {
               let response
               if (genType === 'img2img') {
@@ -1390,18 +1413,35 @@ export const useAssistantStore = defineStore('assistant', () => {
                 response = await api.txt2img(jobParams)
               }
 
+              // Resolve the "primary" job_id used for tracking. With expand_prompt
+              // the response carries job_ids[]+group_id and no top-level job_id;
+              // we use the first job in the group as the continuation anchor.
+              const primaryJobId = response.job_id
+                ?? (response.job_ids && response.job_ids[0])
+                ?? ''
+
               // If continue_on_complete is set, register this job for continuation
-              if (continueOnComplete && response.job_id) {
-                pendingContinuations.value.set(response.job_id, {
-                  jobId: response.job_id,
+              if (continueOnComplete && primaryJobId) {
+                pendingContinuations.value.set(primaryJobId, {
+                  jobId: primaryJobId,
                   context: continueOnComplete,
                   startedAt: Date.now()
                 })
-                console.log(`[AssistantStore] Registered continuation for job ${response.job_id}: "${continueOnComplete}"`)
+                console.log(`[AssistantStore] Registered continuation for job ${primaryJobId}: "${continueOnComplete}"`)
               }
 
-              appStore.showToast(`Generation job queued: ${response.job_id}`, 'success')
-              successes.push(`generate: queued ${genType} job (id: ${response.job_id})${continueOnComplete ? ' [will continue on complete]' : ''}`)
+              if (response.group_id && response.job_ids && response.job_ids.length > 1) {
+                appStore.showToast(
+                  `Queued ${response.job_ids.length} variations (group ${response.group_id.slice(0, 8)})`,
+                  'success'
+                )
+                successes.push(
+                  `generate: queued ${response.job_ids.length} ${genType} variations (group ${response.group_id.slice(0, 8)})${continueOnComplete ? ' [will continue on complete]' : ''}`
+                )
+              } else {
+                appStore.showToast(`Generation job queued: ${primaryJobId}`, 'success')
+                successes.push(`generate: queued ${genType} job (id: ${primaryJobId})${continueOnComplete ? ' [will continue on complete]' : ''}`)
+              }
             } catch (e) {
               throw new Error(`Failed to queue ${genType} job: ${e instanceof Error ? e.message : 'Unknown error'}`)
             }

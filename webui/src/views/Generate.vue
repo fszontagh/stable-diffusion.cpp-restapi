@@ -9,6 +9,8 @@ import Lightbox from '../components/Lightbox.vue'
 import LoadedModelPanel from '../components/LoadedModelPanel.vue'
 import HighlightedPrompt from '../components/HighlightedPrompt.vue'
 import LoraPanel from '../components/LoraPanel.vue'
+import { hasTemplateSyntax, expandPrompt as expandPromptUtil } from '../utils/promptTemplate'
+import { openExpandPromptConfirm } from '../composables/useExpandPromptModal'
 
 const store = useAppStore()
 
@@ -20,6 +22,11 @@ const mode = ref<'txt2img' | 'img2img' | 'img_edit' | 'txt2vid'>('txt2img')
 const submitting = ref(false)
 const cooldown = ref(false)
 let cooldownTimer: ReturnType<typeof setTimeout> | null = null
+
+// Prompt-expansion (a1111-style {a|b|c} / {N$$a|b|c} dynamic prompts).
+// Off by default — even if the prompt contains {a|b|c}, we don't quietly
+// fan out to N jobs unless the user explicitly opted in.
+const expandPromptEnabled = ref(false)
 
 // Prompt persistence keys (per-mode to keep prompts separate across tabs)
 function getPromptStorageKey(m: string) { return `generateSettings_prompt_${m}` }
@@ -143,6 +150,29 @@ const invalidLorasInNegativePrompt = computed(() => {
     }
   }
   return invalid
+})
+
+// Live preview of how many variations the current prompt expands to. Surfaced
+// next to the "Expand prompt" toggle so the user sees the impact before they
+// click Generate. count = null when there's no template syntax; error is
+// non-null when the syntax is malformed (e.g. unterminated brace).
+const promptTemplateInfo = computed<{
+  hasSyntax: boolean
+  count: number | null
+  error: string | null
+}>(() => {
+  const has = hasTemplateSyntax(prompt.value)
+  if (!has) return { hasSyntax: false, count: null, error: null }
+  try {
+    const variations = expandPromptUtil(prompt.value)
+    return { hasSyntax: true, count: variations.length, error: null }
+  } catch (e) {
+    return {
+      hasSyntax: true,
+      count: null,
+      error: e instanceof Error ? e.message : String(e)
+    }
+  }
 })
 
 // Parse LoRAs from prompt and add to list
@@ -1225,6 +1255,27 @@ async function handleSubmit() {
       baseParams.control_strength = controlStrength.value
     }
 
+    // If the user enabled expand_prompt and the prompt actually has template
+    // syntax, run the confirmation modal first. The modal also handles parse
+    // errors (malformed braces) and lets the user cancel without losing form
+    // state. When confirmed, we set baseParams.expand_prompt so the backend
+    // does the authoritative expansion + group_id assignment.
+    if (expandPromptEnabled.value && hasTemplateSyntax(finalPrompt)) {
+      const conf = await openExpandPromptConfirm({
+        prompt: finalPrompt,
+        batchCount: batchCount.value,
+        jobType: mode.value === 'txt2vid' ? 'txt2vid'
+               : mode.value === 'img2img' ? 'img2img'
+               : 'txt2img',
+        source: 'user',
+      })
+      if (!conf.confirmed) {
+        submitting.value = false
+        return
+      }
+      baseParams.expand_prompt = true
+    }
+
     let result
     if (mode.value === 'txt2img') {
       result = await api.txt2img(baseParams)
@@ -1265,8 +1316,18 @@ async function handleSubmit() {
       result = await api.txt2vid(params)
     }
 
-    store.showToast(`Job submitted: ${result.job_id}`, 'success')
-    lastSubmittedJobId.value = result.job_id
+    // Expansion submissions return group_id + job_ids[]; single submissions
+    // return job_id. Use whichever is present.
+    if (result.group_id && result.job_ids && result.job_ids.length > 0) {
+      store.showToast(
+        `Created ${result.job_ids.length} jobs in group ${result.group_id.slice(0, 8)}`,
+        'success'
+      )
+      lastSubmittedJobId.value = result.job_ids[0]
+    } else if (result.job_id) {
+      store.showToast(`Job submitted: ${result.job_id}`, 'success')
+      lastSubmittedJobId.value = result.job_id
+    }
 
     // Start cooldown to prevent double submissions
     cooldown.value = true
@@ -1346,6 +1407,26 @@ async function handleSubmit() {
               LoRAs typed as &lt;lora:name:weight&gt; are auto-detected and moved to the LoRA panel.
               <span v-if="invalidLorasInPositivePrompt.length > 0" class="lora-warning-hint">
                 &#9888; Unknown LoRAs: {{ invalidLorasInPositivePrompt.join(', ') }}
+              </span>
+            </div>
+            <!-- Wildcard / dynamic-prompt expansion toggle.
+                 Always rendered when the prompt contains template syntax so
+                 the user knows the feature exists even before opting in. -->
+            <div v-if="promptTemplateInfo.hasSyntax" class="expand-prompt-toggle">
+              <label class="form-checkbox">
+                <input v-model="expandPromptEnabled" type="checkbox" />
+                <span>Expand prompt template</span>
+              </label>
+              <span v-if="expandPromptEnabled && promptTemplateInfo.count !== null"
+                    class="expand-count-chip"
+                    :title="`Each variation runs ${batchCount}x = ${promptTemplateInfo.count * batchCount} images total`">
+                {{ promptTemplateInfo.count }} variation{{ promptTemplateInfo.count === 1 ? '' : 's' }}
+                <span v-if="batchCount > 1">&times; {{ batchCount }} batches = {{ promptTemplateInfo.count * batchCount }} images</span>
+              </span>
+              <span v-if="expandPromptEnabled && promptTemplateInfo.error"
+                    class="expand-count-chip expand-count-error"
+                    :title="promptTemplateInfo.error">
+                Syntax error
               </span>
             </div>
           </div>
@@ -1773,6 +1854,31 @@ async function handleSubmit() {
   color: var(--accent-primary);
   border-color: var(--accent-primary);
   transform: rotate(180deg);
+}
+
+/* Expand-prompt toggle that appears under the prompt textarea when the
+   prompt contains {a|b|c} / {N$$a|b|c} syntax. */
+.expand-prompt-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.expand-count-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--accent-primary);
+  background: rgba(var(--accent-rgb, 249, 115, 22), 0.1);
+  border: 1px solid rgba(var(--accent-rgb, 249, 115, 22), 0.4);
+  border-radius: 10px;
+}
+.expand-count-error {
+  color: var(--accent-error);
+  background: rgba(255, 99, 99, 0.1);
+  border-color: rgba(255, 99, 99, 0.4);
 }
 
 .generate-layout {

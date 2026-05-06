@@ -204,9 +204,62 @@ const sortedJobs = computed(() => {
     const aOrder = statusOrder[a.status] ?? 5
     const bOrder = statusOrder[b.status] ?? 5
     if (aOrder !== bOrder) return aOrder - bOrder
+    // Same status: jobs sharing a variation_group_id stick together,
+    // then within a group order by variation_index, then by created_at desc.
+    const aGroup = (a.params as { variation_group_id?: string } | undefined)?.variation_group_id ?? ''
+    const bGroup = (b.params as { variation_group_id?: string } | undefined)?.variation_group_id ?? ''
+    if (aGroup !== bGroup) {
+      // Standalone jobs vs grouped jobs: order by created_at desc as before.
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    }
+    if (aGroup) {
+      const aIdx = (a.params as { variation_index?: number } | undefined)?.variation_index ?? 0
+      const bIdx = (b.params as { variation_index?: number } | undefined)?.variation_index ?? 0
+      if (aIdx !== bIdx) return aIdx - bIdx
+    }
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   })
 })
+
+// Variation-group helpers. When a job was created via expand_prompt, its
+// params carry variation_group_id / _index / _total / variation_template.
+// We render consecutive same-group jobs under a sticky collapsible header
+// and tint their left border with an accent so the group is visually
+// obvious in the list.
+const collapsedGroups = ref<Set<string>>(new Set())
+function toggleGroup(groupId: string) {
+  if (collapsedGroups.value.has(groupId)) collapsedGroups.value.delete(groupId)
+  else collapsedGroups.value.add(groupId)
+}
+function getGroupId(j: import('../api/client').Job): string | null {
+  const p = j.params as { variation_group_id?: string } | undefined
+  return p?.variation_group_id || null
+}
+function getGroupTemplate(j: import('../api/client').Job): string {
+  const p = j.params as { variation_template?: string } | undefined
+  return p?.variation_template || ''
+}
+function getGroupTotal(j: import('../api/client').Job): number {
+  const p = j.params as { variation_total?: number } | undefined
+  return p?.variation_total || 0
+}
+// Returns true if this job is the FIRST occurrence of its group_id in the
+// sorted list (i.e., where the group header should render).
+function isGroupHead(job: import('../api/client').Job, idx: number): boolean {
+  const gid = getGroupId(job)
+  if (!gid) return false
+  if (idx === 0) return true
+  const prev = sortedJobs.value[idx - 1]
+  return getGroupId(prev) !== gid
+}
+// Returns true if the job is in a group AND its group is currently collapsed
+// AND the job is not the first member (the first remains visible to anchor
+// the header).
+function isHiddenByCollapse(job: import('../api/client').Job, idx: number): boolean {
+  const gid = getGroupId(job)
+  if (!gid || !collapsedGroups.value.has(gid)) return false
+  return !isGroupHead(job, idx)
+}
 
 function clearFilters() {
   // Set searchQuery first (doesn't trigger fetch)
@@ -964,11 +1017,31 @@ async function sendImageToUpscale(outputPath: string) {
 
     <!-- Jobs List - Pages View -->
     <TransitionGroup v-else-if="viewMode === 'pages'" name="job-list" tag="div" class="jobs-list">
-      <div
-        v-for="job in sortedJobs"
-        :key="job.job_id"
-        :class="['job-card', `job-${job.status}`]"
-      >
+      <template v-for="(job, idx) in sortedJobs" :key="job.job_id">
+        <!-- Variation-group header rendered once before the first member.
+             Click toggles collapse; tinted background ties it visually
+             to the cards underneath via the same accent left-border. -->
+        <div
+          v-if="isGroupHead(job, idx)"
+          :key="`gh-${getGroupId(job)}`"
+          class="job-group-header"
+          @click="toggleGroup(getGroupId(job)!)"
+          :title="getGroupTemplate(job)"
+        >
+          <span class="group-toggle">{{ collapsedGroups.has(getGroupId(job)!) ? '▸' : '▾' }}</span>
+          <span class="group-icon">&#128279;</span>
+          <span class="group-id">Group {{ getGroupId(job)!.slice(0, 8) }}</span>
+          <span class="group-count">{{ getGroupTotal(job) }} variations</span>
+          <span v-if="getGroupTemplate(job)" class="group-template">{{ getGroupTemplate(job) }}</span>
+        </div>
+        <div
+          v-show="!isHiddenByCollapse(job, idx)"
+          :class="[
+            'job-card',
+            `job-${job.status}`,
+            { 'in-variation-group': !!getGroupId(job) }
+          ]"
+        >
         <!-- Job Header -->
         <div class="job-header">
           <div class="job-type">
@@ -1203,6 +1276,7 @@ async function sendImageToUpscale(outputPath: string) {
           </div>
         </div>
       </div>
+      </template>
 
     </TransitionGroup>
 
@@ -2064,6 +2138,61 @@ async function sendImageToUpscale(outputPath: string) {
 .meta-duration {
   background: var(--accent-success);
   color: var(--bg-primary);
+}
+
+/* Variation-group header — clickable to collapse, sticky-ish via solid bg.
+   Same accent color as the in-group card border so the visual link is
+   immediate. */
+.job-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  margin-top: 4px;
+  background: rgba(var(--accent-rgb, 249, 115, 22), 0.08);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--border-radius-sm) var(--border-radius-sm) 0 0;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+}
+.job-group-header:hover {
+  background: rgba(var(--accent-rgb, 249, 115, 22), 0.14);
+}
+.group-toggle {
+  font-family: var(--font-mono, monospace);
+  font-size: 14px;
+  color: var(--accent-primary);
+  width: 12px;
+  display: inline-block;
+}
+.group-icon { font-size: 14px; }
+.group-id {
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+.group-count {
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 1px 8px;
+  background: rgba(var(--accent-rgb, 249, 115, 22), 0.15);
+  border-radius: 10px;
+}
+.group-template {
+  flex: 1 1 0;
+  color: var(--text-secondary);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+}
+
+/* Cards that belong to a variation group get a tinted left border so
+   they're visually tied to their group header. */
+.in-variation-group {
+  border-left: 3px solid var(--accent-primary);
 }
 
 /* Job ID in footer */
