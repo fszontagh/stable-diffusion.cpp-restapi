@@ -54,11 +54,21 @@ const filteredModels = computed(() => {
     ...(store.models.taesd || [])
   ]
 
-  return allModels.filter(model => {
+  const matched = allModels.filter(model => {
     const matchesType = !selectedType.value || model.type === selectedType.value
     const matchesSearch = !searchQuery.value ||
       model.name.toLowerCase().includes(searchQuery.value.toLowerCase())
     return matchesType && matchesSearch
+  })
+
+  // Loaded models float to the top of the (already-filtered) list. This is
+  // a stable sort: among loaded-vs-loaded and unloaded-vs-unloaded the
+  // original directory ordering is preserved, so users see their currently-
+  // loaded checkpoint/components first regardless of which filter they applied.
+  return matched.slice().sort((a, b) => {
+    const aLoaded = a.is_loaded ? 0 : 1
+    const bLoaded = b.is_loaded ? 0 : 1
+    return aLoaded - bLoaded
   })
 })
 
@@ -551,6 +561,11 @@ onMounted(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   padding: 16px;
   transition: all var(--transition-fast);
+  /* Flex column so the action row can pin to the card bottom regardless
+     of how many lines model-name occupies. Grid rows already stretch
+     same-height; this lines up the buttons across the row. */
+  display: flex;
+  flex-direction: column;
 }
 
 .model-card:hover {
@@ -607,6 +622,8 @@ onMounted(() => {
 .model-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto; /* pin to card bottom — works because parent is flex column */
 }
 
 .accordion {
