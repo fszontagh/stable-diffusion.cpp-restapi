@@ -72,6 +72,17 @@ private:
     void handle_upscale(const httplib::Request& req, httplib::Response& res);
     void handle_convert(const httplib::Request& req, httplib::Response& res);
 
+    // Shared submission path used by txt2img/img2img/txt2vid. Honors
+    // `expand_prompt: true` in the request body — when set, the prompt is
+    // parsed for {a|b|c} / {N$$a|b|c} syntax, expanded into all variations,
+    // and one queue item per variation is created with a shared
+    // variation_group_id. When the prompt has no template syntax (or the flag
+    // is false/absent), creates a single job exactly as before.
+    // generation_type is GenerationType (kept as int in the header so we
+    // don't need to forward-declare the enum from queue_manager.hpp).
+    void submit_generation_jobs(const httplib::Request& req, httplib::Response& res,
+                                int generation_type);  // GenerationType cast
+
     // Upscaler endpoints
     void handle_load_upscaler(const httplib::Request& req, httplib::Response& res);
     void handle_unload_upscaler(const httplib::Request& req, httplib::Response& res);
@@ -88,6 +99,9 @@ private:
     void handle_purge_job(const httplib::Request& req, httplib::Response& res);
     void handle_clear_recycle_bin(const httplib::Request& req, httplib::Response& res);
     void handle_get_recycle_bin_settings(const httplib::Request& req, httplib::Response& res);
+    // Output folder grouping (variation_group_id -> nested dirs).
+    void handle_get_output_settings(const httplib::Request& req, httplib::Response& res);
+    void handle_set_output_settings(const httplib::Request& req, httplib::Response& res);
 
     // Job preview endpoint (serves in-memory preview JPEG)
     void handle_get_job_preview(const httplib::Request& req, httplib::Response& res);
