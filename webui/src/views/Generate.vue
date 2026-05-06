@@ -24,9 +24,25 @@ const cooldown = ref(false)
 let cooldownTimer: ReturnType<typeof setTimeout> | null = null
 
 // Prompt-expansion (a1111-style {a|b|c} / {N$$a|b|c} dynamic prompts).
-// Off by default — even if the prompt contains {a|b|c}, we don't quietly
-// fan out to N jobs unless the user explicitly opted in.
-const expandPromptEnabled = ref(false)
+// On by default — when the prompt contains template syntax we want users
+// to get all variations. Users can flip the toggle off if they want the
+// braces treated as literal text instead, and the choice is remembered
+// across page navigation (a session-scoped UX preference, not a per-mode
+// generation parameter, so it lives in its own localStorage key).
+const EXPAND_PROMPT_STORAGE_KEY = 'generateSettings_expandPrompt'
+const expandPromptEnabled = ref(
+  // Read once at module load. localStorage may be unavailable in some
+  // private-browsing modes — fall back to the default in that case.
+  (() => {
+    try {
+      const v = localStorage.getItem(EXPAND_PROMPT_STORAGE_KEY)
+      if (v === null) return true   // never set -> use the default
+      return v === '1'
+    } catch {
+      return true
+    }
+  })()
+)
 
 // Prompt persistence keys (per-mode to keep prompts separate across tabs)
 function getPromptStorageKey(m: string) { return `generateSettings_prompt_${m}` }
@@ -266,6 +282,12 @@ const debouncedSaveNegativePrompt = useDebounceFn(() => {
 // Watch prompts for localStorage persistence
 watch(prompt, debouncedSavePrompt)
 watch(negativePrompt, debouncedSaveNegativePrompt)
+
+// Persist the expand-prompt toggle so user-driven off-state survives
+// navigation. Not debounced — it's a single boolean, write is cheap.
+watch(expandPromptEnabled, (v) => {
+  try { localStorage.setItem(EXPAND_PROMPT_STORAGE_KEY, v ? '1' : '0') } catch {}
+})
 
 // Debounced image persistence to sessionStorage (separate from prompts due to size)
 const debouncedSaveInitImage = useDebounceFn(() => {
