@@ -257,12 +257,23 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPolling()
+  stopElapsedTick()
   if (searchDebounceTimer.value) {
     clearTimeout(searchDebounceTimer.value)
   }
   // Clear queue filters when leaving the page so polling uses no filters
   store.setQueueFilters(undefined)
 })
+
+// Tick once per second only while at least one job is processing — idle queue
+// has zero timer overhead, and the watcher fires on the next ws update when a
+// job moves into 'processing'.
+const hasProcessingJob = computed(() =>
+  Boolean(store.queue?.items?.some(j => j.status === 'processing'))
+)
+watch(hasProcessingJob, (hasIt) => {
+  if (hasIt) startElapsedTick(); else stopElapsedTick()
+}, { immediate: true })
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
@@ -285,16 +296,34 @@ function formatRelativeTime(dateStr: string): string {
   return date.toLocaleDateString()
 }
 
-function formatDuration(startStr: string, endStr: string): string {
-  const start = new Date(startStr)
-  const end = new Date(endStr)
-  const diffMs = end.getTime() - start.getTime()
-  const diffSec = Math.floor(diffMs / 1000)
-
+function formatElapsed(startStr: string, endMs: number): string {
+  const startMs = new Date(startStr).getTime()
+  const diffSec = Math.max(0, Math.floor((endMs - startMs) / 1000))
   if (diffSec < 60) return `${diffSec}s`
   const min = Math.floor(diffSec / 60)
   const sec = diffSec % 60
   return `${min}m ${sec}s`
+}
+
+function formatDuration(startStr: string, endStr: string): string {
+  return formatElapsed(startStr, new Date(endStr).getTime())
+}
+
+// Live-ticking "now" used by processing jobs to show elapsed time before
+// completed_at is set. Only ticks while at least one processing job exists in
+// the queue, so an idle queue costs no timers.
+const nowMs = ref(Date.now())
+let elapsedTickInterval: ReturnType<typeof setInterval> | null = null
+function startElapsedTick() {
+  if (elapsedTickInterval) return
+  nowMs.value = Date.now()
+  elapsedTickInterval = setInterval(() => { nowMs.value = Date.now() }, 1000)
+}
+function stopElapsedTick() {
+  if (elapsedTickInterval) {
+    clearInterval(elapsedTickInterval)
+    elapsedTickInterval = null
+  }
 }
 
 function isRefImagesJob(job: Job): boolean {
@@ -1008,6 +1037,9 @@ async function sendImageToUpscale(outputPath: string) {
               <span v-if="job.started_at && job.completed_at" class="meta-item meta-duration" title="Duration">
                 <span class="meta-icon">&#9201;</span>{{ formatDuration(job.started_at, job.completed_at) }}
               </span>
+              <span v-else-if="job.started_at && job.status === 'processing'" class="meta-item meta-duration meta-elapsed-live" title="Elapsed">
+                <span class="meta-icon">&#9201;</span>{{ formatElapsed(job.started_at, nowMs) }}
+              </span>
             </div>
 
             <!-- Model info section (skip for convert jobs — they show input/output paths instead) -->
@@ -1242,6 +1274,9 @@ async function sendImageToUpscale(outputPath: string) {
                   </span>
                   <span v-if="job.started_at && job.completed_at" class="meta-item meta-duration" title="Duration">
                     <span class="meta-icon">&#9201;</span>{{ formatDuration(job.started_at, job.completed_at) }}
+                  </span>
+                  <span v-else-if="job.started_at && job.status === 'processing'" class="meta-item meta-duration meta-elapsed-live" title="Elapsed">
+                    <span class="meta-icon">&#9201;</span>{{ formatElapsed(job.started_at, nowMs) }}
                   </span>
                 </div>
                 <!-- Model info section (skip for convert jobs — they show input/output paths instead) -->
