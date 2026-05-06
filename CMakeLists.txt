@@ -186,22 +186,24 @@ else()
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/fszontagh/stable-diffusion.cpp.git
-            GIT_TAG        feature/vram-offloading
+            GIT_TAG        feature/vram-offloading-v2
             GIT_SHALLOW    TRUE
             GIT_SUBMODULES ${SDCPP_SUBMODULES}
             GIT_SUBMODULES_RECURSE TRUE
         )
     else()
-        # Pinned to the upstream commit that the fork's feature/vram-offloading
+        # Pinned to the upstream commit that the fork's feature/vram-offloading-v2
         # branch most recently merged from, so the public API surface (samplers,
         # ctx_params fields, gen_params fields) matches between OFFLOAD=ON/OFF.
+        # 90e87bc is "feat: add max-vram based segmented param offload (#1476)"
+        # — the upstream commit the v2 branch tracks at HEAD.
         # GIT_SHALLOW must be FALSE because GIT_TAG is a commit SHA — shallow
         # clone with a SHA fails (`fatal: reference is not a tree`). Full clone
         # adds ~25 MB to the build context but is reliable.
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        a81677f59c92d90343aebca51dfed7decf0a0cb0
+            GIT_TAG        90e87bc846f17059771efb8aaa31e9ef0cab6f78
             GIT_SHALLOW    FALSE
             GIT_SUBMODULES ${SDCPP_SUBMODULES}
             GIT_SUBMODULES_RECURSE TRUE
