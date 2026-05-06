@@ -43,18 +43,16 @@
         </div>
       </div>
 
-      <!-- Always-visible preview of first 3 — quick sanity check. -->
-      <div class="preview-block">
-        <div class="preview-block-header">First {{ Math.min(3, state.variations.length) }} variations:</div>
+      <!-- Variation listing. For 1–3 variations show them inline (collapsing
+           a tiny list adds friction, no value). For 4+, render only the
+           collapsible — closed by default so a 200-item list doesn't
+           dominate the modal. -->
+      <div v-if="state.variations.length <= 3" class="preview-block">
         <ol class="preview-list">
-          <li v-for="(v, i) in firstFew" :key="i" :title="v">{{ v }}</li>
+          <li v-for="(v, i) in state.variations" :key="i" :title="v">{{ v }}</li>
         </ol>
       </div>
-
-      <!-- Collapsible full list — only meaningful when there are more than 3
-           variations. Closed by default since a 200-item list would dominate
-           the modal. -->
-      <details v-if="state.variations.length > 3" class="full-list" @toggle="onToggle">
+      <details v-else class="full-list" @toggle="onToggle">
         <summary>
           Show all {{ state.variations.length }} variations
         </summary>
@@ -91,8 +89,6 @@ const title = computed(() => {
   const n = state.value.variations.length
   return `Create ${n} variation${n > 1 ? 's' : ''} from template?`
 })
-
-const firstFew = computed(() => state.value.variations.slice(0, 3))
 
 // Toggling the full list is the user's choice; nothing to do here, but
 // the empty handler keeps the <details> a controlled component for any
@@ -156,12 +152,6 @@ function onToggle() {}
   color: var(--bg-primary);
 }
 
-.preview-block-header {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
 .preview-list {
   margin: 0;
   padding-left: 22px;
