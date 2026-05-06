@@ -2092,6 +2092,10 @@ bool SDWrapper::convert_model(
         std::cout << "[SDWrapper]   Tensor rules: " << tensor_type_rules << std::endl;
     }
 
+    // Drain any stale sd.cpp errors from prior unrelated work so we don't
+    // misattribute them to this conversion if it succeeds-then-warns.
+    clear_sd_errors();
+
     // Call sd.cpp convert function
     // Note: tensor_type_rules must be empty string, not nullptr - sd.cpp passes it to a
     // function expecting std::string& which cannot be constructed from nullptr
@@ -2106,11 +2110,25 @@ bool SDWrapper::convert_model(
 
     if (success) {
         std::cout << "[SDWrapper] Conversion completed successfully" << std::endl;
-    } else {
-        std::cerr << "[SDWrapper] Conversion failed" << std::endl;
+        return true;
     }
 
-    return success;
+    // sd.cpp returned false. The actual reason was emitted via the SD log
+    // callback (SD_LOG_ERROR captured into SDErrorCapture). Surface it as
+    // an exception so QueueManager can persist it as the job's error message
+    // — otherwise the user sees the unhelpful "Model conversion failed"
+    // generic string with no clue what went wrong.
+    std::string detail = get_sd_error();
+    std::string msg = "Model conversion failed";
+    if (!detail.empty()) {
+        msg += ": " + detail;
+    }
+    // Also include filenames so a user reading the queue card error has
+    // enough context to tell two failed conversions apart.
+    msg += " (input=" + fs::path(input_path).filename().string()
+        +  ", output_type=" + output_type + ")";
+    std::cerr << "[SDWrapper] " << msg << std::endl;
+    throw std::runtime_error(msg);
 }
 
 } // namespace sdcpp

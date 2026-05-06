@@ -1439,18 +1439,16 @@ std::vector<std::string> QueueManager::process_convert_unlocked(
     std::cout << "[QueueManager] Converting model: " << input_path << " -> " << output_path
               << " (type: " << output_type_str << ")" << std::endl;
 
-    // Convert the model using SDWrapper
-    bool success = SDWrapper::convert_model(
+    // Convert the model using SDWrapper. On failure, convert_model throws a
+    // std::runtime_error whose message includes the underlying sd.cpp error
+    // captured from SD_LOG_ERROR (CUDA OOM, weights mismatch, IO failure, ...).
+    SDWrapper::convert_model(
         input_path,
         vae_path,
         output_path,
         output_type_str,
         tensor_type_rules
     );
-
-    if (!success) {
-        throw std::runtime_error("Model conversion failed");
-    }
 
     std::cout << "[QueueManager] Conversion complete: " << output_path << std::endl;
 
