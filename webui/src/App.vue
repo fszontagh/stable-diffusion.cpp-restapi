@@ -14,6 +14,7 @@ import ApiOfflineOverlay from './components/ApiOfflineOverlay.vue'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import ShortcutsHelpModal from './components/ShortcutsHelpModal.vue'
 import MobileTabBar from './components/MobileTabBar.vue'
+import ExpandPromptConfirmModal from './components/ExpandPromptConfirmModal.vue'
 
 const store = useAppStore()
 const shortcutsModalRef = ref<InstanceType<typeof ShortcutsHelpModal>>()
@@ -98,6 +99,7 @@ onUnmounted(() => {
     <AssistantQuestion />
     <ShortcutsHelpModal ref="shortcutsModalRef" />
     <MobileTabBar />
+    <ExpandPromptConfirmModal />
   </ErrorBoundary>
 </template>
 
