@@ -437,6 +437,23 @@ function getConvertType(job: Job): string {
   return (job.params?.output_type as string) || ''
 }
 
+// Extract file extension from a path (returns ".safetensors", ".gguf", etc.,
+// or empty string if no extension or unrecognized).
+function getFileExt(path: string): string {
+  if (!path) return ''
+  const filename = path.split('/').pop() || path
+  const m = filename.match(/\.(safetensors|ckpt|pt|bin|gguf|pth)$/i)
+  return m ? '.' + m[1].toLowerCase() : ''
+}
+
+function getConvertInputExt(job: Job): string {
+  return getFileExt(getConvertInput(job))
+}
+
+function getConvertOutputExt(job: Job): string {
+  return getFileExt(getConvertOutput(job))
+}
+
 // Scroll to top of page
 function scrollToTop() {
   window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -944,11 +961,13 @@ async function sendImageToUpscale(outputPath: string) {
               <div class="convert-row">
                 <span class="convert-label">Input:</span>
                 <span class="convert-value" :title="getConvertInput(job)">{{ formatComponentName(getConvertInput(job)) }}</span>
+                <span v-if="getConvertInputExt(job)" class="convert-ext-badge">{{ getConvertInputExt(job) }}</span>
               </div>
               <div class="convert-arrow">&#8595;</div>
               <div class="convert-row">
                 <span class="convert-label">Output:</span>
                 <span class="convert-value" :title="getConvertOutput(job)">{{ formatComponentName(getConvertOutput(job)) }}</span>
+                <span v-if="getConvertOutputExt(job)" class="convert-ext-badge">{{ getConvertOutputExt(job) }}</span>
               </div>
               <div v-if="getConvertType(job)" class="convert-type">
                 <span class="convert-type-badge">{{ getConvertType(job).toUpperCase() }}</span>
@@ -991,8 +1010,8 @@ async function sendImageToUpscale(outputPath: string) {
               </span>
             </div>
 
-            <!-- Model info section -->
-            <div v-if="job.model_settings" class="job-model-section">
+            <!-- Model info section (skip for convert jobs — they show input/output paths instead) -->
+            <div v-if="job.model_settings && !isConvertJob(job)" class="job-model-section">
               <!-- Main model badge -->
               <div v-if="job.model_settings.model_name" class="job-model-info">
                 <span class="model-badge" :class="{ 'model-different': isModelDifferent(job) }">
@@ -1189,11 +1208,13 @@ async function sendImageToUpscale(outputPath: string) {
                   <div class="convert-row">
                     <span class="convert-label">Input:</span>
                     <span class="convert-value" :title="getConvertInput(job)">{{ formatComponentName(getConvertInput(job)) }}</span>
+                    <span v-if="getConvertInputExt(job)" class="convert-ext-badge">{{ getConvertInputExt(job) }}</span>
                   </div>
                   <div class="convert-arrow">&#8595;</div>
                   <div class="convert-row">
                     <span class="convert-label">Output:</span>
                     <span class="convert-value" :title="getConvertOutput(job)">{{ formatComponentName(getConvertOutput(job)) }}</span>
+                    <span v-if="getConvertOutputExt(job)" class="convert-ext-badge">{{ getConvertOutputExt(job) }}</span>
                   </div>
                   <div v-if="getConvertType(job)" class="convert-type">
                     <span class="convert-type-badge">{{ getConvertType(job).toUpperCase() }}</span>
@@ -1223,8 +1244,8 @@ async function sendImageToUpscale(outputPath: string) {
                     <span class="meta-icon">&#9201;</span>{{ formatDuration(job.started_at, job.completed_at) }}
                   </span>
                 </div>
-                <!-- Model info section -->
-                <div v-if="job.model_settings" class="job-model-section">
+                <!-- Model info section (skip for convert jobs — they show input/output paths instead) -->
+                <div v-if="job.model_settings && !isConvertJob(job)" class="job-model-section">
                   <!-- Main model badge -->
                   <div v-if="job.model_settings.model_name" class="job-model-info">
                     <span class="model-badge" :class="{ 'model-different': isModelDifferent(job) }">
@@ -2674,5 +2695,17 @@ async function sendImageToUpscale(outputPath: string) {
   font-weight: 600;
   border-radius: var(--border-radius-sm);
   letter-spacing: 0.5px;
+}
+
+.convert-ext-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
 }
 </style>
