@@ -6,6 +6,8 @@
 #include "memory_utils.hpp"
 #include "auth_manager.hpp"
 #include "version.hpp"
+#include "utils.hpp"
+#include "prompt_template.hpp"
 
 #ifdef SDCPP_ASSISTANT_ENABLED
 #include "assistant_client.hpp"
@@ -456,6 +458,14 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         server, "GET", "/settings/recycle-bin",
         "Get recycle bin settings", "Recycle Bin", 200,
         [this](auto& req, auto& res) { handle_get_recycle_bin_settings(req, res); });
+
+    // ── Output folder grouping ───────────────────────────────────────
+    server.Get("/settings/output", [this](const auto& req, auto& res) {
+        handle_get_output_settings(req, res);
+    });
+    server.Put("/settings/output", [this](const auto& req, auto& res) {
+        handle_set_output_settings(req, res);
+    });
 
     // ── Job Preview ──────────────────────────────────────────────────
     api.addEndpointRaw(
@@ -1066,63 +1076,104 @@ void RequestHandlers::handle_get_model_hash(const httplib::Request& req, httplib
 }
 
 void RequestHandlers::handle_txt2img(const httplib::Request& req, httplib::Response& res) {
-    try {
-        if (!model_manager_.is_model_loaded()) {
-            send_error(res, "No model loaded", 400);
-            return;
-        }
-        
-        auto body = parse_json_body(req);
-        std::string job_id = queue_manager_.add_job(GenerationType::Text2Image, body);
-        
-        auto status = queue_manager_.get_status();
-        
-        send_json(res, {
-            {"job_id", job_id},
-            {"status", "pending"},
-            {"position", status["pending_count"]}
-        }, 202);
-    } catch (const std::exception& e) {
-        send_error(res, e.what(), 400);
-    }
+    submit_generation_jobs(req, res, static_cast<int>(GenerationType::Text2Image));
 }
 
 void RequestHandlers::handle_img2img(const httplib::Request& req, httplib::Response& res) {
-    try {
-        if (!model_manager_.is_model_loaded()) {
-            send_error(res, "No model loaded", 400);
-            return;
-        }
-        
-        auto body = parse_json_body(req);
-        std::string job_id = queue_manager_.add_job(GenerationType::Image2Image, body);
-        
-        auto status = queue_manager_.get_status();
-        
-        send_json(res, {
-            {"job_id", job_id},
-            {"status", "pending"},
-            {"position", status["pending_count"]}
-        }, 202);
-    } catch (const std::exception& e) {
-        send_error(res, e.what(), 400);
-    }
+    submit_generation_jobs(req, res, static_cast<int>(GenerationType::Image2Image));
 }
 
 void RequestHandlers::handle_txt2vid(const httplib::Request& req, httplib::Response& res) {
+    submit_generation_jobs(req, res, static_cast<int>(GenerationType::Text2Video));
+}
+
+namespace {
+// Maximum prompts a single expand_prompt request may produce. Exists to
+// stop a runaway template ("{a|b|c|...} {d|e|...}") from filling the queue
+// with thousands of jobs by accident. The frontend's count preview catches
+// these earlier; this is the server-side backstop.
+constexpr size_t MAX_PROMPT_VARIATIONS = 200;
+} // anonymous namespace
+
+void RequestHandlers::submit_generation_jobs(const httplib::Request& req,
+                                              httplib::Response& res,
+                                              int generation_type_int) {
     try {
         if (!model_manager_.is_model_loaded()) {
             send_error(res, "No model loaded", 400);
             return;
         }
-        
+
         auto body = parse_json_body(req);
-        std::string job_id = queue_manager_.add_job(GenerationType::Text2Video, body);
-        
+        const auto type = static_cast<GenerationType>(generation_type_int);
+
+        // Decide whether this is a template-expansion submission.
+        bool expand = body.value("expand_prompt", false);
+        std::string prompt;
+        if (body.contains("prompt") && body["prompt"].is_string()) {
+            prompt = body["prompt"].get<std::string>();
+        }
+
+        // Strip the helper flag from the body — it's not a generation param,
+        // and we don't want it persisted on every individual job.
+        body.erase("expand_prompt");
+
+        // Fast path: no expansion requested, or no template syntax present.
+        // Behaves identically to the previous direct add_job() flow.
+        if (!expand || prompt.find('{') == std::string::npos) {
+            std::string job_id = queue_manager_.add_job(type, body);
+            auto status = queue_manager_.get_status();
+            send_json(res, {
+                {"job_id", job_id},
+                {"status", "pending"},
+                {"position", status["pending_count"]}
+            }, 202);
+            return;
+        }
+
+        // Expansion path. The parser throws std::runtime_error on malformed
+        // input (unterminated brace, pick-N > options, etc.) — bubble that up
+        // as a 400 with the parser's message.
+        std::vector<std::string> variations;
+        try {
+            variations = expand_prompt_template(prompt);
+        } catch (const std::exception& e) {
+            send_error(res, std::string("Prompt template error: ") + e.what(), 400);
+            return;
+        }
+        if (variations.empty()) {
+            send_error(res, "Prompt template expanded to 0 variations", 400);
+            return;
+        }
+        if (variations.size() > MAX_PROMPT_VARIATIONS) {
+            send_error(res,
+                "Prompt template would create " + std::to_string(variations.size())
+                + " jobs, exceeds limit of " + std::to_string(MAX_PROMPT_VARIATIONS)
+                + ". Reduce the number of choices in the template.", 400);
+            return;
+        }
+
+        // Generate the shared group_id and create N jobs. Each job carries
+        // the original templated prompt under `variation_template` so the UI
+        // can display it as the group header.
+        std::string group_id = utils::generate_uuid();
+        std::vector<std::string> job_ids;
+        job_ids.reserve(variations.size());
+        for (size_t i = 0; i < variations.size(); ++i) {
+            nlohmann::json job_params = body;
+            job_params["prompt"] = variations[i];
+            job_params["variation_group_id"] = group_id;
+            job_params["variation_index"] = static_cast<int>(i);
+            job_params["variation_total"] = static_cast<int>(variations.size());
+            job_params["variation_template"] = prompt;
+            job_ids.push_back(queue_manager_.add_job(type, job_params));
+        }
+
         auto status = queue_manager_.get_status();
-        
         send_json(res, {
-            {"job_id", job_id},
+            {"group_id", group_id},
+            {"variation_count", variations.size()},
+            {"job_ids", job_ids},
             {"status", "pending"},
             {"position", status["pending_count"]}
         }, 202);
@@ -1623,6 +1674,26 @@ void RequestHandlers::handle_clear_recycle_bin(const httplib::Request& /*req*/, 
         {"purged", purged},
         {"message", "Recycle bin cleared"}
     });
+}
+
+void RequestHandlers::handle_get_output_settings(const httplib::Request& /*req*/, httplib::Response& res) {
+    send_json(res, {
+        {"output_group_folders", queue_manager_.get_group_folders_enabled()}
+    }, 200);
+}
+
+void RequestHandlers::handle_set_output_settings(const httplib::Request& req, httplib::Response& res) {
+    try {
+        auto body = parse_json_body(req);
+        if (body.contains("output_group_folders") && body["output_group_folders"].is_boolean()) {
+            queue_manager_.set_group_folders_enabled(body["output_group_folders"].get<bool>());
+        }
+        send_json(res, {
+            {"output_group_folders", queue_manager_.get_group_folders_enabled()}
+        }, 200);
+    } catch (const std::exception& e) {
+        send_error(res, e.what(), 400);
+    }
 }
 
 void RequestHandlers::handle_get_recycle_bin_settings(const httplib::Request& /*req*/, httplib::Response& res) {

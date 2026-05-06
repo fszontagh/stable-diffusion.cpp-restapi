@@ -115,6 +115,12 @@ struct Config {
     AssistantConfig assistant;
     RecycleBinConfig recycle_bin;
     AuthConfig auth;
+
+    // When true, jobs created via expand_prompt write outputs into
+    // <output>/<group_id>/<job_id>/ instead of flat <output>/<job_id>/. Lets
+    // users locate all variations of a single template-expansion together.
+    // Toggleable from the WebUI Settings page.
+    bool output_group_folders = true;
     
     /**
      * Load configuration from JSON file

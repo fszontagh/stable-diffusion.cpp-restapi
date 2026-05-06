@@ -401,6 +401,29 @@ private:
     std::string state_file_;
     RecycleBinConfig recycle_bin_config_;
 
+    // When true, jobs that carry params.variation_group_id write their
+    // outputs to <output_dir>/<group_id>/<job_id>/ instead of the flat
+    // <output_dir>/<job_id>/. Toggleable from the WebUI Settings page so
+    // users can opt out without recompiling. Default true — grouping is
+    // useful precisely when expand_prompt creates many similar outputs.
+    std::atomic<bool> group_folders_enabled_{true};
+
+public:
+    void set_group_folders_enabled(bool enabled) {
+        group_folders_enabled_.store(enabled, std::memory_order_relaxed);
+    }
+    bool get_group_folders_enabled() const {
+        return group_folders_enabled_.load(std::memory_order_relaxed);
+    }
+private:
+    /**
+     * Compose the per-job subpath under output_dir_. Returns "<group_id>/<job_id>"
+     * for grouped jobs (when grouping is enabled) or just "<job_id>" otherwise.
+     * Used by both process_*_unlocked (passes to SDWrapper as the dir component)
+     * and save_job_config (writes config.json into the same dir).
+     */
+    std::string resolve_job_subpath(const std::string& job_id) const;
+
     // Queue storage
     mutable std::mutex queue_mutex_;
     std::map<std::string, QueueItem> jobs_;

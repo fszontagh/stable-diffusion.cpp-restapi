@@ -1262,7 +1262,7 @@ std::vector<std::string> QueueManager::process_txt2img_unlocked(
         ctx, params,
         model_manager_.get_lora_dir(),
         output_dir_,
-        job_id
+        resolve_job_subpath(job_id)
     );
 
     // Save config.json with all parameters (including defaults)
@@ -1295,7 +1295,7 @@ std::vector<std::string> QueueManager::process_img2img_unlocked(
         ctx, params,
         model_manager_.get_lora_dir(),
         output_dir_,
-        job_id
+        resolve_job_subpath(job_id)
     );
 
     // Save config.json with all parameters (including defaults)
@@ -1328,7 +1328,7 @@ std::vector<std::string> QueueManager::process_txt2vid_unlocked(
         ctx, params,
         model_manager_.get_lora_dir(),
         output_dir_,
-        job_id
+        resolve_job_subpath(job_id)
     );
 
     // Save config.json with all parameters (including defaults)
@@ -1459,11 +1459,29 @@ std::vector<std::string> QueueManager::process_convert_unlocked(
     return { output_path };
 }
 
+std::string QueueManager::resolve_job_subpath(const std::string& job_id) const {
+    if (!group_folders_enabled_.load(std::memory_order_relaxed)) {
+        return job_id;
+    }
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    auto it = jobs_.find(job_id);
+    if (it == jobs_.end()) return job_id;
+    const auto& params = it->second.params;
+    if (params.contains("variation_group_id") && params["variation_group_id"].is_string()) {
+        const auto& g = params["variation_group_id"].get_ref<const std::string&>();
+        if (!g.empty()) {
+            return g + "/" + job_id;
+        }
+    }
+    return job_id;
+}
+
 void QueueManager::save_job_config(const std::string& job_id, GenerationType type, const nlohmann::json& params) {
     namespace fs = std::filesystem;
 
-    // Build the job output directory path
-    fs::path job_dir = fs::path(output_dir_) / job_id;
+    // Build the job output directory path. Honors variation-group folders so
+    // config.json lands next to the actual output files.
+    fs::path job_dir = fs::path(output_dir_) / resolve_job_subpath(job_id);
 
     // Only save if the directory exists (job produced output)
     if (!fs::exists(job_dir)) {

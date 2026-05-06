@@ -311,6 +311,7 @@ int main(int argc, char* argv[]) {
         std::cout << "  Recycle bin: " << (config.recycle_bin.enabled ? "enabled" : "disabled")
                   << " (retention: " << config.recycle_bin.retention_minutes << " minutes)" << std::endl;
         sdcpp::QueueManager queue_manager(model_manager, config.paths.output, state_file, config.recycle_bin);
+        queue_manager.set_group_folders_enabled(config.output_group_folders);
 
         // Initialize preview settings from config
         if (config.preview.enabled) {
