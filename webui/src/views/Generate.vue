@@ -1117,6 +1117,12 @@ function setPreset(preset: { w: number; h: number }) {
   height.value = preset.h
 }
 
+function swapResolution() {
+  const w = width.value
+  width.value = height.value
+  height.value = w
+}
+
 function randomizeSeed() {
   seed.value = Math.floor(Math.random() * 2147483647)
 }
@@ -1444,11 +1450,18 @@ async function handleSubmit() {
             </div>
           </div>
 
-          <div class="form-row">
+          <div class="form-row form-row-resolution">
             <div class="form-group" data-setting="width" :class="{ 'setting-highlighted': highlightedSetting === 'width' }">
               <label class="form-label">Width</label>
               <input v-model.number="width" type="number" class="form-input" step="8" min="64" max="2048" />
             </div>
+            <button
+              type="button"
+              class="resolution-swap"
+              @click="swapResolution"
+              title="Swap width and height"
+              aria-label="Swap width and height"
+            >&#8646;</button>
             <div class="form-group" data-setting="height" :class="{ 'setting-highlighted': highlightedSetting === 'height' }">
               <label class="form-label">Height</label>
               <input v-model.number="height" type="number" class="form-input" step="8" min="64" max="2048" />
@@ -1732,6 +1745,34 @@ async function handleSubmit() {
 .generate {
   max-width: 1400px;
   margin: 0 auto;
+}
+
+/* Resolution row with swap button between W/H inputs */
+.form-row-resolution {
+  align-items: end;
+}
+
+.resolution-swap {
+  flex: 0 0 auto;
+  align-self: end;
+  margin-bottom: 1px; /* align with input baseline */
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.resolution-swap:hover {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  transform: rotate(180deg);
 }
 
 .generate-layout {
