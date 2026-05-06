@@ -18,6 +18,7 @@
   --accent-success: #22c55e;
   --accent-warning: #eab308;
   --accent-error: #ef4444;
+  --accent-error-rgb: 239, 68, 68;  /* RGB of --accent-error for rgba(...) glows */
   --accent-purple: #a855f7;
 
   --border-color: #374151;
