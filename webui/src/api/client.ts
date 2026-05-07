@@ -27,6 +27,8 @@ export interface LoadOptions {
   tae_preview_only?: boolean
   free_params_immediately?: boolean
   flow_shift?: number
+  /** GiB budget for graph-cut segmented param offload. 0 = disabled. */
+  max_vram?: number
   weight_type?: string
   tensor_type_rules?: string
   rng_type?: string
@@ -175,6 +177,7 @@ export interface LoadModelParams {
     tae_preview_only?: boolean
     free_params_immediately?: boolean
     flow_shift?: number
+    max_vram?: number
     weight_type?: string
     tensor_type_rules?: string
     rng_type?: string
@@ -347,6 +350,7 @@ export interface JobModelSettings {
     tae_preview_only?: boolean
     free_params_immediately?: boolean
     flow_shift?: number
+    max_vram?: number
     weight_type?: string
     tensor_type_rules?: string
     rng_type?: string

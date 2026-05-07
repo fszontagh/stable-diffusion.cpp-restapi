@@ -44,6 +44,7 @@ struct LoadOptions {
             .optional_field("tae_preview_only", schema::FieldType::Boolean, "Use TAESD for preview only", false)
             .optional_field("free_params_immediately", schema::FieldType::Boolean, "Free params right after use", false)
             .optional_field("flow_shift", schema::FieldType::Number, "Flow matching shift parameter")
+            .optional_field("max_vram", schema::FieldType::Number, "GiB budget for graph-cut segmented param offload (0 = disabled)", 0)
             .enum_field("weight_type", "Weight precision type", WEIGHT_TYPE_VALUES)
             .optional_field("tensor_type_rules", schema::FieldType::String, "Custom tensor type rules string")
             .enum_field("rng_type", "Random number generator type", RNG_TYPE_VALUES, "cuda")
