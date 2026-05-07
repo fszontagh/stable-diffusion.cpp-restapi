@@ -5,18 +5,24 @@ import App from './App.vue'
 import './style.css'
 import { initSentry } from './services/sentry'
 
+// Dashboard is the post-login landing route, so eager-load it — async
+// loading there means the user sees a flash of nothing on first paint.
 import Dashboard from './views/Dashboard.vue'
-import Models from './views/Models.vue'
-import Generate from './views/Generate.vue'
-import Upscale from './views/Upscale.vue'
-import Queue from './views/Queue.vue'
-import RecycleBin from './views/RecycleBin.vue'
-import Chat from './views/Chat.vue'
-import Downloads from './views/Downloads.vue'
-import Settings from './views/Settings.vue'
 
-// Lazy loaded views
-const ModelLoad = () => import('./views/ModelLoad.vue')
+// Every other view is lazy-loaded. Vite emits a separate chunk per
+// dynamic import, so the initial bundle stays small and a route's code
+// downloads only when the user navigates to it. Generate.vue + Queue.vue
+// are the heaviest (~30+ KB each pre-gzip), and most users never visit
+// Settings/Downloads/RecycleBin in a session at all.
+const Models      = () => import('./views/Models.vue')
+const ModelLoad   = () => import('./views/ModelLoad.vue')
+const Generate    = () => import('./views/Generate.vue')
+const Upscale     = () => import('./views/Upscale.vue')
+const Queue       = () => import('./views/Queue.vue')
+const RecycleBin  = () => import('./views/RecycleBin.vue')
+const Chat        = () => import('./views/Chat.vue')
+const Downloads   = () => import('./views/Downloads.vue')
+const Settings    = () => import('./views/Settings.vue')
 
 // Auth is enforced server-side via the sdcpp_auth cookie. The server
 // redirects /ui/* to /login (a server-rendered HTML page) for any
