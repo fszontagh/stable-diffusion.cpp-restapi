@@ -22,9 +22,40 @@ export default defineConfig({
     minify: 'terser',
     rollupOptions: {
       output: {
-        manualChunks: undefined
-      }
-    }
+        // Split heavy npm dependencies out of the main entry bundle so
+        // the initial download stays small and dependencies cache across
+        // releases (their hash only changes when the dep changes, not on
+        // every app rebuild).
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            // Vue runtime + reactivity + router + state — these always
+            // load on first paint, so keep them together in one vendor
+            // chunk. Splitting them further yields more requests for no
+            // payload savings.
+            if (id.includes('/vue/') ||
+                id.includes('/@vue/') ||
+                id.includes('/vue-router/') ||
+                id.includes('/pinia/')) {
+              return 'vendor-vue'
+            }
+            // Markdown rendering (used by docs viewer + assistant
+            // streaming) — heavyweight and only used on a couple of
+            // routes, so it gets its own chunk that loads on demand.
+            if (id.includes('/marked/') ||
+                id.includes('/highlight') ||
+                id.includes('/dompurify/')) {
+              return 'vendor-markdown'
+            }
+            // Everything else from node_modules in a generic vendor bin.
+            return 'vendor'
+          }
+        },
+      },
+    },
+    // Bumped from the 500 KB default — initial bundle stays around the
+    // 150 KB-gzip range after the route lazy-load + vendor split. Anything
+    // creeping above 700 KB pre-gzip is worth a fresh look at the chunking.
+    chunkSizeWarningLimit: 700,
   },
   server: {
     proxy: {
