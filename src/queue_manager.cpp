@@ -1056,12 +1056,29 @@ std::vector<std::string> QueueManager::process_job_unlocked(
     const nlohmann::json& params,
     const std::string& job_id
 ) {
+    // Coerce a JSON value to int with a default. Tolerates string-encoded
+    // numbers ("9" -> 9) — naive HTTP clients sometimes send them, and the
+    // request handler's normalize_generation_body() coerces at the API
+    // boundary now, but persisted-old jobs in queue_state.json may still
+    // carry strings. nlohmann's params.value("steps", 20) throws
+    // type_error.302 on strings, which used to fail the whole job.
+    auto int_or = [](const nlohmann::json& j, const char* key, int dflt) -> int {
+        if (!j.contains(key) || j[key].is_null()) return dflt;
+        const auto& v = j[key];
+        if (v.is_number_integer()) return v.get<int>();
+        if (v.is_number_float())   return static_cast<int>(v.get<double>());
+        if (v.is_string()) {
+            try { return std::stoi(v.get<std::string>()); } catch (...) { return dflt; }
+        }
+        return dflt;
+    };
+
     // Get expected diffusion steps from params (for phase detection in progress callback)
     int expected_steps = 0;
     if (type == GenerationType::Text2Image || type == GenerationType::Image2Image) {
-        expected_steps = params.value("steps", 20);
+        expected_steps = int_or(params, "steps", 20);
     } else if (type == GenerationType::Text2Video) {
-        expected_steps = params.value("steps", 30);
+        expected_steps = int_or(params, "steps", 30);
     }
 
     // Set up progress callback with expected steps for phase detection

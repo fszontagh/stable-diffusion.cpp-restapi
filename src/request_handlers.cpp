@@ -8,6 +8,7 @@
 #include "version.hpp"
 #include "utils.hpp"
 #include "prompt_template.hpp"
+#include "sd_wrapper.hpp"
 
 #ifdef SDCPP_ASSISTANT_ENABLED
 #include "assistant_client.hpp"
@@ -1132,6 +1133,61 @@ namespace {
 // with thousands of jobs by accident. The frontend's count preview catches
 // these earlier; this is the server-side backstop.
 constexpr size_t MAX_PROMPT_VARIATIONS = 200;
+
+// Normalize a generation request body so the queued job has clean JSON
+// types. Naive HTTP clients (shell scripts, form-encoded wrappers) often
+// send numbers and booleans as strings — `"steps": "9"`, `"easycache":
+// "false"`. The typed param structs' from_json methods already coerce
+// permissively (parse_int/parse_float/parse_bool helpers), but the worker
+// then writes the raw body straight back to the queue's stored params,
+// where strings linger and confuse downstream consumers (tooltips, MCP
+// readers, restart-from-job flows). Doing the typed roundtrip here at
+// the API boundary means:
+//   - Bad input (a non-numeric "steps": "abc") fails fast as 400 instead
+//     of crashing the worker after queue insertion.
+//   - The stored params are clean numerics, so /queue/<id>, MCP, and
+//     reload-from-job all see the same type-correct values.
+//   - The worker still uses tolerant parsing as defense-in-depth (e.g.
+//     for jobs persisted before this normalization existed).
+//
+// Throws std::runtime_error with the parse helper's friendly message when
+// a field can't be coerced. Caller turns that into 400.
+nlohmann::json normalize_generation_body(GenerationType type,
+                                         const nlohmann::json& body) {
+    nlohmann::json normalized;
+    switch (type) {
+        case GenerationType::Text2Image:
+            normalized = Txt2ImgParams::from_json(body).to_json();
+            break;
+        case GenerationType::Image2Image:
+            normalized = Img2ImgParams::from_json(body).to_json();
+            break;
+        case GenerationType::Text2Video:
+            normalized = Txt2VidParams::from_json(body).to_json();
+            break;
+        default:
+            // Other types (upscale, convert, ...) don't go through this
+            // path — they have their own handlers. Pass through untouched.
+            return body;
+    }
+    // Preserve fields the typed struct doesn't enumerate:
+    //   - Image payloads (init_image_base64, mask_image_base64,
+    //     control_image_base64, ref_images[], pm_id_images[])
+    //   - Variation metadata stamped by the expand-prompt path
+    //     (variation_group_id, variation_index, variation_total,
+    //     variation_template) — these are added by the caller AFTER
+    //     normalization, but pre-existing keys on a re-submission also
+    //     survive.
+    //   - Anything we haven't explicitly modeled yet.
+    if (body.is_object()) {
+        for (auto it = body.begin(); it != body.end(); ++it) {
+            if (!normalized.contains(it.key())) {
+                normalized[it.key()] = it.value();
+            }
+        }
+    }
+    return normalized;
+}
 } // anonymous namespace
 
 void RequestHandlers::submit_generation_jobs(const httplib::Request& req,
@@ -1146,8 +1202,26 @@ void RequestHandlers::submit_generation_jobs(const httplib::Request& req,
         auto body = parse_json_body(req);
         const auto type = static_cast<GenerationType>(generation_type_int);
 
-        // Decide whether this is a template-expansion submission.
+        // Decide whether this is a template-expansion submission. Read
+        // BEFORE normalization since expand_prompt isn't on the typed
+        // struct (typed roundtrip would drop it); normalize() preserves
+        // unknown keys but we want to strip this one before storing.
         bool expand = body.value("expand_prompt", false);
+
+        // Type-coerce + validate the request body at the API boundary so
+        // bad input (e.g. "steps": "abc") fails fast as a 400 rather than
+        // crashing the worker. See normalize_generation_body() comment for
+        // rationale. parse_int/parse_float/parse_bool happily accept
+        // string-encoded numbers/booleans ("9", "1.0", "false") so naive
+        // HTTP clients keep working — they just get clean numeric JSON
+        // stored on the queue item rather than the strings they sent.
+        try {
+            body = normalize_generation_body(type, body);
+        } catch (const std::exception& e) {
+            send_error(res, std::string("Invalid request body: ") + e.what(), 400);
+            return;
+        }
+
         std::string prompt;
         if (body.contains("prompt") && body["prompt"].is_string()) {
             prompt = body["prompt"].get<std::string>();
