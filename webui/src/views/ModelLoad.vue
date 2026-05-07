@@ -597,6 +597,24 @@ watch(selectedArchitecture, () => {
                 <span>Offload to CPU</span>
               </label>
             </div>
+            <!-- Max VRAM (graph-cut segmented param offload).
+                 Lives on sd_ctx_params_t in upstream sd.cpp, so it's
+                 always available — independent of the experimental
+                 offload build option. 0 = disabled. -->
+            <div class="form-group" :title="getOptionDesc('max_vram')?.description || 'GiB budget for graph-cut segmented param offload. sd.cpp partitions the diffusion graph so peak weight residency stays under this number. 0 = disabled. Leave at 0 unless you actually OOM.'">
+              <label class="form-label">Max VRAM (GiB) — graph-cut offload</label>
+              <input
+                v-model.number="loadParams.options!.max_vram"
+                type="number"
+                class="form-input"
+                min="0"
+                step="0.5"
+                placeholder="0 = disabled"
+              />
+              <small class="form-hint">
+                Cap diffusion peak weight residency. 0 = off. Combine with Offload Mode for finer control.
+              </small>
+            </div>
           </div>
 
           <!-- VAE Settings -->

@@ -101,6 +101,12 @@ struct ModelLoadParams {
     bool tae_preview_only = false;              // Only use TAESD for preview, not final
     bool free_params_immediately = false;       // Keep model loaded in GPU (false = keep for server use)
     float flow_shift = INFINITY;                // INFINITY = auto-detect based on model
+    float max_vram = 0.0f;                      // GiB budget for graph-cut segmented param offload (0 = disabled).
+                                                 // Lives on sd_ctx_params_t (not the offload struct) and is
+                                                 // available on both OFFLOAD=ON and OFFLOAD=OFF builds. When
+                                                 // set, sd.cpp partitions the diffusion graph so peak weight
+                                                 // residency stays under this budget — independent of
+                                                 // offload_mode, can be combined with it.
     std::string weight_type;                    // Weight type (f32, f16, q8_0, q4_0, etc.)
     std::string tensor_type_rules;              // Per-tensor weight rules (e.g., "^vae\.=f16")
 

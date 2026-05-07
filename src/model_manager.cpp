@@ -221,6 +221,8 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.free_params_immediately = opts.value("free_params_immediately", false);
         // INFINITY means auto-detect based on model type
         params.flow_shift = opts.contains("flow_shift") ? opts.value("flow_shift", INFINITY) : INFINITY;
+        // 0.0 = disabled (sd.cpp default).
+        params.max_vram = opts.value("max_vram", 0.0f);
         params.weight_type = opts.value("weight_type", "");
         params.tensor_type_rules = opts.value("tensor_type_rules", "");
 
@@ -792,6 +794,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.diffusion_conv_direct = params.diffusion_conv_direct;
     ctx_params.tae_preview_only = params.tae_preview_only;
     ctx_params.free_params_immediately = params.free_params_immediately;
+    ctx_params.max_vram = params.max_vram;  // 0 = disabled (graph-cut segmented offload)
     // Note: flow_shift lives on sd_sample_params_t (per-generation), not
     // sd_ctx_params_t. The fork's old feature/vram-offloading branch
     // duplicated it on the ctx params for early-bind reasons; v2 reverted
@@ -968,6 +971,10 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     if (!std::isinf(params.flow_shift)) {
         loaded_options_["flow_shift"] = params.flow_shift;
     }
+    // Always emit max_vram so 0 (= disabled) round-trips correctly to
+    // the WebUI Edit form — otherwise a user who enabled it then unset
+    // it back to 0 wouldn't see the flag clear in the restored state.
+    loaded_options_["max_vram"] = params.max_vram;
     if (!params.weight_type.empty()) {
         loaded_options_["weight_type"] = params.weight_type;
     }
