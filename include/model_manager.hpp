@@ -233,6 +233,17 @@ public:
      * letting the second request queue on context_mutex_ for minutes.
      */
     bool is_loading() const { return model_loading_.load(); }
+
+    /**
+     * Last load failure message, or empty string if the most recent load
+     * succeeded. Cleared at the start of every load. Used by the
+     * synchronous wait flow (POST /models/load?wait=true) to surface a
+     * meaningful 5xx body when the awaited load fails. Lock-free read of
+     * a string member is technically a data race; the value is only
+     * sampled AFTER is_loading() returns false (the loading thread has
+     * finished writing by then), so this is safe in practice.
+     */
+    std::string get_last_load_error() const { return last_load_error_; }
     
     /**
      * Get name of currently loaded model

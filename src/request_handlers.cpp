@@ -1021,20 +1021,40 @@ void RequestHandlers::handle_refresh_models(const httplib::Request& /*req*/, htt
 }
 
 void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Response& res) {
-    // Async load: validate the request synchronously, then dispatch the
-    // heavy work (sd.cpp model load — minutes for big GGUFs) to a detached
-    // thread so the request thread is freed immediately. cpp-httplib's
-    // worker pool is then available for other concurrent traffic
-    // (WebDAV PROPFIND / GET, /health polls, WebSocket pings, etc.) which
-    // would otherwise feel "frozen" while a load was in progress.
+    // Default flow is async: validate the request synchronously, then
+    // dispatch the heavy work (sd.cpp model load — minutes for big GGUFs)
+    // to a detached thread so the cpp-httplib worker pool is free for
+    // concurrent traffic (WebDAV, /health, WS pings) that would otherwise
+    // feel "frozen" while a load was in progress. Completion is reported
+    // via WebSocket events: model_loading_progress (during), model_loaded
+    // (success), model_load_failed (failure).
     //
-    // Completion is reported via WebSocket events the WebUI already
-    // subscribes to: model_loading_progress (during), model_loaded (on
-    // success), model_load_failed (on error). The WebUI's optimistic
-    // local state plus those events drive the UI to the right state.
+    // Optional ?wait=true holds the HTTP response until the load
+    // completes (or the optional ?timeout=<sec> elapses). Useful for
+    // scripts that want a single blocking call instead of polling
+    // /health. Tradeoff: the request thread stays parked, so a few
+    // concurrent wait=true calls can saturate the worker pool. Default
+    // timeout 600 sec covers a 10-min load on slow disks.
     try {
         auto body = parse_json_body(req);
         auto params = ModelLoadParams::from_json(body);
+
+        // Parse the wait/timeout query params up front. Tolerant of
+        // common true-ish strings ("1", "true", "yes").
+        bool wait = false;
+        if (req.has_param("wait")) {
+            std::string v = req.get_param_value("wait");
+            for (auto& c : v) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            wait = (v == "1" || v == "true" || v == "yes" || v == "on");
+        }
+        int timeout_sec = 600;  // 10 min default
+        if (req.has_param("timeout")) {
+            try {
+                timeout_sec = std::stoi(req.get_param_value("timeout"));
+                if (timeout_sec <= 0) timeout_sec = 600;
+                if (timeout_sec > 3600) timeout_sec = 3600;  // hard cap 1 hour
+            } catch (...) { /* fall through to default */ }
+        }
 
         // Reject if a load is already in progress — saves the user from
         // queuing on a context_mutex_ that will hold for minutes.
@@ -1045,8 +1065,10 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
             return;
         }
 
-        std::cout << "[RequestHandlers] Loading model (async): "
-                  << params.model_name << std::endl;
+        std::cout << "[RequestHandlers] Loading model (" << (wait ? "wait" : "async") << "): "
+                  << params.model_name
+                  << (wait ? " timeout=" + std::to_string(timeout_sec) + "s" : "")
+                  << std::endl;
 
         // Detach: the load runs to completion regardless of whether the
         // HTTP request stays open. ModelManager::load_model handles its
@@ -1064,19 +1086,90 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
             }
         }).detach();
 
-        // 202 Accepted — request received, processing not yet complete.
-        res.status = 202;
-        nlohmann::json response = {
-            {"success",     true},
-            {"status",      "loading"},
-            {"message",     "Model load started. Watch /health.model_loading "
-                            "or the model_loading_progress / model_loaded WS "
-                            "events for completion."},
-            {"model_name",  params.model_name},
-            {"model_type",  model_type_to_string(params.model_type)}
-        };
-        res.set_header("Content-Type", "application/json");
-        res.set_content(response.dump(), "application/json");
+        // ── Async branch (default) ────────────────────────────────────
+        if (!wait) {
+            res.status = 202;
+            nlohmann::json response = {
+                {"success",     true},
+                {"status",      "loading"},
+                {"message",     "Model load started. Watch /health.model_loading "
+                                "or the model_loading_progress / model_loaded WS "
+                                "events for completion. Pass ?wait=true to block "
+                                "until the load finishes."},
+                {"model_name",  params.model_name},
+                {"model_type",  model_type_to_string(params.model_type)}
+            };
+            res.set_header("Content-Type", "application/json");
+            res.set_content(response.dump(), "application/json");
+            return;
+        }
+
+        // ── Synchronous wait branch ───────────────────────────────────
+        // Poll is_loading() at 200ms intervals until the detached thread
+        // finishes or our timeout expires. is_loading() goes true inside
+        // load_model() before any heavy work, so we never miss the
+        // transition. After it returns false, sample model_loaded /
+        // last_load_error to decide success vs failure.
+        const auto deadline = std::chrono::steady_clock::now() +
+                              std::chrono::seconds(timeout_sec);
+        // Brief settle so the worker thread has a chance to flip
+        // is_loading() to true before we start polling — otherwise a
+        // very fast validation failure could race the poll and we'd
+        // observe is_loading()==false before it ever went true.
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        while (model_manager_.is_loading()) {
+            if (std::chrono::steady_clock::now() >= deadline) {
+                // Caller's timeout exceeded. The load thread keeps
+                // running in the background; the WS events still fire.
+                res.status = 504;
+                nlohmann::json response = {
+                    {"success",     false},
+                    {"status",      "loading"},
+                    {"error",       "Model load did not finish within "
+                                    + std::to_string(timeout_sec)
+                                    + " seconds. Loading continues in the "
+                                    "background — poll /health or watch "
+                                    "the model_loaded WebSocket event."},
+                    {"model_name",  params.model_name},
+                    {"timeout_sec", timeout_sec}
+                };
+                res.set_header("Content-Type", "application/json");
+                res.set_content(response.dump(), "application/json");
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+
+        // Loading flag cleared. Decide success vs failure from
+        // model_loaded + last_load_error (set by load_model on failure
+        // before is_loading flips back to false).
+        if (model_manager_.is_model_loaded()
+            && model_manager_.get_loaded_model_name() == params.model_name) {
+            res.status = 200;
+            nlohmann::json response = {
+                {"success",       true},
+                {"status",        "loaded"},
+                {"model_name",    model_manager_.get_loaded_model_name()},
+                {"model_type",    model_type_to_string(params.model_type)},
+                {"architecture",  model_manager_.get_loaded_model_architecture()}
+            };
+            res.set_header("Content-Type", "application/json");
+            res.set_content(response.dump(), "application/json");
+        } else {
+            // Failure path. Echo the captured error from ModelManager
+            // (CUDA OOM, weights mismatch, file not found, etc.).
+            std::string err = model_manager_.get_last_load_error();
+            if (err.empty()) err = "Model load failed (no error message captured)";
+            res.status = 500;
+            nlohmann::json response = {
+                {"success",    false},
+                {"status",     "failed"},
+                {"error",      err},
+                {"model_name", params.model_name}
+            };
+            res.set_header("Content-Type", "application/json");
+            res.set_content(response.dump(), "application/json");
+        }
     } catch (const nlohmann::json::exception& e) {
         std::cerr << "[RequestHandlers] JSON parse error: " << e.what() << std::endl;
         send_error(res, std::string("Invalid JSON in request body: ") + e.what(), 400);

@@ -545,6 +545,21 @@ After a successful upload the server triggers an internal model rescan, so the n
 
 Load a model into memory. Only one model can be loaded at a time.
 
+**Async vs synchronous behavior:**
+
+By **default the call returns immediately** with `202 Accepted` and the actual sd.cpp load runs in a detached background thread (model loads can take minutes for large GGUFs). Completion is signalled via WebSocket events `model_loading_progress`, `model_loaded`, `model_load_failed`, or by polling `GET /health` for `model_loading: false && model_loaded: true`.
+
+Pass `?wait=true` to **block the response** until the load completes (or fails, or the timeout elapses). Useful for shell scripts that want a single blocking call.
+
+**Query parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `wait` | bool | `false` | If true, hold the HTTP response until the load finishes. Tolerates `1`, `true`, `yes`, `on`. |
+| `timeout` | int | `600` | Seconds to wait before giving up (only honored when `wait=true`). Capped at `3600` (1 hour). On timeout the response is `504` and the load *continues* in the background. |
+
+Concurrency: only one load can be in flight at a time. A second `POST /models/load` (with or without `wait`) returns `409 Conflict` until the first finishes.
+
 **Request Body:**
 
 ```json
@@ -645,23 +660,56 @@ Load a model into memory. Only one model can be loaded at a time.
 | `streaming_keep_layers_behind` | integer | 0 | Layers to keep after execution (for skip connections) |
 | `streaming_min_free_vram_mb` | integer | 0 | Minimum VRAM to keep free during streaming |
 
-**Success Response (200):**
+**Success Response (202 Accepted) — async (default, no `?wait`):**
+
+The load was accepted and dispatched to a background thread. Watch `/health` or the WebSocket events for completion.
 
 ```json
 {
     "success": true,
-    "message": "Model loaded successfully",
+    "status": "loading",
+    "message": "Model load started. Watch /health.model_loading or the model_loading_progress / model_loaded WS events for completion. Pass ?wait=true to block until the load finishes.",
+    "model_name": "SD1x/realisticStockPhoto_v30SD15.safetensors",
+    "model_type": "checkpoint"
+}
+```
+
+**Success Response (200) — synchronous (`?wait=true`, load completed before timeout):**
+
+```json
+{
+    "success": true,
+    "status": "loaded",
     "model_name": "SD1x/realisticStockPhoto_v30SD15.safetensors",
     "model_type": "checkpoint",
-    "loaded_components": {
-        "vae": "vae-ft-mse-840000-ema-pruned.safetensors",
-        "clip_l": "clip_l.safetensors",
-        "clip_g": "clip_g.safetensors",
-        "t5xxl": null,
-        "controlnet": null,
-        "llm": null,
-        "llm_vision": null
-    }
+    "architecture": "SD1"
+}
+```
+
+**Failure Response (500) — synchronous (`?wait=true`, load failed within timeout):**
+
+The captured error from sd.cpp (CUDA OOM, weights mismatch, file not found, …) is echoed in `error`.
+
+```json
+{
+    "success": false,
+    "status": "failed",
+    "error": "CUDA out of memory: tried to allocate 6.0 GiB on device 0",
+    "model_name": "..."
+}
+```
+
+**Timeout Response (504) — synchronous (`?wait=true`, load still in progress):**
+
+The load *continues* in the background — the timeout only abandons the wait. Subsequent `/health` polls or WS events will report final state.
+
+```json
+{
+    "success": false,
+    "status": "loading",
+    "error": "Model load did not finish within 600 seconds. Loading continues in the background — poll /health or watch the model_loaded WebSocket event.",
+    "model_name": "...",
+    "timeout_sec": 600
 }
 ```
 
@@ -671,6 +719,23 @@ Load a model into memory. Only one model can be loaded at a time.
 {
     "error": "model_name is required"
 }
+```
+
+**Conflict Response (409) — another load is already running:**
+
+```json
+{
+    "error": "Another model is already loading. Wait for it to finish or call /models/unload first."
+}
+```
+
+**Example (blocking shell script using `?wait=true`):**
+
+```bash
+curl -s -X POST 'http://localhost:8080/models/load?wait=true&timeout=900' \
+  -H 'Content-Type: application/json' \
+  -d '{"model_name":"SD1x/example.safetensors","model_type":"checkpoint"}' \
+  | jq -e '.success' >/dev/null && echo "loaded" || echo "load failed"
 ```
 
 ---
