@@ -646,14 +646,29 @@ do_install() {
         cp -r "${DOCS_SOURCE}/"* "${DOCS_DEST}/"
     fi
 
-    # Copy data files (model_architectures.json, etc.)
+    # Copy data files (model_architectures.json + option-description JSONs).
+    # The architecture file goes under /etc/sdcpp-restapi/ because users may
+    # edit it (presets are user-tunable). The option-description JSONs go
+    # under ${INSTALL_DIR}/data/ where the binary searches for them via
+    # exe_dir/../data/<filename> — they're considered library data, not
+    # user-editable config.
     DATA_SOURCE="${SOURCE_DIR}/data"
     if [[ -d "${DATA_SOURCE}" ]]; then
         print_info "Installing data files..."
-        # Copy model_architectures.json to config directory
         if [[ -f "${DATA_SOURCE}/model_architectures.json" ]]; then
             cp "${DATA_SOURCE}/model_architectures.json" "${CONFIG_DIR}/"
         fi
+        # Option-description files served by /options/descriptions and
+        # /options/generation. WebUI tooltips break silently if these are
+        # missing (returns empty options), so log when we copy.
+        local DATA_DEST="${INSTALL_DIR}/data"
+        mkdir -p "${DATA_DEST}"
+        for f in load_options.json generation_options.json; do
+            if [[ -f "${DATA_SOURCE}/${f}" ]]; then
+                cp "${DATA_SOURCE}/${f}" "${DATA_DEST}/"
+                print_info "  Installed ${f} -> ${DATA_DEST}/${f}"
+            fi
+        done
     fi
 
     # Create/update config file
@@ -870,7 +885,7 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=${OUTPUT_DIR} ${CONFIG_DIR}
-ReadOnlyPaths=${MODELS_DIR} ${INSTALL_DIR}/webui ${INSTALL_DIR}/docs
+ReadOnlyPaths=${MODELS_DIR} ${INSTALL_DIR}/webui ${INSTALL_DIR}/docs ${INSTALL_DIR}/data
 
 # Resource limits — set via install.sh --memory-max / --memory-high /
 # --memory-swap-max. Empty by default (no cap), preserving prior behavior.

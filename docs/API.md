@@ -612,6 +612,8 @@ Concurrency: only one load can be in flight at a time. A second `POST /models/lo
 
 **Load Options (`options` object):**
 
+> **Per-field rationale + recommendations**: the table below is a one-line summary. The full per-field documentation — what each option actually does inside sd.cpp, when to enable it, default rationale — lives in machine-readable form at **`GET /options/descriptions`** (sourced from `data/load_options.json`). The WebUI's ModelLoad form fetches this on mount and surfaces every option's description as a hover tooltip, and an LLM agent can fetch it directly to reason about which option to set.
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `n_threads` | integer | -1 (auto) | Number of CPU threads |
@@ -879,6 +881,8 @@ Generate images from text prompt.
 ```
 
 **Parameters:**
+
+> **Per-field rationale + recommendations**: the table below is a one-line summary. Full per-field documentation for every generation parameter (across `/txt2img`, `/img2img`, `/txt2vid`, `/upscale`) is served at **`GET /options/generation`** (sourced from `data/generation_options.json`). The WebUI fetches it on mount and surfaces each field's description as a hover tooltip; an LLM agent can fetch it directly to pick the right values for a given architecture.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|

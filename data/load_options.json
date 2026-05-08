@@ -1,199 +1,367 @@
 {
+  "_meta": {
+    "description": "Per-field documentation for POST /models/load `options` object. Sourced from sd.cpp (include/stable-diffusion.h + .cpp consumers); keep these in sync with the C++ ModelLoadParams struct.",
+    "fields": ["label", "description", "type", "default", "values", "recommended"]
+  },
   "options": {
     "n_threads": {
       "label": "CPU Threads",
-      "description": "Number of CPU threads for model operations. Set to -1 for automatic detection based on your system.",
+      "description": "Number of CPU threads for model operations (loading, mmap fault-in, conditioner forward passes when keep_clip_on_cpu is set). Set to -1 for automatic detection (uses std::thread::hardware_concurrency()).",
       "type": "number",
       "default": -1,
-      "recommended": "Leave at -1 (auto) unless you want to limit CPU usage"
+      "recommended": "Leave at -1 (auto). Lower it only if you're sharing the box with other CPU-heavy workloads."
     },
     "keep_clip_on_cpu": {
       "label": "Keep CLIP on CPU",
-      "description": "Keep the CLIP text encoder on CPU instead of GPU. Saves GPU memory but slower text encoding.",
+      "description": "Keep the CLIP / T5 / LLM text encoder on CPU instead of GPU. Saves substantial VRAM (T5-XXL alone is ~9 GiB fp16) at the cost of slightly slower text-encoding (one pass per generation, runs once before the diffusion loop).",
       "type": "boolean",
-      "default": false,
-      "recommended": "Enable for SD3/Flux models on GPUs with less than 16GB VRAM"
+      "default": true,
+      "recommended": "Enable for SD3 / Flux / Z-Image / Qwen-Image on GPUs with less than 16 GiB VRAM."
     },
     "keep_vae_on_cpu": {
       "label": "Keep VAE on CPU",
-      "description": "Keep the VAE (image encoder/decoder) on CPU. Significantly slower decode but saves substantial VRAM.",
+      "description": "Keep the VAE on CPU. The VAE is idle during the entire sampler loop and only needed at the very end (decode), so the impact is one slow decode step per image.",
       "type": "boolean",
       "default": false,
-      "recommended": "Only enable if running out of VRAM during decode"
+      "recommended": "Enable only if you're VRAM-bound during VAE decode. With layer_streaming + max_vram, sd.cpp parks the VAE on CPU automatically."
     },
     "keep_controlnet_on_cpu": {
       "label": "Keep ControlNet on CPU",
-      "description": "Keep ControlNet weights on CPU. Slower ControlNet processing but frees GPU memory.",
+      "description": "Keep ControlNet weights on CPU. ControlNet runs every diffusion step, so this slows generation roughly proportional to ControlNet's size — use only if ControlNet is what tips you over the VRAM limit.",
       "type": "boolean",
       "default": false,
-      "recommended": "Enable when using ControlNet with large models"
+      "recommended": "Enable when running ControlNet alongside large diffusion models on smaller GPUs."
     },
     "flash_attn": {
-      "label": "Flash Attention",
-      "description": "Enable Flash Attention for faster and more memory-efficient attention computation. Requires compatible GPU.",
+      "label": "Flash Attention (CLIP / T5)",
+      "description": "Enable Flash Attention for the conditioner (CLIP / T5 / LLM). Faster and lower-VRAM attention. CUDA-only.",
+      "type": "boolean",
+      "default": true,
+      "recommended": "Keep on. Disable only if you suspect numerical issues in the conditioner."
+    },
+    "diffusion_flash_attn": {
+      "label": "Flash Attention (Diffusion)",
+      "description": "Enable Flash Attention specifically for the diffusion model (UNet / DiT / Flux / MMDiT). sd.cpp keeps this independent from `flash_attn` because CUDA support and numerical stability used to differ between the two.",
       "type": "boolean",
       "default": false,
-      "recommended": "Enable for SDXL, Flux, SD3, Z-Image and newer architectures"
+      "recommended": "Try on for SDXL / Flux / SD3 / Z-Image. Bench against off — usually faster, occasionally produces different outputs at the per-pixel level."
     },
     "offload_to_cpu": {
-      "label": "Offload to CPU",
-      "description": "Offload unused model weights to CPU RAM during inference. Enables running models larger than VRAM.",
+      "label": "Offload Params to CPU",
+      "description": "Keep model parameters in CPU RAM and stream them to GPU on demand (sd.cpp's static `offload_params_to_cpu`). Different from the dynamic `offload_mode` below — this is set once at model-load and stays for the model's lifetime.",
       "type": "boolean",
       "default": false,
-      "recommended": "Enable for models that don't fit entirely in VRAM"
+      "recommended": "Enable when the model file is larger than your VRAM but fits in RAM. Significantly slower than VRAM-resident inference."
     },
     "enable_mmap": {
       "label": "Memory-mapped Loading",
-      "description": "Use memory-mapped files for loading model weights. Faster initial loading and lower RAM usage.",
+      "description": "mmap() the model file instead of read()-ing it into anonymous memory. Much faster initial load (no full file read) and the kernel can evict pages under memory pressure.",
       "type": "boolean",
       "default": true,
-      "recommended": "Keep enabled unless you experience loading issues"
+      "recommended": "Keep on. Disable only on filesystems that don't handle large mmaps well (some network mounts)."
     },
     "vae_decode_only": {
       "label": "VAE Decode Only",
-      "description": "Load VAE in decode-only mode, skipping encoder weights. Saves memory when not using image-to-image.",
+      "description": "Skip loading the VAE encoder weights — only the decoder is loaded. Saves ~50% of VAE memory but img2img and inpainting break (no encode path). Image-edit via `ref_images` still works because that doesn't go through the VAE encoder.",
       "type": "boolean",
       "default": true,
-      "recommended": "Enable unless you need img2img or inpainting features"
+      "recommended": "Keep on for txt2img-only workflows. Disable for img2img / inpainting."
     },
     "vae_tiling": {
       "label": "VAE Tiling",
-      "description": "Process VAE operations in tiles instead of whole image. Reduces VRAM usage for large images.",
+      "description": "Process the VAE in spatial tiles instead of as one large tensor. Reduces peak VAE-decode VRAM dramatically (the encoder/decoder are the most memory-hungry parts). Mild quality cost from tile boundaries.",
       "type": "boolean",
       "default": false,
-      "recommended": "Enable for high-resolution generation (2K+) or if VAE runs out of memory"
+      "recommended": "Enable for high-resolution generation (≥2048 px) or whenever VAE decode OOMs."
+    },
+    "vae_tile_size_x": {
+      "label": "VAE Tile Width",
+      "description": "Width of each VAE tile in pixels. 0 = sd.cpp picks a default based on architecture (typically 512–768).",
+      "type": "number",
+      "default": 0,
+      "recommended": "Leave at 0 (auto). Tune only if you see visible tile seams — try 768 or 1024."
+    },
+    "vae_tile_size_y": {
+      "label": "VAE Tile Height",
+      "description": "Height of each VAE tile in pixels. 0 = auto.",
+      "type": "number",
+      "default": 0,
+      "recommended": "Leave at 0. Same logic as `vae_tile_size_x`."
+    },
+    "vae_tile_overlap": {
+      "label": "VAE Tile Overlap",
+      "description": "Fraction of overlap between adjacent VAE tiles, used to blend seams (0.0–1.0). Higher = fewer seam artifacts, more compute.",
+      "type": "number",
+      "default": 0.5,
+      "recommended": "0.5 is a safe default. Drop to 0.25 for speed if seams aren't visible; raise to 0.75 if they are."
     },
     "vae_conv_direct": {
       "label": "VAE Direct Convolution",
-      "description": "Use direct convolution in VAE instead of FFT-based. May be faster on some hardware.",
+      "description": "Use ggml_conv2d_direct (im2col + matmul) in the VAE instead of the FFT-based path. Faster on some GPUs (notably consumer-grade RTX), slower on others.",
       "type": "boolean",
       "default": false,
-      "recommended": "Enable for Z-Image architecture. Test on your hardware for others."
+      "recommended": "Z-Image: enable. Other architectures: bench it; effect varies by GPU and image size."
     },
     "diffusion_conv_direct": {
       "label": "Diffusion Direct Convolution",
-      "description": "Use direct convolution in diffusion model instead of FFT-based. May improve performance.",
+      "description": "Same as `vae_conv_direct` but for the diffusion model. Affects every sampler step.",
       "type": "boolean",
       "default": false,
-      "recommended": "Experimental - test on your specific hardware"
+      "recommended": "Bench against off on your hardware. Effect is small but consistent — pick the faster one and stick with it."
+    },
+    "tae_preview_only": {
+      "label": "TAESD Preview Only",
+      "description": "Use TAESD (Tiny AutoEncoder) only for live preview frames during sampling — the final image still goes through the full VAE. TAESD weights are ~10 MiB so the cost is trivial.",
+      "type": "boolean",
+      "default": false,
+      "recommended": "Enable when you're loading a TAESD model just for previews and want full-quality finals."
+    },
+    "free_params_immediately": {
+      "label": "Free Params Immediately",
+      "description": "Free model weights from GPU memory immediately after generation completes. Useful for one-shot CLIs but cripples a server (every generation pays the full reload cost).",
+      "type": "boolean",
+      "default": false,
+      "recommended": "Keep off for server use. Was the right default for sd.cpp's CLI; it's wrong for restapi."
     },
     "weight_type": {
-      "label": "Runtime Weight Type",
-      "description": "Override the precision used for model weights at runtime. Lower precision uses less VRAM but may affect quality.",
+      "label": "Weight Type",
+      "description": "Override the precision used for model weights at runtime. Lower precision uses less VRAM but may affect quality. Empty string = use the model's native precision (read from the safetensors / GGUF header).",
       "type": "select",
       "default": "",
       "values": {
-        "": "Auto (use model's native precision)",
-        "f32": "32-bit float (highest quality, most VRAM)",
-        "f16": "16-bit float (good balance)",
-        "bf16": "Brain float 16 (good for newer GPUs)",
-        "q8_0": "8-bit quantized (smaller, good quality)",
-        "q5_0": "5-bit quantized (smaller, slight quality loss)",
-        "q4_0": "4-bit quantized (smallest, noticeable quality loss)"
+        "": "Auto (use the file's native precision)",
+        "f32": "32-bit float — highest quality, most VRAM",
+        "f16": "16-bit float — common default",
+        "bf16": "Brain float 16 — same memory as f16 with wider exponent range",
+        "q8_0": "8-bit quantized — ~50% memory of f16, near-lossless",
+        "q5_0": "5-bit quantized — smaller, slight quality loss",
+        "q4_0": "4-bit quantized — smallest, noticeable quality loss",
+        "q4_k": "4-bit K-quants — smaller than q4_0 with better quality",
+        "q5_k": "5-bit K-quants — middle ground",
+        "q6_k": "6-bit K-quants — best quality of K-quants"
       },
-      "recommended": "Leave on Auto unless you need to reduce VRAM usage"
+      "recommended": "Leave on Auto. Override only when the source file is f32 / f16 and you want to force a smaller runtime size."
     },
-    "offload_mode": {
-      "label": "Dynamic VRAM Offloading",
-      "description": "Temporarily move model components to CPU during generation to free VRAM for VAE decode. Essential for running large models on limited VRAM.",
+    "tensor_type_rules": {
+      "label": "Per-tensor Weight Rules",
+      "description": "sd.cpp regex rules for per-tensor precision overrides, e.g. `^vae\\.=f16` to force the VAE to fp16 even when the rest of the model is q4. Multiple rules are comma-separated.",
+      "type": "string",
+      "default": "",
+      "recommended": "Empty unless you know the tensor naming convention. See sd.cpp's `--tensor-type-rules` documentation."
+    },
+    "rng_type": {
+      "label": "RNG Type",
+      "description": "Random number generator backend used to draw initial noise. `cuda` produces output that matches comfyui / diffusers on NVIDIA. `cpu` is deterministic across hardware but slower at start-of-generation. `std_default` is C++ std::mt19937.",
       "type": "select",
-      "default": "none",
+      "default": "cuda",
       "values": {
-        "none": "Disabled - keep all components on GPU (fastest, needs most VRAM)",
-        "cond_only": "After Conditioning - offload text encoders after prompt processing (good balance)",
-        "cond_diffusion": "After Cond + Diffusion - also offload diffusion after sampling",
-        "aggressive": "Aggressive - offload each component when not in use (saves most VRAM, slowest)"
+        "cuda": "CUDA RNG — matches comfyui / diffusers on NVIDIA",
+        "cpu": "CPU RNG — deterministic across hardware, slightly slower",
+        "std_default": "C++ std::mt19937 — least common"
       },
-      "recommended": "Use 'cond_only' for 12GB GPUs with Z-Image or large Flux models"
+      "recommended": "Keep `cuda` to match ecosystem outputs. Use `cpu` if you need reproducibility across different GPUs."
     },
-    "vram_estimation": {
-      "label": "VRAM Estimation Method",
-      "description": "How to estimate VRAM needed before VAE decode. Determines when to trigger offloading.",
+    "sampler_rng_type": {
+      "label": "Sampler RNG Type",
+      "description": "RNG used by stochastic samplers (DPM++ ancestral, etc.). Empty = same as `rng_type`. Separating the two lets you have CUDA-RNG initial noise but CPU-RNG sampler steps for partial reproducibility.",
+      "type": "string",
+      "default": "",
+      "recommended": "Empty (matches rng_type)."
+    },
+    "prediction": {
+      "label": "Prediction Type",
+      "description": "Override sd.cpp's auto-detection of the model's prediction objective. Empty = auto-detect from the safetensors header / model class.",
       "type": "select",
-      "default": "dryrun",
+      "default": "",
       "values": {
-        "dryrun": "Dry-run - builds test graph for exact estimation (accurate, default)",
-        "formula": "Formula - quick approximation based on image size (faster, less precise)"
+        "": "Auto (detect from model)",
+        "eps": "Epsilon (noise) — SD1.x, SDXL",
+        "v": "v-prediction — SD2.1-v, some SDXL variants",
+        "edm_v": "EDM v-prediction",
+        "sd3_flow": "SD3 flow matching",
+        "flux_flow": "Flux flow matching",
+        "flux2_flow": "Flux2 flow matching"
       },
-      "recommended": "Use 'dryrun' for accurate offloading decisions"
+      "recommended": "Leave on Auto. Override only when sd.cpp misdetects (rare; happens with custom-trained models that lack the usual metadata)."
     },
-    "offload_cond_stage": {
-      "label": "Offload LLM/CLIP",
-      "description": "Move text encoder (LLM for Z-Image, CLIP/T5 for others) to CPU after conditioning phase.",
-      "type": "boolean",
-      "default": true,
-      "recommended": "Enable when using VRAM offloading with text-heavy models"
-    },
-    "offload_diffusion": {
-      "label": "Offload Diffusion",
-      "description": "Move diffusion model (U-Net/DiT) to CPU after sampling phase, before VAE decode.",
-      "type": "boolean",
-      "default": false,
-      "recommended": "Enable only in 'cond_diffusion' or 'aggressive' offload modes"
-    },
-    "reload_cond_stage": {
-      "label": "Reload LLM/CLIP",
-      "description": "Reload text encoder back to GPU after generation completes. Faster subsequent generations but uses VRAM.",
-      "type": "boolean",
-      "default": true,
-      "recommended": "Enable for multiple generations, disable if doing single generation"
-    },
-    "reload_diffusion": {
-      "label": "Reload Diffusion",
-      "description": "Reload diffusion model back to GPU after generation completes. Faster subsequent generations.",
-      "type": "boolean",
-      "default": true,
-      "recommended": "Enable for multiple generations with same model"
-    },
-    "tae_preview_only": {
-      "label": "TAE Preview Only",
-      "description": "Use TAESD (Tiny AutoEncoder) only for live previews during generation, final output uses full VAE.",
-      "type": "boolean",
-      "default": false,
-      "recommended": "Enable when using TAESD for fast previews with full-quality final output"
+    "lora_apply_mode": {
+      "label": "LoRA Apply Mode",
+      "description": "When LoRAs are merged into the base model. `auto` lets sd.cpp decide based on the model architecture. `immediately` merges at load time (faster generation, slower load, can't change LoRAs without reload). `at_runtime` keeps LoRAs separate and applies them per generation (faster load, slightly slower generation, can swap LoRAs without reloading the model).",
+      "type": "select",
+      "default": "auto",
+      "values": {
+        "auto": "Auto — sd.cpp picks per architecture",
+        "immediately": "Immediately — merge into weights at load (fast generation, immutable)",
+        "at_runtime": "At runtime — apply per-generation (mutable, ~5% slower per step)"
+      },
+      "recommended": "`at_runtime` for server use — lets generation requests change LoRAs without reloading the model."
     },
     "force_sdxl_vae_conv_scale": {
       "label": "Force SDXL VAE Conv Scale",
-      "description": "Apply SDXL-specific VAE convolution scaling. Required for proper SDXL VAE operation.",
+      "description": "Apply SDXL-specific VAE convolution scaling unconditionally (sd.cpp normally autodetects). Internal compatibility flag for SDXL VAEs that lack the scale metadata.",
       "type": "boolean",
       "default": false,
-      "recommended": "Automatically enabled for SDXL architectures"
+      "recommended": "Off. Enable only if you have a stripped SDXL VAE that's producing washed-out outputs."
     },
-    "flow_shift": {
-      "label": "Flow Shift",
-      "description": "Flow matching shift parameter for Flux and similar models. Affects sampling behavior.",
+    "max_vram": {
+      "label": "Max VRAM (GiB)",
+      "description": "GiB budget for graph-cut segmented param offload (PR #1476). When set, sd.cpp partitions the diffusion graph so peak weight residency stays under this budget. Lives on `sd_ctx_params_t` and is independent of `offload_mode` — they can be combined. 0 = disabled.",
       "type": "number",
-      "default": 1.0,
-      "recommended": "Leave at default unless experimenting with flow models"
+      "default": 0.0,
+      "recommended": "0 (disabled) by default. Set to slightly less than your total VRAM (e.g. 10 on a 12 GiB card) when the model still OOMs at the smallest sample step. Combines well with `offload_mode = layer_streaming`."
+    },
+    "offload_mode": {
+      "label": "Dynamic VRAM Offloading",
+      "description": "Cross-stage offload strategy. Different from the static `offload_to_cpu` — these dynamically move components between CPU and GPU during a generation.",
+      "type": "select",
+      "default": "none",
+      "values": {
+        "none": "Disabled — keep all components on GPU (fastest, needs most VRAM)",
+        "cond_only": "After Conditioning — offload text encoders after the prompt pass (good balance for small VRAM gains)",
+        "cond_diffusion": "After Cond + Diffusion — also offload diffusion after sampling, keeps VAE on GPU",
+        "aggressive": "Aggressive — offload each component when not in use (saves most VRAM, slowest)",
+        "layer_streaming": "Layer Streaming — stream UNet/DiT layers one-by-one (enables models larger than VRAM)"
+      },
+      "recommended": "`cond_only` for 12 GiB GPUs running Z-Image / Flux. `layer_streaming` when the model file alone is bigger than your VRAM."
+    },
+    "vram_estimation": {
+      "label": "VRAM Estimation Method",
+      "description": "How sd.cpp predicts the peak VRAM each component needs. `dryrun` builds a throwaway compute graph for an exact answer. `formula` uses a closed-form heuristic — faster, less precise.",
+      "type": "select",
+      "default": "dryrun",
+      "values": {
+        "dryrun": "Dry-run — exact via test allocation (default)",
+        "formula": "Formula — closed-form heuristic (faster, may over- or under-estimate)"
+      },
+      "recommended": "`dryrun` for accuracy. Switch to `formula` only if you find dryrun's overhead noticeable on small generations."
+    },
+    "offload_cond_stage": {
+      "label": "Offload LLM/CLIP After Cond",
+      "description": "Move the text encoder (LLM for Z-Image, CLIP/T5 for SD3/Flux) to CPU after the prompt is encoded. Makes the text encoder available for the next generation but lets the diffusion model reclaim the freed VRAM.",
+      "type": "boolean",
+      "default": true,
+      "recommended": "On when using any `offload_mode` other than `none`."
+    },
+    "offload_diffusion": {
+      "label": "Offload Diffusion After Sampling",
+      "description": "Move the diffusion model (UNet/DiT) to CPU after the sampler loop finishes, before VAE decode runs. Lets VAE decode use the full GPU.",
+      "type": "boolean",
+      "default": false,
+      "recommended": "Enable in `cond_diffusion` or `aggressive` modes when VAE decode is what's hitting OOM."
+    },
+    "reload_cond_stage": {
+      "label": "Reload LLM/CLIP After Generation",
+      "description": "After generation, copy the text encoder back to GPU so the next generation starts faster. Holds VRAM between generations — disable if you want max VRAM available for non-generation work between requests.",
+      "type": "boolean",
+      "default": true,
+      "recommended": "On for server use (multiple generations). Off for one-shot CLIs."
+    },
+    "reload_diffusion": {
+      "label": "Reload Diffusion After Generation",
+      "description": "Same logic as `reload_cond_stage` but for the diffusion model.",
+      "type": "boolean",
+      "default": true,
+      "recommended": "On for server use."
+    },
+    "log_offload_events": {
+      "label": "Log Offload Events",
+      "description": "sd.cpp logs each offload / reload event to stdout. Useful for diagnosing slow generations (see how often things are moving) but spammy in production.",
+      "type": "boolean",
+      "default": true,
+      "recommended": "On while tuning. Off in steady-state production once you've calibrated."
+    },
+    "min_offload_size_mb": {
+      "label": "Min Offload Size (MB)",
+      "description": "Skip offloading any component smaller than this many megabytes. Prevents wasting PCIe bandwidth moving tiny tensors that wouldn't actually free meaningful VRAM. 0 = no minimum.",
+      "type": "number",
+      "default": 0,
+      "recommended": "0 to start. Raise to 256 if you see lots of noise in the offload log for tiny components (TAESD, conditioner sub-modules)."
+    },
+    "target_free_vram_mb": {
+      "label": "Target Free VRAM (MB)",
+      "description": "VRAM headroom sd.cpp tries to keep free before VAE decode. 0 = always offload (when mode is set). Higher = trigger offloading sooner.",
+      "type": "number",
+      "default": 0,
+      "recommended": "0 unless you're seeing decode OOM despite aggressive offloading — then bump to 1024 or 2048."
+    },
+    "streaming_prefetch_layers": {
+      "label": "Layer Streaming: Prefetch Ahead",
+      "description": "When `offload_mode = layer_streaming`, how many layers ahead to start copying to GPU before they're needed. Higher = more overlap of compute and PCIe transfer (faster) but more VRAM in flight.",
+      "type": "number",
+      "default": 1,
+      "recommended": "1 is the sd.cpp default. Try 2 if PCIe bandwidth is your bottleneck and you have headroom."
+    },
+    "streaming_keep_layers_behind": {
+      "label": "Layer Streaming: Keep Behind",
+      "description": "When `offload_mode = layer_streaming`, how many already-executed layers to keep resident on GPU. Useful for skip connections (UNet U-shape) where the encoder side's outputs feed the decoder later in the same step.",
+      "type": "number",
+      "default": 0,
+      "recommended": "0 for DiT (Flux/SD3/Z-Image — purely linear graph). UNet (SDXL/SD1.x) may benefit from 1–2 to avoid re-streaming for skip connections."
+    },
+    "streaming_min_free_vram_mb": {
+      "label": "Layer Streaming: Min Free VRAM (MB)",
+      "description": "Minimum VRAM sd.cpp tries to keep free during layer streaming. Backstop for the prefetch window — if streaming would push residency above (total - this), it stalls until the next layer's done.",
+      "type": "number",
+      "default": 0,
+      "recommended": "0 (disabled) unless you're co-running other GPU workloads and need predictable headroom."
     },
     "chroma_use_dit_mask": {
       "label": "Chroma DiT Mask",
-      "description": "Enable DiT masking for Chroma architecture. Required for proper Chroma model operation.",
+      "description": "Enable the DiT-side attention masking that Chroma was trained with. Required for correct Chroma outputs.",
+      "type": "boolean",
+      "default": true,
+      "recommended": "Keep on for Chroma; ignored for other architectures."
+    },
+    "chroma_use_t5_mask": {
+      "label": "Chroma T5 Mask",
+      "description": "Enable T5-side attention masking on Chroma. Reduces hallucinated tokens at the cost of slightly different prompt fidelity.",
       "type": "boolean",
       "default": false,
-      "recommended": "Automatically enabled for Chroma architecture"
+      "recommended": "Off (matches sd.cpp default). Try on if Chroma is producing artifacts in long prompts."
+    },
+    "chroma_t5_mask_pad": {
+      "label": "Chroma T5 Mask Padding",
+      "description": "Padding token count appended to T5 prompts when `chroma_use_t5_mask` is on. Compensates for Chroma's training-time padding behavior.",
+      "type": "number",
+      "default": 1,
+      "recommended": "Default 1. Bump only if Chroma docs explicitly say so for your fine-tune."
+    },
+    "flow_shift": {
+      "label": "Flow Shift (default)",
+      "description": "Default flow-matching shift parameter for Flux / SD3 / Z-Image models. INFINITY (sent as nothing or omitted) = auto-detect based on model. This is the LOAD-time default; the per-generation request can override.",
+      "type": "number",
+      "default": null,
+      "recommended": "Leave unset (auto). Override only when you're tuning for a specific model that benefits from a non-default shift."
     }
   },
   "categories": {
     "performance": {
       "label": "Performance",
-      "options": ["flash_attn", "enable_mmap", "n_threads"]
+      "options": ["flash_attn", "diffusion_flash_attn", "enable_mmap", "n_threads", "vae_conv_direct", "diffusion_conv_direct"]
     },
     "memory": {
       "label": "Memory Management",
-      "options": ["keep_clip_on_cpu", "keep_vae_on_cpu", "keep_controlnet_on_cpu", "offload_to_cpu", "weight_type"]
+      "options": ["keep_clip_on_cpu", "keep_vae_on_cpu", "keep_controlnet_on_cpu", "offload_to_cpu", "free_params_immediately", "max_vram", "weight_type", "tensor_type_rules"]
     },
     "vae": {
       "label": "VAE Settings",
-      "options": ["vae_decode_only", "vae_tiling", "vae_conv_direct", "tae_preview_only", "force_sdxl_vae_conv_scale"]
+      "options": ["vae_decode_only", "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap", "tae_preview_only", "force_sdxl_vae_conv_scale"]
     },
     "offloading": {
       "label": "Dynamic VRAM Offloading",
-      "options": ["offload_mode", "vram_estimation", "offload_cond_stage", "offload_diffusion", "reload_cond_stage", "reload_diffusion"]
+      "options": ["offload_mode", "vram_estimation", "offload_cond_stage", "offload_diffusion", "reload_cond_stage", "reload_diffusion", "log_offload_events", "min_offload_size_mb", "target_free_vram_mb"]
     },
-    "advanced": {
-      "label": "Advanced",
-      "options": ["diffusion_conv_direct", "flow_shift", "chroma_use_dit_mask"]
+    "layer_streaming": {
+      "label": "Layer Streaming Tuning",
+      "options": ["streaming_prefetch_layers", "streaming_keep_layers_behind", "streaming_min_free_vram_mb"]
+    },
+    "rng_and_prediction": {
+      "label": "RNG & Prediction",
+      "options": ["rng_type", "sampler_rng_type", "prediction", "lora_apply_mode", "flow_shift"]
+    },
+    "chroma": {
+      "label": "Chroma-specific",
+      "options": ["chroma_use_dit_mask", "chroma_use_t5_mask", "chroma_t5_mask_pad"]
     }
   }
 }

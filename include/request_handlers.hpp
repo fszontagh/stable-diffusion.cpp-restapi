@@ -99,6 +99,9 @@ private:
     void handle_purge_job(const httplib::Request& req, httplib::Response& res);
     void handle_clear_recycle_bin(const httplib::Request& req, httplib::Response& res);
     void handle_get_recycle_bin_settings(const httplib::Request& req, httplib::Response& res);
+    void handle_get_generation_option_descriptions(const httplib::Request& req, httplib::Response& res);
+    // Shared "load JSON from data/<file> and serve" helper for the option-descriptions endpoints.
+    void serve_options_json(httplib::Response& res, const std::string& filename);
     // Output folder grouping (variation_group_id -> nested dirs).
     void handle_get_output_settings(const httplib::Request& req, httplib::Response& res);
     void handle_set_output_settings(const httplib::Request& req, httplib::Response& res);
