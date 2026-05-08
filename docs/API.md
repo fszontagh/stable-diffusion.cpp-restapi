@@ -2898,6 +2898,13 @@ curl -X POST 'http://localhost:8080/models/load?waitt=true' ...
 | `POST /txt2img` | enumerated in `Txt2ImgParams::from_json` | n/a |
 | `POST /img2img` | enumerated in `Img2ImgParams::from_json` | n/a |
 | `POST /txt2vid` | enumerated in `Txt2VidParams::from_json` | n/a |
+| `POST /upscale` | enumerated in `UpscaleParams::from_json` | n/a |
+| `POST /convert` | inline (`input_path`, `output_path`, `output_type`, `model_type`, `model_name`, `vae_path`, `tensor_type_rules`) | n/a |
+| `GET /queue` | n/a (body-less) | `status`, `type`, `search`, `architecture`, `group_by`, `limit`, `offset`, `page`, `before`, `after` |
+| `PUT /preview/settings` | inline (`enabled`, `mode`, `interval`, `max_size`, `quality`) | n/a |
+| `PUT /settings/output` | inline (`output_group_folders`) | n/a |
+
+Other body-accepting endpoints (`/auth/login`, `/models/upload` multipart, settings PUTs for assistant/generation/preferences) currently do not enforce strict-key validation — they're either internal-WebUI-only or simple enough that typos are unlikely to confuse users.
 
 The full closed key list per endpoint is reflected in the auto-generated OpenAPI spec at `GET /openapi.json` — the schema is the source of truth, the C++ parsers are kept in sync with it.
 

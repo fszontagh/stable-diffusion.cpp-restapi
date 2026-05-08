@@ -1418,8 +1418,20 @@ void RequestHandlers::handle_upscale(const httplib::Request& req, httplib::Respo
             send_error(res, "No upscaler loaded. Load an ESRGAN model first using POST /upscaler/load", 400);
             return;
         }
-        
+
         auto body = parse_json_body(req);
+
+        // Validate body shape at the boundary so unknown fields fail fast
+        // as 400 (instead of being silently dropped on the way to the
+        // worker). Discard the parsed result — we store the raw body on
+        // the job and let the worker re-parse via UpscaleParams::from_json.
+        try {
+            (void) UpscaleParams::from_json(body);
+        } catch (const std::exception& e) {
+            send_error(res, std::string("Invalid request body: ") + e.what(), 400);
+            return;
+        }
+
         std::string job_id = queue_manager_.add_job(GenerationType::Upscale, body);
         
         auto status = queue_manager_.get_status();
@@ -1437,6 +1449,30 @@ void RequestHandlers::handle_upscale(const httplib::Request& req, httplib::Respo
 void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Response& res) {
     try {
         auto body = parse_json_body(req);
+
+        // Strict body validation: reject unknown fields.
+        static const std::unordered_set<std::string> KNOWN_CONVERT_KEYS = {
+            "input_path", "output_path", "output_type",
+            "model_type", "model_name",     // model_name = alias for input_path resolution
+            "vae_path",                       // optional VAE to bake into the converted file
+            "tensor_type_rules",              // per-tensor weight rules string
+        };
+        std::vector<std::string> unknown;
+        for (auto it = body.begin(); it != body.end(); ++it) {
+            if (KNOWN_CONVERT_KEYS.find(it.key()) == KNOWN_CONVERT_KEYS.end()) {
+                unknown.push_back(it.key());
+            }
+        }
+        if (!unknown.empty()) {
+            std::string msg = "Unknown field(s) in /convert body: ";
+            for (size_t i = 0; i < unknown.size(); ++i) {
+                if (i) msg += ", ";
+                msg += unknown[i];
+            }
+            msg += ". Accepted: input_path, output_path, output_type, model_type, model_name, vae_path, tensor_type_rules.";
+            send_error(res, msg, 400);
+            return;
+        }
 
         // Validate required parameters
         if (!body.contains("input_path") || body["input_path"].get<std::string>().empty()) {
@@ -1582,6 +1618,29 @@ void RequestHandlers::handle_unload_upscaler(const httplib::Request& /*req*/, ht
 }
 
 void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Response& res) {
+    // Strict query-param validation: reject anything not in the closed
+    // allow-list with 400. Same UX rationale as the body validators.
+    static const std::unordered_set<std::string> KNOWN_QUERY = {
+        "status", "type", "search", "architecture", "group_by",
+        "limit", "offset", "page", "before", "after",
+    };
+    std::vector<std::string> unknown_qp;
+    for (const auto& kv : req.params) {
+        if (KNOWN_QUERY.find(kv.first) == KNOWN_QUERY.end()) {
+            unknown_qp.push_back(kv.first);
+        }
+    }
+    if (!unknown_qp.empty()) {
+        std::string msg = "Unknown query parameter(s): ";
+        for (size_t i = 0; i < unknown_qp.size(); ++i) {
+            if (i) msg += ", ";
+            msg += unknown_qp[i];
+        }
+        msg += ". Accepted: status, type, search, architecture, group_by, limit, offset, page, before, after.";
+        send_error(res, msg, 400);
+        return;
+    }
+
     // Parse filter parameters from query string
     QueueFilter filter;
 
@@ -1915,6 +1974,15 @@ void RequestHandlers::handle_get_output_settings(const httplib::Request& /*req*/
 void RequestHandlers::handle_set_output_settings(const httplib::Request& req, httplib::Response& res) {
     try {
         auto body = parse_json_body(req);
+        // Strict body validation: only output_group_folders is accepted.
+        for (auto it = body.begin(); it != body.end(); ++it) {
+            if (it.key() != "output_group_folders") {
+                send_error(res,
+                    "Unknown field(s) in /settings/output body: " + it.key()
+                    + ". Accepted: output_group_folders.", 400);
+                return;
+            }
+        }
         if (body.contains("output_group_folders") && body["output_group_folders"].is_boolean()) {
             queue_manager_.set_group_folders_enabled(body["output_group_folders"].get<bool>());
         }
@@ -3158,6 +3226,29 @@ void RequestHandlers::handle_update_preview_settings(const httplib::Request& req
     auto json = parse_json_body(req);
     if (json.is_null()) {
         send_error(res, "Invalid JSON body", 400);
+        return;
+    }
+
+    // Strict body validation
+    static const std::unordered_set<std::string> KNOWN_PREVIEW = {
+        "enabled", "mode", "interval", "max_size", "quality",
+    };
+    std::vector<std::string> unknown;
+    if (json.is_object()) {
+        for (auto it = json.begin(); it != json.end(); ++it) {
+            if (KNOWN_PREVIEW.find(it.key()) == KNOWN_PREVIEW.end()) {
+                unknown.push_back(it.key());
+            }
+        }
+    }
+    if (!unknown.empty()) {
+        std::string msg = "Unknown field(s) in /preview/settings body: ";
+        for (size_t i = 0; i < unknown.size(); ++i) {
+            if (i) msg += ", ";
+            msg += unknown[i];
+        }
+        msg += ". Accepted: enabled, mode, interval, max_size, quality.";
+        send_error(res, msg, 400);
         return;
     }
 

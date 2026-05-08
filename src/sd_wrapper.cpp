@@ -1227,6 +1227,15 @@ nlohmann::json Txt2VidParams::to_json() const {
 UpscaleParams UpscaleParams::from_json(const nlohmann::json& j) {
     UpscaleParams p;
 
+    static const std::unordered_set<std::string> KNOWN = {
+        "upscale_factor", "tile_size", "repeats", "image_base64",
+        // Convenience: callers can pass a job_id instead of base64;
+        // submit_generation_jobs / handle_upscale resolve it before
+        // calling this parser, but it's a recognized request field.
+        "job_id",
+    };
+    reject_unknown_keys("/upscale body", j, KNOWN);
+
     // Upscale factor
     p.upscale_factor = parse_int(j, "upscale_factor", 4);
     p.tile_size = parse_int(j, "tile_size", 128);
