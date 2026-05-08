@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
 import { useAppStore } from '../stores/app'
-import { api, type GenerationParams, type Img2ImgParams, type Txt2VidParams, type LoraEntry, type LoraSettings } from '../api/client'
+import { api, type GenerationParams, type Img2ImgParams, type Txt2VidParams, type LoraEntry, type LoraSettings, type OptionDescription } from '../api/client'
 import ImageUploader from '../components/ImageUploader.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import Lightbox from '../components/Lightbox.vue'
@@ -13,6 +13,14 @@ import { hasTemplateSyntax, expandPrompt as expandPromptUtil } from '../utils/pr
 import { openExpandPromptConfirm } from '../composables/useExpandPromptModal'
 
 const store = useAppStore()
+
+// Per-field documentation fetched from /options/generation. The same JSON
+// drives the API.md doc tables and the WebUI tooltips, so descriptions
+// stay in lockstep across surfaces.
+const genOptionDescriptions = ref<Record<string, OptionDescription>>({})
+function genOpt(key: string): string | undefined {
+  return genOptionDescriptions.value[key]?.description
+}
 
 // Highlighted setting for assistant navigation
 const highlightedSetting = ref<string | null>(null)
@@ -958,6 +966,14 @@ onMounted(async () => {
   window.addEventListener('assistant-highlight-setting', handleHighlightSetting)
   window.addEventListener('assistant-set-image', handleAssistantSetImage)
 
+  // Fire-and-forget: load per-field descriptions for the input tooltips.
+  // Failure is fine (silent fallback to no tooltips); the API client
+  // caches the result for 10 minutes so navigating to /generate twice
+  // doesn't re-fetch.
+  api.getGenerationOptionDescriptions()
+    .then(r => { genOptionDescriptions.value = r.options ?? {} })
+    .catch(() => { /* silent — degrades to no tooltips */ })
+
   // First check if we have reloaded job params from Queue view
   const savedParams = sessionStorage.getItem('reloadJobParams')
   if (savedParams) {
@@ -1609,7 +1625,7 @@ async function handleSubmit() {
           </div>
 
           <div class="form-row form-row-resolution">
-            <div class="form-group" data-setting="width" :class="{ 'setting-highlighted': highlightedSetting === 'width' }">
+            <div class="form-group" data-setting="width" :title="genOpt('width')" :class="{ 'setting-highlighted': highlightedSetting === 'width' }">
               <label class="form-label">Width</label>
               <input v-model.number="width" type="number" class="form-input" step="8" min="64" max="2048" />
             </div>
@@ -1620,14 +1636,14 @@ async function handleSubmit() {
               title="Swap width and height"
               aria-label="Swap width and height"
             >&#8646;</button>
-            <div class="form-group" data-setting="height" :class="{ 'setting-highlighted': highlightedSetting === 'height' }">
+            <div class="form-group" data-setting="height" :title="genOpt('height')" :class="{ 'setting-highlighted': highlightedSetting === 'height' }">
               <label class="form-label">Height</label>
               <input v-model.number="height" type="number" class="form-input" step="8" min="64" max="2048" />
             </div>
           </div>
 
           <div class="form-row">
-            <div class="form-group" data-setting="steps" :class="{ 'setting-highlighted': highlightedSetting === 'steps' }">
+            <div class="form-group" data-setting="steps" :title="genOpt('steps')" :class="{ 'setting-highlighted': highlightedSetting === 'steps' }">
               <label class="form-label">
                 Steps: {{ steps }}
                 <span v-if="recommended && isDifferentFromRecommended('steps', steps)" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('steps')" title="Click to apply">
@@ -1636,7 +1652,7 @@ async function handleSubmit() {
               </label>
               <input v-model.number="steps" type="range" class="form-range" min="1" max="150" />
             </div>
-            <div class="form-group" data-setting="cfg-scale" :class="{ 'setting-highlighted': highlightedSetting === 'cfg-scale' }">
+            <div class="form-group" data-setting="cfg-scale" :title="genOpt('cfg_scale')" :class="{ 'setting-highlighted': highlightedSetting === 'cfg-scale' }">
               <label class="form-label">
                 CFG Scale: {{ cfgScale.toFixed(1) }}
                 <span v-if="recommended && isDifferentFromRecommended('cfgScale', cfgScale)" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('cfgScale')" title="Click to apply">
@@ -1648,7 +1664,7 @@ async function handleSubmit() {
           </div>
 
           <div class="form-row">
-            <div class="form-group" data-setting="sampler" :class="{ 'setting-highlighted': highlightedSetting === 'sampler' }">
+            <div class="form-group" data-setting="sampler" :title="genOpt('sampler')" :class="{ 'setting-highlighted': highlightedSetting === 'sampler' }">
               <label class="form-label">
                 Sampler
                 <span v-if="recommended && isDifferentFromRecommended('sampler', sampler)" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('sampler')" title="Click to apply">
@@ -1659,7 +1675,7 @@ async function handleSubmit() {
                 <option v-for="s in samplers" :key="s" :value="s">{{ s }}</option>
               </select>
             </div>
-            <div class="form-group" data-setting="scheduler" :class="{ 'setting-highlighted': highlightedSetting === 'scheduler' }">
+            <div class="form-group" data-setting="scheduler" :title="genOpt('scheduler')" :class="{ 'setting-highlighted': highlightedSetting === 'scheduler' }">
               <label class="form-label">
                 Scheduler
                 <span v-if="recommended && isDifferentFromRecommended('scheduler', scheduler)" class="rec-hint rec-clickable" @click.prevent="applyRecommendedSetting('scheduler')" title="Click to apply">
@@ -1673,7 +1689,7 @@ async function handleSubmit() {
           </div>
 
           <div class="form-row">
-            <div class="form-group" data-setting="seed" :class="{ 'setting-highlighted': highlightedSetting === 'seed' }">
+            <div class="form-group" data-setting="seed" :title="genOpt('seed')" :class="{ 'setting-highlighted': highlightedSetting === 'seed' }">
               <label class="form-label">Seed (-1 = random)</label>
               <div class="input-with-button">
                 <input v-model.number="seed" type="number" class="form-input" />
@@ -1682,7 +1698,7 @@ async function handleSubmit() {
                 </button>
               </div>
             </div>
-            <div class="form-group" data-setting="batch-count" :class="{ 'setting-highlighted': highlightedSetting === 'batch-count' }">
+            <div class="form-group" data-setting="batch-count" :title="genOpt('batch_count')" :class="{ 'setting-highlighted': highlightedSetting === 'batch-count' }">
               <label class="form-label">Batch Count</label>
               <input v-model.number="batchCount" type="number" class="form-input" min="1" max="16" />
             </div>

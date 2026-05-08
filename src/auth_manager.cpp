@@ -208,6 +208,12 @@ const std::unordered_set<std::string>& AuthManager::always_allowed_exact_paths()
         // /openapi.json and /docs/* so an agent can self-orient.
         "/llms.txt",
         "/llm.txt",
+        // Per-field option documentation. No auth required so an agent
+        // (or a curious user) can fetch the schema without logging in.
+        // The descriptions themselves aren't sensitive — they're already
+        // in the project repo + /docs.
+        "/options/descriptions",
+        "/options/generation",
     };
     return paths;
 }

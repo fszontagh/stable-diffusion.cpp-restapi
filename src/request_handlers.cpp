@@ -285,8 +285,13 @@ void RequestHandlers::register_routes(httplib::Server& server) {
 
     api.addEndpoint<void, OptionDescriptionsResponse>(
         server, "GET", "/options/descriptions",
-        "Descriptions of all available options", "Status", 200,
+        "Descriptions of all available model-load options (sourced from data/load_options.json)",
+        "Status", 200,
         [this](auto& req, auto& res) { handle_get_option_descriptions(req, res); });
+
+    server.Get("/options/generation", [this](const httplib::Request& req, httplib::Response& res) {
+        handle_get_generation_option_descriptions(req, res);
+    });
 
     // ── Models ───────────────────────────────────────────────────────
     api.addEndpoint<void, ModelListResponse>(
@@ -720,6 +725,13 @@ void RequestHandlers::register_routes(httplib::Server& server) {
             "- [REST API guide](/docs/API.md) — human-readable, with worked examples.\n"
             "- [LLM agent guide](/docs/LLM_GUIDE.md) — workflows tailored to autonomous agents.\n"
             "- [MCP server reference](/docs/MCP.md) — JSON-RPC over `/mcp`, alternative to REST.\n"
+            "\n"
+            "## Per-field option documentation\n"
+            "\n"
+            "Both endpoints below return JSON describing each option's purpose, default, and recommended usage — sourced from sd.cpp's actual code. Useful for an LLM choosing values for `/models/load` or generation calls.\n"
+            "\n"
+            "- [Model-load options](/options/descriptions) — every field accepted by `POST /models/load`'s `options` object.\n"
+            "- [Generation options](/options/generation) — every field accepted by `/txt2img`, `/img2img`, `/txt2vid`, `/upscale`.\n"
             "\n"
             "## Optional\n"
             "\n"
@@ -3516,42 +3528,45 @@ void RequestHandlers::handle_detect_architecture(const httplib::Request& req, ht
     }
 }
 
-void RequestHandlers::handle_get_option_descriptions(const httplib::Request& /*req*/, httplib::Response& res) {
-    // Load option descriptions from JSON file
-    std::string desc_path = "data/load_options.json";
-
-    // Try multiple locations
+// Search the standard data/ candidate paths and serve the first matching
+// JSON file. Used by /options/descriptions (load options) and
+// /options/generation. Returns {"options": {}} when not found, so the
+// frontend can degrade gracefully (no tooltips, but no error either).
+void RequestHandlers::serve_options_json(httplib::Response& res, const std::string& filename) {
     std::vector<std::string> search_paths = {
-        desc_path,
-        "../data/load_options.json"
+        "data/" + filename,
+        "../data/" + filename,
     };
-
-    // Also try relative to executable
     std::error_code ec;
     auto exe_path = std::filesystem::read_symlink("/proc/self/exe", ec);
     if (!ec) {
         auto exe_dir = exe_path.parent_path();
-        search_paths.push_back((exe_dir / "data" / "load_options.json").string());
-        search_paths.push_back((exe_dir.parent_path() / "data" / "load_options.json").string());
+        search_paths.push_back((exe_dir / "data" / filename).string());
+        search_paths.push_back((exe_dir.parent_path() / "data" / filename).string());
+        // Install layout: /opt/sdcpp-restapi/share/sdcpp-restapi/data/<filename>
+        search_paths.push_back((exe_dir.parent_path() / "share" / "sdcpp-restapi" / "data" / filename).string());
     }
-
     for (const auto& path : search_paths) {
-        if (std::filesystem::exists(path)) {
-            try {
-                std::ifstream file(path);
-                if (file.is_open()) {
-                    nlohmann::json options = nlohmann::json::parse(file);
-                    send_json(res, options);
-                    return;
-                }
-            } catch (const std::exception& e) {
-                // Continue to next path
-            }
+        if (!std::filesystem::exists(path)) continue;
+        try {
+            std::ifstream f(path);
+            if (!f.is_open()) continue;
+            nlohmann::json j = nlohmann::json::parse(f);
+            send_json(res, j);
+            return;
+        } catch (const std::exception&) {
+            // Try next candidate
         }
     }
-
-    // Return empty if file not found
     send_json(res, {{"options", nlohmann::json::object()}});
+}
+
+void RequestHandlers::handle_get_option_descriptions(const httplib::Request& /*req*/, httplib::Response& res) {
+    serve_options_json(res, "load_options.json");
+}
+
+void RequestHandlers::handle_get_generation_option_descriptions(const httplib::Request& /*req*/, httplib::Response& res) {
+    serve_options_json(res, "generation_options.json");
 }
 
 // ==================== Download Handlers ====================

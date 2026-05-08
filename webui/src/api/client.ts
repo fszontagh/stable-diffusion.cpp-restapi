@@ -881,6 +881,12 @@ class ApiClient {
     return this.request<OptionDescriptionsResponse>('GET', '/options/descriptions', undefined, 600000, { maxRetries: 3 })
   }
 
+  async getGenerationOptionDescriptions(): Promise<OptionDescriptionsResponse> {
+    // Per-field documentation for /txt2img, /img2img, /txt2vid, /upscale.
+    // Same shape as getOptionDescriptions() — Generate.vue uses it for tooltips.
+    return this.request<OptionDescriptionsResponse>('GET', '/options/generation', undefined, 600000, { maxRetries: 3 })
+  }
+
   // Generation
   async txt2img(params: GenerationParams): Promise<JobSubmitResponse> {
     return this.request('POST', '/txt2img', params)

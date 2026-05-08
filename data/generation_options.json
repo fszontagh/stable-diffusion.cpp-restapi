@@ -1,0 +1,654 @@
+{
+  "_meta": {
+    "description": "Per-field documentation for the generation endpoints (POST /txt2img, /img2img, /txt2vid, /upscale). Sourced from sd.cpp (include/stable-diffusion.h sd_img_gen_params_t, sd_vid_gen_params_t, sd_sample_params_t, sd_guidance_params_t, sd_slg_params_t, sd_cache_params_t, sd_pm_params_t, sd_hires_params_t).",
+    "fields": ["label", "description", "type", "default", "values", "applies_to", "recommended"],
+    "applies_to_values": ["txt2img", "img2img", "txt2vid", "upscale"]
+  },
+  "options": {
+    "prompt": {
+      "label": "Prompt",
+      "description": "Text prompt fed to the model's text encoder (CLIP / T5 / LLM). Supports inline `<lora:name:weight>` tags — these are auto-extracted into the LoRA list before being sent to the encoder. Supports a1111-style dynamic-prompts (`{a|b|c}`) when `expand_prompt: true` is set.",
+      "type": "string",
+      "default": "",
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "Required."
+    },
+    "negative_prompt": {
+      "label": "Negative Prompt",
+      "description": "What to push the model away from. Has effect only when `cfg_scale > 1` (CFG is what compares cond vs uncond). Ignored on architectures that don't use CFG (most flow-matching models default to `cfg_scale = 1`).",
+      "type": "string",
+      "default": "",
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "Optional. Empty is a fine default for Flux / SD3 / Z-Image."
+    },
+    "width": {
+      "label": "Width (px)",
+      "description": "Output image width in pixels. Must be divisible by the model's patch size (typically 8 or 16). Architectures have native resolutions they were trained at — going far off them can degrade quality.",
+      "type": "number",
+      "default": 512,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "Match the architecture's training resolution: SD1.5=512, SDXL=1024, Flux/SD3/Z-Image=1024, Wan video=832."
+    },
+    "height": {
+      "label": "Height (px)",
+      "description": "Output image height in pixels. Same divisibility constraint as `width`.",
+      "type": "number",
+      "default": 512,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "Match training resolution. For non-square: total pixel count close to native is more important than aspect ratio."
+    },
+    "steps": {
+      "label": "Sampling Steps",
+      "description": "Number of denoising steps the sampler runs. More steps = closer to the model's converged output, with diminishing returns. Distilled models (Flux Schnell, SDXL Turbo, Z-Image Turbo) need only 4–8.",
+      "type": "number",
+      "default": 20,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "20–30 for SD1.5/SDXL, 20 for Flux Dev, 4–8 for *-Turbo or Schnell variants."
+    },
+    "cfg_scale": {
+      "label": "CFG Scale",
+      "description": "Classifier-Free Guidance scale. Strength of pushing the cond toward the prompt vs the uncond. Higher = follows prompt more aggressively but can over-saturate. Set to 1.0 to disable CFG (skips the uncond pass — twice as fast).",
+      "type": "number",
+      "default": 7.0,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "SD1.5: 7. SDXL: 4–8. Flux Dev: 1 (CFG bypassed in flow models). Z-Image: 1. Schnell/Turbo: 1."
+    },
+    "distilled_guidance": {
+      "label": "Distilled Guidance",
+      "description": "Distilled-CFG scale for models that bake the CFG behavior into the diffusion model itself (Flux). Replaces the runtime CFG split.",
+      "type": "number",
+      "default": 3.5,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "Flux Dev: 3.5 (sd.cpp default). Other architectures: ignored."
+    },
+    "eta": {
+      "label": "Eta",
+      "description": "Stochasticity parameter for DDIM-family samplers. 0 = deterministic, 1 = max stochasticity (matches DDPM noise schedule). Most other samplers ignore this.",
+      "type": "number",
+      "default": 0.0,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0 (deterministic, reproducible). Raise only with DDIM-trailing for some variation."
+    },
+    "shifted_timestep": {
+      "label": "Shifted Timestep",
+      "description": "Start the sampling schedule from a non-final timestep (used by NitroFusion and similar fast-sampling fine-tunes). 0 = standard schedule. 250–500 = NitroFusion's range.",
+      "type": "number",
+      "default": 0,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0 unless you're explicitly running a NitroFusion-style fine-tune."
+    },
+    "seed": {
+      "label": "Seed",
+      "description": "RNG seed for the initial noise tensor (and stochastic samplers). -1 = pick a random one each generation. Same seed + same prompt + same model = same image.",
+      "type": "number",
+      "default": -1,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "-1 for variety. Pin a specific number for A/B comparing prompt or sampler changes."
+    },
+    "sampler": {
+      "label": "Sampler",
+      "description": "Sampling algorithm. Different samplers can produce different images at the same seed; quality and speed differ too.",
+      "type": "select",
+      "default": "euler_a",
+      "values": {
+        "euler": "Euler — simple, fast, deterministic",
+        "euler_a": "Euler ancestral — adds noise each step (less reproducible, more variety)",
+        "heun": "Heun — 2nd-order, slower, sometimes higher quality",
+        "dpm2": "DPM2 — 2nd-order, balanced",
+        "dpmpp2s_a": "DPM++ 2S ancestral — popular for SDXL",
+        "dpmpp2m": "DPM++ 2M — fast, good quality",
+        "dpmpp2mv2": "DPM++ 2M v2 — improved schedule",
+        "ipndm": "IPNDM",
+        "ipndm_v": "IPNDM-V",
+        "lcm": "LCM — for LCM-finetuned models (4–8 step generation)",
+        "ddim_trailing": "DDIM trailing — required for some fine-tunes",
+        "tcd": "TCD — for TCD-finetuned models",
+        "res_multistep": "RES multistep — flow-model variant",
+        "res_2s": "RES 2S",
+        "er_sde": "ER SDE — SDE sampler (added recently)"
+      },
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "euler_a (general), dpmpp2m (SD1.5/SDXL), euler (Flux/SD3/Z-Image), lcm (LCM models)."
+    },
+    "scheduler": {
+      "label": "Scheduler",
+      "description": "Determines the noise schedule (the timesteps the sampler walks through). Pairs with the sampler — some combinations (e.g. karras+dpmpp2m) are well-tested, others may be off.",
+      "type": "select",
+      "default": "discrete",
+      "values": {
+        "discrete": "Discrete — uniform across model timesteps (default)",
+        "karras": "Karras — concentrates more steps near the end, common for SDXL",
+        "exponential": "Exponential",
+        "ays": "Align Your Steps (AYS) — auto-tuned",
+        "gits": "GITS",
+        "sgm_uniform": "SGM uniform — for SGM-trained models",
+        "simple": "Simple — used by Flux / SD3 flow models",
+        "smoothstep": "Smoothstep — Z-Image's recommended scheduler",
+        "kl_optimal": "KL optimal",
+        "lcm": "LCM — for LCM samplers",
+        "bong_tangent": "Bong Tangent"
+      },
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "discrete or karras for SD1.5/SDXL; simple for Flux/SD3; smoothstep for Z-Image."
+    },
+    "batch_count": {
+      "label": "Batch Count",
+      "description": "Number of independent images to produce in this single job. Each image gets a different seed (`seed`, `seed+1`, …). Total VRAM doesn't grow with batch_count — sd.cpp serializes.",
+      "type": "number",
+      "default": 1,
+      "applies_to": ["txt2img", "img2img"],
+      "recommended": "1 for interactive, higher when you want a grid of variations from one prompt."
+    },
+    "clip_skip": {
+      "label": "CLIP Skip",
+      "description": "Skip the last N layers of CLIP when encoding the prompt. -1 = use the model's recommended default. 2 is the classic anime-model setting.",
+      "type": "number",
+      "default": -1,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "-1 (auto). Set to 2 for anime/cartoon SD1.5 fine-tunes."
+    },
+    "flow_shift": {
+      "label": "Flow Shift",
+      "description": "Per-generation flow-matching shift parameter for Flux / SD3 / Z-Image models. Higher values shift sampling toward larger noise levels longer. Per-call override; the load-time `flow_shift` is the default if this isn't set.",
+      "type": "number",
+      "default": 3.0,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "Flux Dev: 1.0. Z-Image: 3.0. SD3 Medium: 3.0."
+    },
+    "slg_scale": {
+      "label": "SLG Scale",
+      "description": "Skip Layer Guidance scale. Selectively zeros out a few diffusion layers when computing the unconditional pass — improves anatomy / coherence on SD3.5-medium and similar. 0 = disabled.",
+      "type": "number",
+      "default": 0.0,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0 for most models. 2.5 for SD3.5 Medium with the recommended skip layers."
+    },
+    "skip_layers": {
+      "label": "SLG Skip Layers",
+      "description": "Which transformer layers to skip during the SLG unconditional pass. SD3.5 Medium uses [7, 8, 9].",
+      "type": "array<number>",
+      "default": [7, 8, 9],
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "[7,8,9] for SD3.5 Medium. Other models: leave default, ignored when slg_scale=0."
+    },
+    "slg_start": {
+      "label": "SLG Start (% of steps)",
+      "description": "Fraction of the sampler schedule (0.0–1.0) at which SLG kicks in.",
+      "type": "number",
+      "default": 0.01,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0.01 (almost from the start)."
+    },
+    "slg_end": {
+      "label": "SLG End (% of steps)",
+      "description": "Fraction of the sampler schedule at which SLG turns off.",
+      "type": "number",
+      "default": 0.2,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0.2 (early-cycle only — late-cycle SLG hurts quality)."
+    },
+    "custom_sigmas": {
+      "label": "Custom Sigma Schedule",
+      "description": "Replace the scheduler's noise sigma sequence with a hand-tuned one. Bypasses `scheduler`. Empty array = use the chosen scheduler.",
+      "type": "array<number>",
+      "default": [],
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "Empty unless you're hand-tuning per-step noise levels — niche."
+    },
+    "ref_images": {
+      "label": "Reference Images (base64)",
+      "description": "Base64-encoded reference images for Flux Kontext / image-edit. Each image gets encoded into the conditioner alongside the text prompt.",
+      "type": "array<string>",
+      "default": [],
+      "applies_to": ["txt2img"],
+      "recommended": "Use for Flux Kontext or models that accept reference images."
+    },
+    "auto_resize_ref_image": {
+      "label": "Auto-resize Ref Images",
+      "description": "Resize each reference image to the output `width × height` before encoding.",
+      "type": "boolean",
+      "default": true,
+      "applies_to": ["txt2img"],
+      "recommended": "On unless your refs are already exactly the target size."
+    },
+    "increase_ref_index": {
+      "label": "Increase Ref Index",
+      "description": "Increment the per-ref index counter inside the model's encoder, signaling 'these references should be treated as later in a sequence'. Niche; check your model's docs.",
+      "type": "boolean",
+      "default": false,
+      "applies_to": ["txt2img"],
+      "recommended": "Off unless explicitly required."
+    },
+    "control_image_base64": {
+      "label": "ControlNet Image (base64)",
+      "description": "Base64-encoded pre-processed control image. Must match the ControlNet model loaded — Canny edges for canny model, depth map for depth model, etc. sd.cpp does not pre-process; you do that client-side.",
+      "type": "string",
+      "default": "",
+      "applies_to": ["txt2img", "img2img"],
+      "recommended": "Required when using ControlNet."
+    },
+    "control_strength": {
+      "label": "ControlNet Strength",
+      "description": "How much the ControlNet influences the diffusion process (0.0–1.0). Lower = looser following, higher = tighter following at cost of overall coherence.",
+      "type": "number",
+      "default": 0.9,
+      "applies_to": ["txt2img", "img2img"],
+      "recommended": "0.6–0.9 for most uses. Lower for creative prompts where control should be a hint, not a constraint."
+    },
+    "vae_tiling": {
+      "label": "VAE Tiling",
+      "description": "Per-generation override of the model-load `vae_tiling`. Process VAE encode/decode in tiles to reduce peak VRAM.",
+      "type": "boolean",
+      "default": false,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "Enable for ≥2048 px outputs. Otherwise leave to the load-time default."
+    },
+    "vae_tile_size_x": {
+      "label": "VAE Tile Width",
+      "description": "Width of VAE tiles when tiling is on. 0 = use load-time default.",
+      "type": "number",
+      "default": 0,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0."
+    },
+    "vae_tile_size_y": {
+      "label": "VAE Tile Height",
+      "description": "Height of VAE tiles. 0 = use load-time default.",
+      "type": "number",
+      "default": 0,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0."
+    },
+    "vae_tile_overlap": {
+      "label": "VAE Tile Overlap",
+      "description": "Overlap fraction between VAE tiles for seam blending.",
+      "type": "number",
+      "default": 0.5,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0.5."
+    },
+    "cache_mode": {
+      "label": "Cache Mode",
+      "description": "DiT-model intermediate caching strategy. Skips redundant computation across consecutive sampler steps when the model's intermediate state hasn't changed enough to matter. `easycache` is the simplest; `spectrum` is the newest, generally best for Flux/SD3/Z-Image.",
+      "type": "select",
+      "default": "",
+      "values": {
+        "": "Disabled",
+        "easycache": "EasyCache — single threshold, simple",
+        "spectrum": "Spectrum — frequency-domain analysis (best quality/speed tradeoff)"
+      },
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "spectrum for Flux/SD3/Z-Image when generation is too slow. Off for SD1.5/SDXL (UNet is too small for caching to win)."
+    },
+    "easycache_threshold": {
+      "label": "EasyCache Threshold",
+      "description": "Reuse threshold for EasyCache. Higher = more aggressive reuse (faster but more quality loss). Range typically 0.05–0.4.",
+      "type": "number",
+      "default": 0.2,
+      "applies_to": ["txt2img", "img2img"],
+      "recommended": "0.2 starting point. Tune up for more speed, down for more quality."
+    },
+    "easycache_start": {
+      "label": "EasyCache Start (% of steps)",
+      "description": "Fraction of steps before EasyCache becomes active. Small to skip the early high-noise steps where caching hurts.",
+      "type": "number",
+      "default": 0.15,
+      "applies_to": ["txt2img", "img2img"],
+      "recommended": "0.15."
+    },
+    "easycache_end": {
+      "label": "EasyCache End (% of steps)",
+      "description": "Fraction of steps after which EasyCache turns off (last few steps fully recomputed for sharpness).",
+      "type": "number",
+      "default": 0.95,
+      "applies_to": ["txt2img", "img2img"],
+      "recommended": "0.95."
+    },
+    "spectrum_w": {
+      "label": "Spectrum Cache: w",
+      "description": "Spectrum-cache `w` weight (frequency cutoff). Higher = retains more spectrum, less speedup.",
+      "type": "number",
+      "default": 0.5,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0.5 default. See sd.cpp PR #1322 for tuning."
+    },
+    "spectrum_m": {
+      "label": "Spectrum Cache: m",
+      "description": "Spectrum-cache moving-average length.",
+      "type": "number",
+      "default": 5,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "5."
+    },
+    "spectrum_lam": {
+      "label": "Spectrum Cache: λ",
+      "description": "Spectrum-cache regularization λ.",
+      "type": "number",
+      "default": 0.5,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0.5."
+    },
+    "spectrum_window_size": {
+      "label": "Spectrum Cache: window size",
+      "description": "Spectrum-cache analysis window size in steps.",
+      "type": "number",
+      "default": 3,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "3."
+    },
+    "spectrum_flex_window": {
+      "label": "Spectrum Cache: flex window",
+      "description": "Spectrum-cache flexibility window (0.0–1.0).",
+      "type": "number",
+      "default": 0.5,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0.5."
+    },
+    "spectrum_warmup_steps": {
+      "label": "Spectrum Cache: warmup steps",
+      "description": "Steps at the start of sampling before spectrum cache becomes active.",
+      "type": "number",
+      "default": 2,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "2."
+    },
+    "spectrum_stop_percent": {
+      "label": "Spectrum Cache: stop percent",
+      "description": "Fraction of steps after which spectrum cache disengages (last steps recomputed).",
+      "type": "number",
+      "default": 0.8,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "0.8."
+    },
+    "pm_id_images": {
+      "label": "PhotoMaker ID Images (base64)",
+      "description": "Reference images for PhotoMaker identity preservation. Multiple faces of the same person.",
+      "type": "array<string>",
+      "default": [],
+      "applies_to": ["txt2img"],
+      "recommended": "3–5 images of the same person from different angles when using PhotoMaker."
+    },
+    "pm_id_embed_path": {
+      "label": "PhotoMaker ID Embed Path",
+      "description": "Server-side path to a pre-computed PhotoMaker ID embedding. Skips per-generation ID encoding.",
+      "type": "string",
+      "default": "",
+      "applies_to": ["txt2img"],
+      "recommended": "Empty unless you've pre-computed an embedding for repeated use."
+    },
+    "pm_style_strength": {
+      "label": "PhotoMaker Style Strength",
+      "description": "PhotoMaker style-vs-identity tradeoff. Higher = more style influence, less identity preservation.",
+      "type": "number",
+      "default": 20.0,
+      "applies_to": ["txt2img"],
+      "recommended": "20 (sd.cpp default). Drop to 10 for stronger identity preservation."
+    },
+    "upscale": {
+      "label": "Upscale After Generate",
+      "description": "Run the loaded ESRGAN upscaler on the output image after generation. Requires an upscaler to be loaded via POST /upscaler/load.",
+      "type": "boolean",
+      "default": false,
+      "applies_to": ["txt2img", "img2img"],
+      "recommended": "On for one-shot 'generate then upscale' workflows."
+    },
+    "upscale_repeats": {
+      "label": "Upscale Repeats",
+      "description": "Number of upscale passes (each with the upscaler's native factor — 4× ESRGAN × 2 passes = 16×).",
+      "type": "number",
+      "default": 1,
+      "applies_to": ["txt2img", "img2img", "upscale"],
+      "recommended": "1. Two passes amplify artifacts, but produces large outputs from small inputs."
+    },
+    "upscale_auto_unload": {
+      "label": "Auto-unload Upscaler",
+      "description": "Free upscaler VRAM right after the upscale step. Useful when you generated with `upscale: true` and want VRAM back for other work.",
+      "type": "boolean",
+      "default": true,
+      "applies_to": ["txt2img", "img2img"],
+      "recommended": "On."
+    },
+    "expand_prompt": {
+      "label": "Expand Prompt Template",
+      "description": "If true, parse `prompt` for a1111-style dynamic-prompts syntax (`{a|b|c}`, `{N$$a|b|c}`) and create one queue item per variation. The response then carries `group_id` + `variation_count` + `job_ids[]` instead of a single `job_id`. Hard cap: 200 variations per request.",
+      "type": "boolean",
+      "default": false,
+      "applies_to": ["txt2img", "img2img", "txt2vid"],
+      "recommended": "Enable when your prompt actually contains `{…}` syntax."
+    },
+    "init_image_base64": {
+      "label": "Init Image (base64)",
+      "description": "Base64-encoded source image for img2img / image-edit. Required for /img2img.",
+      "type": "string",
+      "default": "",
+      "applies_to": ["img2img", "txt2vid"],
+      "recommended": "Required for img2img."
+    },
+    "mask_image_base64": {
+      "label": "Mask Image (base64)",
+      "description": "Base64-encoded inpainting mask. White areas are repainted, black areas preserved.",
+      "type": "string",
+      "default": "",
+      "applies_to": ["img2img"],
+      "recommended": "Optional. Empty mask = standard img2img (no inpainting)."
+    },
+    "strength": {
+      "label": "Denoising Strength",
+      "description": "How much of the init image's noise to keep (0.0 = identical to init, 1.0 = ignore init entirely). Controls how aggressively img2img diverges from the input.",
+      "type": "number",
+      "default": 0.75,
+      "applies_to": ["img2img", "txt2vid"],
+      "recommended": "0.5–0.75 for natural-looking edits. 0.9+ for radical reinterpretation."
+    },
+    "img_cfg_scale": {
+      "label": "Image CFG Scale",
+      "description": "Image-CFG for instruct-pix2pix-style models. -1 = same as `cfg_scale`. Different from `cfg_scale`: balances text-prompt influence against image-prompt influence.",
+      "type": "number",
+      "default": -1.0,
+      "applies_to": ["img2img"],
+      "recommended": "-1 unless using an instruct-pix2pix variant."
+    },
+    "video_frames": {
+      "label": "Video Frames",
+      "description": "Number of frames to generate (Wan / video models).",
+      "type": "number",
+      "default": 33,
+      "applies_to": ["txt2vid"],
+      "recommended": "33 for Wan 2.x (5-second clip @ 16 fps)."
+    },
+    "fps": {
+      "label": "Output FPS",
+      "description": "Frames per second baked into the resulting MP4. Doesn't affect generation, just the encoded video's playback rate.",
+      "type": "number",
+      "default": 16,
+      "applies_to": ["txt2vid"],
+      "recommended": "16 for Wan 2.x."
+    },
+    "high_noise_steps": {
+      "label": "High-noise Steps (MoE)",
+      "description": "For Wan 2.2 MoE: how many steps the high-noise expert runs before handing off to the low-noise expert. 0 = let the model decide via `moe_boundary`.",
+      "type": "number",
+      "default": 0,
+      "applies_to": ["txt2vid"],
+      "recommended": "0 (auto)."
+    },
+    "high_noise_cfg_scale": {
+      "label": "High-noise CFG (MoE)",
+      "description": "CFG scale used during the high-noise expert phase of Wan 2.2 MoE.",
+      "type": "number",
+      "default": 0.0,
+      "applies_to": ["txt2vid"],
+      "recommended": "Match `cfg_scale` unless tuning."
+    },
+    "high_noise_distilled_guidance": {
+      "label": "High-noise Distilled Guidance",
+      "description": "Distilled-guidance during the high-noise expert phase (Wan 2.2 MoE).",
+      "type": "number",
+      "default": 0.0,
+      "applies_to": ["txt2vid"],
+      "recommended": "Match `distilled_guidance`."
+    },
+    "high_noise_sampler": {
+      "label": "High-noise Sampler",
+      "description": "Sampler to use during the high-noise expert phase.",
+      "type": "string",
+      "default": "",
+      "applies_to": ["txt2vid"],
+      "recommended": "Empty (= same as `sampler`)."
+    },
+    "high_noise_slg_scale": {
+      "label": "High-noise SLG Scale",
+      "description": "SLG scale for the high-noise expert phase.",
+      "type": "number",
+      "default": 0.0,
+      "applies_to": ["txt2vid"],
+      "recommended": "0."
+    },
+    "high_noise_skip_layers": {
+      "label": "High-noise SLG Skip Layers",
+      "description": "SLG skip layers for the high-noise expert phase.",
+      "type": "array<number>",
+      "default": [],
+      "applies_to": ["txt2vid"],
+      "recommended": "Empty."
+    },
+    "high_noise_slg_start": {
+      "label": "High-noise SLG Start",
+      "description": "SLG start fraction during the high-noise phase.",
+      "type": "number",
+      "default": 0.01,
+      "applies_to": ["txt2vid"],
+      "recommended": "0.01."
+    },
+    "high_noise_slg_end": {
+      "label": "High-noise SLG End",
+      "description": "SLG end fraction during the high-noise phase.",
+      "type": "number",
+      "default": 0.2,
+      "applies_to": ["txt2vid"],
+      "recommended": "0.2."
+    },
+    "moe_boundary": {
+      "label": "MoE Expert Boundary",
+      "description": "For Wan 2.2 MoE: fraction of total steps at which to switch from high-noise to low-noise expert. 0 = use `high_noise_steps` directly.",
+      "type": "number",
+      "default": 0.875,
+      "applies_to": ["txt2vid"],
+      "recommended": "0.875 (Wan 2.2 default)."
+    },
+    "end_image_base64": {
+      "label": "End Image (base64)",
+      "description": "Optional final-frame target for Wan 2.2 — forces the video to end on this image. Lets you bridge two stills with generated motion.",
+      "type": "string",
+      "default": "",
+      "applies_to": ["txt2vid"],
+      "recommended": "Empty unless doing image-to-image-bridged video."
+    },
+    "control_frames": {
+      "label": "ControlNet Frames",
+      "description": "Per-frame control images for video generation. Length should match `video_frames` for full coverage.",
+      "type": "array<string>",
+      "default": [],
+      "applies_to": ["txt2vid"],
+      "recommended": "Empty unless using video-ControlNet."
+    },
+    "vace_strength": {
+      "label": "VACE Strength",
+      "description": "Strength of the VACE module (Wan 2.x video editing). 0 = disabled.",
+      "type": "number",
+      "default": 1.0,
+      "applies_to": ["txt2vid"],
+      "recommended": "1.0 when VACE is loaded."
+    },
+    "image_base64": {
+      "label": "Source Image (base64)",
+      "description": "Base64-encoded source image for upscaling.",
+      "type": "string",
+      "default": "",
+      "applies_to": ["upscale"],
+      "recommended": "Required."
+    },
+    "upscale_factor": {
+      "label": "Upscale Factor",
+      "description": "Target upscale factor. 4 = 4× the source image (default for ESRGAN).",
+      "type": "number",
+      "default": 4,
+      "applies_to": ["upscale"],
+      "recommended": "Match the loaded upscaler's native factor (4 for most ESRGAN variants)."
+    },
+    "tile_size": {
+      "label": "Upscale Tile Size",
+      "description": "Tile size for streaming the source image through the upscaler. Smaller = less VRAM, more boundary artifacts. 0 = whole-image.",
+      "type": "number",
+      "default": 128,
+      "applies_to": ["upscale"],
+      "recommended": "128 default. Drop to 64 if hitting VRAM limits."
+    },
+    "repeats": {
+      "label": "Upscale Repeats",
+      "description": "Run the upscaler N times. With a 4× model: 1 pass = 4×, 2 passes = 16×.",
+      "type": "number",
+      "default": 1,
+      "applies_to": ["upscale"],
+      "recommended": "1."
+    },
+    "job_id": {
+      "label": "Source Job ID",
+      "description": "Convenience: use the output of an existing completed job as the source for upscaling, instead of providing `image_base64`. Resolved server-side.",
+      "type": "string",
+      "default": "",
+      "applies_to": ["upscale"],
+      "recommended": "Use this when chaining 'generate, then upscale' from a queued job."
+    }
+  },
+  "categories": {
+    "core": {
+      "label": "Core",
+      "options": ["prompt", "negative_prompt", "width", "height", "steps", "cfg_scale", "seed", "sampler", "scheduler", "batch_count"]
+    },
+    "guidance": {
+      "label": "Guidance",
+      "options": ["distilled_guidance", "eta", "shifted_timestep", "flow_shift", "clip_skip"]
+    },
+    "slg": {
+      "label": "Skip Layer Guidance (SLG)",
+      "options": ["slg_scale", "skip_layers", "slg_start", "slg_end", "custom_sigmas"]
+    },
+    "image_input": {
+      "label": "Image Input (img2img / image-edit)",
+      "options": ["init_image_base64", "mask_image_base64", "strength", "img_cfg_scale", "ref_images", "auto_resize_ref_image", "increase_ref_index"]
+    },
+    "controlnet": {
+      "label": "ControlNet",
+      "options": ["control_image_base64", "control_strength"]
+    },
+    "vae_tiling": {
+      "label": "VAE Tiling (per-generation)",
+      "options": ["vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap"]
+    },
+    "cache": {
+      "label": "Cache Acceleration",
+      "options": ["cache_mode", "easycache_threshold", "easycache_start", "easycache_end", "spectrum_w", "spectrum_m", "spectrum_lam", "spectrum_window_size", "spectrum_flex_window", "spectrum_warmup_steps", "spectrum_stop_percent"]
+    },
+    "photomaker": {
+      "label": "PhotoMaker",
+      "options": ["pm_id_images", "pm_id_embed_path", "pm_style_strength"]
+    },
+    "video": {
+      "label": "Video (Wan)",
+      "options": ["video_frames", "fps", "high_noise_steps", "high_noise_cfg_scale", "high_noise_distilled_guidance", "high_noise_sampler", "high_noise_slg_scale", "high_noise_skip_layers", "high_noise_slg_start", "high_noise_slg_end", "moe_boundary", "end_image_base64", "control_frames", "vace_strength"]
+    },
+    "upscale_after": {
+      "label": "Upscale After Generation",
+      "options": ["upscale", "upscale_repeats", "upscale_auto_unload"]
+    },
+    "upscale_endpoint": {
+      "label": "/upscale Endpoint",
+      "options": ["image_base64", "job_id", "upscale_factor", "tile_size", "repeats"]
+    },
+    "expansion": {
+      "label": "Prompt Expansion",
+      "options": ["expand_prompt"]
+    }
+  }
+}
