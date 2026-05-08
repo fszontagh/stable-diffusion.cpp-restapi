@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
 import { useAppStore } from '../stores/app'
 import { api, type GenerationParams, type Img2ImgParams, type Txt2VidParams, type LoraEntry, type LoraSettings, type OptionDescription } from '../api/client'
+import RecHint from '../components/RecHint.vue'
 import ImageUploader from '../components/ImageUploader.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import Lightbox from '../components/Lightbox.vue'
@@ -18,8 +19,14 @@ const store = useAppStore()
 // drives the API.md doc tables and the WebUI tooltips, so descriptions
 // stay in lockstep across surfaces.
 const genOptionDescriptions = ref<Record<string, OptionDescription>>({})
+// Returns just the description text — for use as a :title tooltip.
 function genOpt(key: string): string | undefined {
   return genOptionDescriptions.value[key]?.description
+}
+// Returns the full descriptor object — for use with <RecHint> which
+// reads .recommended off it.
+function genOptDesc(key: string): OptionDescription | undefined {
+  return genOptionDescriptions.value[key]
 }
 
 // Highlighted setting for assistant navigation
@@ -1628,6 +1635,7 @@ async function handleSubmit() {
             <div class="form-group" data-setting="width" :title="genOpt('width')" :class="{ 'setting-highlighted': highlightedSetting === 'width' }">
               <label class="form-label">Width</label>
               <input v-model.number="width" type="number" class="form-input" step="8" min="64" max="2048" />
+              <RecHint :desc="genOptDesc('width')" />
             </div>
             <button
               type="button"
@@ -1639,6 +1647,7 @@ async function handleSubmit() {
             <div class="form-group" data-setting="height" :title="genOpt('height')" :class="{ 'setting-highlighted': highlightedSetting === 'height' }">
               <label class="form-label">Height</label>
               <input v-model.number="height" type="number" class="form-input" step="8" min="64" max="2048" />
+              <RecHint :desc="genOptDesc('height')" />
             </div>
           </div>
 
@@ -1651,6 +1660,7 @@ async function handleSubmit() {
                 </span>
               </label>
               <input v-model.number="steps" type="range" class="form-range" min="1" max="150" />
+              <RecHint :desc="genOptDesc('steps')" />
             </div>
             <div class="form-group" data-setting="cfg-scale" :title="genOpt('cfg_scale')" :class="{ 'setting-highlighted': highlightedSetting === 'cfg-scale' }">
               <label class="form-label">
@@ -1660,6 +1670,7 @@ async function handleSubmit() {
                 </span>
               </label>
               <input v-model.number="cfgScale" type="range" class="form-range" min="0" max="20" step="0.1" />
+              <RecHint :desc="genOptDesc('cfg_scale')" />
             </div>
           </div>
 
@@ -1674,6 +1685,7 @@ async function handleSubmit() {
               <select v-model="sampler" class="form-select">
                 <option v-for="s in samplers" :key="s" :value="s">{{ s }}</option>
               </select>
+              <RecHint :desc="genOptDesc('sampler')" />
             </div>
             <div class="form-group" data-setting="scheduler" :title="genOpt('scheduler')" :class="{ 'setting-highlighted': highlightedSetting === 'scheduler' }">
               <label class="form-label">
@@ -1685,6 +1697,7 @@ async function handleSubmit() {
               <select v-model="scheduler" class="form-select">
                 <option v-for="s in schedulers" :key="s" :value="s">{{ s }}</option>
               </select>
+              <RecHint :desc="genOptDesc('scheduler')" />
             </div>
           </div>
 
@@ -1697,10 +1710,12 @@ async function handleSubmit() {
                   &#127922;
                 </button>
               </div>
+              <RecHint :desc="genOptDesc('seed')" />
             </div>
             <div class="form-group" data-setting="batch-count" :title="genOpt('batch_count')" :class="{ 'setting-highlighted': highlightedSetting === 'batch-count' }">
               <label class="form-label">Batch Count</label>
               <input v-model.number="batchCount" type="number" class="form-input" min="1" max="16" />
+              <RecHint :desc="genOptDesc('batch_count')" />
             </div>
           </div>
 

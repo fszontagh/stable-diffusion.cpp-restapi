@@ -1350,6 +1350,8 @@ export interface UIPreferences {
   desktop_notifications: boolean
   theme: string
   theme_custom: Record<string, string> | null
+  /** Show inline "recommended" hints below each option in ModelLoad / Generate forms. Default true. */
+  show_option_hints?: boolean
   lora_settings?: LoraSettings
   lora_lists?: {
     txt2img?: LoraListsPerMode

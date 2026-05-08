@@ -17,6 +17,7 @@ const loading = ref(false)
 
 // UI Preferences
 const desktopNotifications = ref(true)
+const showOptionHints = ref(true)
 const theme = ref('default')
 
 // Server-side output preferences (fetched from /settings/output).
@@ -177,6 +178,9 @@ async function loadSettings() {
 async function loadUIPreferences() {
   const prefs = await api.getUIPreferences()
   desktopNotifications.value = prefs.desktop_notifications
+  // show_option_hints defaults to true server-side; if absent (older
+  // installs that haven't restarted post-upgrade), keep the new default.
+  showOptionHints.value = prefs.show_option_hints !== false
   theme.value = prefs.theme
 }
 
@@ -358,8 +362,14 @@ async function saveUIPreferences() {
   try {
     await api.updateUIPreferences({
       desktop_notifications: desktopNotifications.value,
+      show_option_hints: showOptionHints.value,
       theme: theme.value
     })
+    // Push the new value into the store immediately so RecHint
+    // re-renders without a fetch round-trip.
+    if (store.uiPreferences) {
+      store.uiPreferences.show_option_hints = showOptionHints.value
+    }
     store.showToast('Settings saved', 'success')
   } catch (e) {
     store.showToast('Failed to save settings', 'error')
@@ -520,6 +530,20 @@ loadSettings()
                   v-model="desktopNotifications"
                   label="Desktop Notifications"
                   description="Show system notifications when generation completes"
+                  @update:model-value="saveUIPreferences"
+                />
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <h4>Form Help</h4>
+              </div>
+              <div class="settings-card-body">
+                <SwitchField
+                  v-model="showOptionHints"
+                  label="Show option hints"
+                  description="Show inline 'recommended' descriptions below each control on Model Load and Generate pages. Useful on mobile (where tooltips don't work) or when you're learning the options. Disable for a cleaner form once you know what each option does."
                   @update:model-value="saveUIPreferences"
                 />
               </div>

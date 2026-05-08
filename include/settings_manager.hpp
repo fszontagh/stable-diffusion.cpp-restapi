@@ -30,8 +30,13 @@ struct UIPreferences {
     bool desktop_notifications = true;
     std::string theme = "default";
     nlohmann::json theme_custom = nlohmann::json();
+    // Show inline "recommended" hints below each option in ModelLoad +
+    // Generate forms. Tooltips don't work on mobile, so the inline form
+    // is the primary surface; power users who already know each option
+    // can hide them. Default on (more discoverable for new users).
+    bool show_option_hints = true;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(UIPreferences, desktop_notifications, theme, theme_custom)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(UIPreferences, desktop_notifications, theme, theme_custom, show_option_hints)
 };
 
 /**

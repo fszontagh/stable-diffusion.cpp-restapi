@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { api, type LoadModelParams, type ModelInfo, type ArchitecturePreset, type OptionDescription } from '../api/client'
 import { useArchitectures, extractWeightType, suggestComponents, type ComponentSuggestion } from '../composables/useArchitectures'
+import RecHint from '../components/RecHint.vue'
 
 const props = defineProps<{
   modelName: string
@@ -563,17 +564,17 @@ watch(selectedArchitecture, () => {
               <label class="form-checkbox" :title="getOptionDesc('flash_attn')?.description">
                 <input v-model="loadParams.options!.flash_attn" type="checkbox" />
                 <span>Flash Attention</span>
-                <span class="option-hint" v-if="getOptionDesc('flash_attn')">
-                  {{ getOptionDesc('flash_attn')?.recommended }}
-                </span>
+                <RecHint :desc="getOptionDesc('flash_attn')" />
               </label>
-              <label class="form-checkbox" :title="getOptionDesc('diffusion_flash_attn')?.description || 'Flash attention specifically for the diffusion model (UNet/DiT/Flux). Independent from the general Flash Attention switch above — sd.cpp keeps the two separate because CUDA support and numerical stability used to differ.'">
+              <label class="form-checkbox" :title="getOptionDesc('diffusion_flash_attn')?.description">
                 <input v-model="loadParams.options!.diffusion_flash_attn" type="checkbox" />
                 <span>Diffusion Flash Attention</span>
+                <RecHint :desc="getOptionDesc('diffusion_flash_attn')" />
               </label>
               <label class="form-checkbox" :title="getOptionDesc('enable_mmap')?.description">
                 <input v-model="loadParams.options!.enable_mmap" type="checkbox" />
                 <span>Memory-mapped Loading</span>
+                <RecHint :desc="getOptionDesc('enable_mmap')" />
               </label>
               <div class="form-group inline-group">
                 <label class="form-label">Threads (-1 = auto)</label>
@@ -589,25 +590,29 @@ watch(selectedArchitecture, () => {
               <label class="form-checkbox" :title="getOptionDesc('keep_clip_on_cpu')?.description">
                 <input v-model="loadParams.options!.keep_clip_on_cpu" type="checkbox" />
                 <span>Keep CLIP on CPU</span>
+                <RecHint :desc="getOptionDesc('keep_clip_on_cpu')" />
               </label>
               <label class="form-checkbox" :title="getOptionDesc('keep_vae_on_cpu')?.description">
                 <input v-model="loadParams.options!.keep_vae_on_cpu" type="checkbox" />
                 <span>Keep VAE on CPU</span>
+                <RecHint :desc="getOptionDesc('keep_vae_on_cpu')" />
               </label>
               <label class="form-checkbox" :title="getOptionDesc('keep_controlnet_on_cpu')?.description">
                 <input v-model="loadParams.options!.keep_controlnet_on_cpu" type="checkbox" />
                 <span>Keep ControlNet on CPU</span>
+                <RecHint :desc="getOptionDesc('keep_controlnet_on_cpu')" />
               </label>
               <label class="form-checkbox" :title="getOptionDesc('offload_to_cpu')?.description">
                 <input v-model="loadParams.options!.offload_to_cpu" type="checkbox" />
                 <span>Offload to CPU</span>
+                <RecHint :desc="getOptionDesc('offload_to_cpu')" />
               </label>
             </div>
             <!-- Max VRAM (graph-cut segmented param offload).
                  Lives on sd_ctx_params_t in upstream sd.cpp, so it's
                  always available — independent of the experimental
                  offload build option. 0 = disabled. -->
-            <div class="form-group" :title="getOptionDesc('max_vram')?.description || 'GiB budget for graph-cut segmented param offload. sd.cpp partitions the diffusion graph so peak weight residency stays under this number. 0 = disabled. Leave at 0 unless you actually OOM.'">
+            <div class="form-group" :title="getOptionDesc('max_vram')?.description">
               <label class="form-label">Max VRAM (GiB) — graph-cut offload</label>
               <input
                 v-model.number="loadParams.options!.max_vram"
@@ -617,9 +622,7 @@ watch(selectedArchitecture, () => {
                 step="0.5"
                 placeholder="0 = disabled"
               />
-              <small class="form-hint">
-                Cap diffusion peak weight residency. 0 = off. Combine with Offload Mode for finer control.
-              </small>
+              <RecHint :desc="getOptionDesc('max_vram')" />
             </div>
           </div>
 
@@ -630,20 +633,22 @@ watch(selectedArchitecture, () => {
               <label class="form-checkbox" :title="getOptionDesc('vae_decode_only')?.description">
                 <input v-model="loadParams.options!.vae_decode_only" type="checkbox" />
                 <span>VAE Decode Only</span>
-                <span class="option-hint">Saves memory, but disables img2img (image edit via ref_images still works)</span>
+                <RecHint :desc="getOptionDesc('vae_decode_only')" />
               </label>
               <label class="form-checkbox" :title="getOptionDesc('vae_tiling')?.description">
                 <input v-model="loadParams.options!.vae_tiling" type="checkbox" />
                 <span>VAE Tiling</span>
+                <RecHint :desc="getOptionDesc('vae_tiling')" />
               </label>
               <label class="form-checkbox" :title="getOptionDesc('vae_conv_direct')?.description">
                 <input v-model="loadParams.options!.vae_conv_direct" type="checkbox" />
                 <span>VAE Direct Convolution</span>
+                <RecHint :desc="getOptionDesc('vae_conv_direct')" />
               </label>
               <label v-if="loadParams.taesd" class="form-checkbox" :title="getOptionDesc('tae_preview_only')?.description">
                 <input v-model="loadParams.options!.tae_preview_only" type="checkbox" />
                 <span>TAE Preview Only</span>
-                <span class="option-hint">Use TAESD for previews, VAE for final output</span>
+                <RecHint :desc="getOptionDesc('tae_preview_only')" />
               </label>
             </div>
           </div>
