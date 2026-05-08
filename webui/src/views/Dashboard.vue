@@ -76,8 +76,7 @@ function formatOptionLabel(key: string): string {
     log_offload_events: 'Log Offload Events',
     min_offload_size_mb: 'Min Offload Size (MB)',
     target_free_vram_mb: 'Target Free VRAM (MB)',
-    // Layer streaming options
-    layer_streaming_enabled: 'Layer Streaming',
+    // Layer streaming tuning (only meaningful when offload_mode='layer_streaming')
     streaming_prefetch_layers: 'Prefetch Layers',
     streaming_keep_layers_behind: 'Keep Layers Behind',
     streaming_min_free_vram_mb: 'Streaming Min VRAM (MB)'

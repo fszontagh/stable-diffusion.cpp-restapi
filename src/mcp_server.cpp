@@ -284,7 +284,6 @@ json McpServer::handle_list_tools() {
         {"reload_diffusion", {{"type", "boolean"}, {"description", "Reload diffusion for next generation"}}},
         {"target_free_vram_mb", {{"type", "integer"}, {"description", "Target free VRAM before VAE decode in MB, 0 = always offload"}}},
         {"min_offload_size_mb", {{"type", "integer"}, {"description", "Skip offloading components smaller than this (MB)"}}},
-        {"layer_streaming_enabled", {{"type", "boolean"}, {"description", "Stream U-Net/DiT layers one at a time (for 'layer_streaming' mode)"}}},
         {"streaming_prefetch_layers", {{"type", "integer"}, {"description", "Layers to prefetch ahead during streaming"}}},
         {"streaming_keep_layers_behind", {{"type", "integer"}, {"description", "Layers to keep after execution (skip connections)"}}},
         {"streaming_min_free_vram_mb", {{"type", "integer"}, {"description", "Minimum free VRAM to maintain during streaming (MB)"}}}

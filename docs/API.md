@@ -213,7 +213,6 @@ Check server status, loaded model, and all loaded components.
         "chroma_use_dit_mask": true,
         "chroma_use_t5_mask": false,
         "chroma_t5_mask_pad": 1,
-        "layer_streaming_enabled": false,
         "streaming_prefetch_layers": 1,
         "streaming_keep_layers_behind": 0,
         "streaming_min_free_vram_mb": 0
@@ -656,8 +655,7 @@ Concurrency: only one load can be in flight at a time. A second `POST /models/lo
 | `log_offload_events` | boolean | false | Log offload events for debugging |
 | `min_offload_size_mb` | integer | 0 | Minimum component size to offload (MB) |
 | `target_free_vram_mb` | integer | 0 | Target free VRAM before VAE decode (0 = always offload) |
-| `layer_streaming_enabled` | boolean | false | Enable layer-by-layer streaming execution |
-| `streaming_prefetch_layers` | integer | 1 | Number of layers to prefetch ahead |
+| `streaming_prefetch_layers` | integer | 1 | Number of layers to prefetch ahead (only meaningful when `offload_mode = layer_streaming`) |
 | `streaming_keep_layers_behind` | integer | 0 | Layers to keep after execution (for skip connections) |
 | `streaming_min_free_vram_mb` | integer | 0 | Minimum VRAM to keep free during streaming |
 

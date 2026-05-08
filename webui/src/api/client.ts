@@ -54,8 +54,8 @@ export interface LoadOptions {
   min_offload_size_mb?: number
   target_free_vram_mb?: number
 
-  // Layer streaming options (for layer_streaming mode - enables models larger than VRAM)
-  layer_streaming_enabled?: boolean
+  // Layer streaming options (only meaningful when offload_mode='layer_streaming').
+  // The mode flag is what gates streaming inside sd.cpp; these tune it.
   streaming_prefetch_layers?: number
   streaming_keep_layers_behind?: number
   streaming_min_free_vram_mb?: number
@@ -205,8 +205,7 @@ export interface LoadModelParams {
     min_offload_size_mb?: number
     target_free_vram_mb?: number
 
-    // Layer streaming options (for layer_streaming mode - enables models larger than VRAM)
-    layer_streaming_enabled?: boolean
+    // Layer streaming options (only meaningful when offload_mode='layer_streaming').
     streaming_prefetch_layers?: number
     streaming_keep_layers_behind?: number
     streaming_min_free_vram_mb?: number

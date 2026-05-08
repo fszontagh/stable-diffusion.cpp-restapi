@@ -279,7 +279,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
             "offload_cond_stage", "offload_diffusion",
             "reload_cond_stage", "reload_diffusion",
             "log_offload_events", "min_offload_size_mb", "target_free_vram_mb",
-            "layer_streaming_enabled", "streaming_prefetch_layers",
+            "streaming_prefetch_layers",
             "streaming_keep_layers_behind", "streaming_min_free_vram_mb",
         };
         reject_unknown_keys("/models/load options", opts, KNOWN_OPTIONS);
@@ -340,7 +340,6 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.target_free_vram_mb = opts.value("target_free_vram_mb", 0);
 
         // Layer streaming options
-        params.layer_streaming_enabled = opts.value("layer_streaming_enabled", false);
         params.streaming_prefetch_layers = opts.value("streaming_prefetch_layers", 1);
         params.streaming_keep_layers_behind = opts.value("streaming_keep_layers_behind", 0);
         params.streaming_min_free_vram_mb = opts.value("streaming_min_free_vram_mb", 0);
@@ -927,7 +926,6 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.offload_config.target_free_vram = params.target_free_vram_mb * 1024 * 1024;  // Convert MB to bytes
 
     // Layer streaming options
-    ctx_params.offload_config.layer_streaming_enabled = params.layer_streaming_enabled;
     ctx_params.offload_config.streaming_prefetch_layers = params.streaming_prefetch_layers;
     ctx_params.offload_config.streaming_keep_layers_behind = params.streaming_keep_layers_behind;
     ctx_params.offload_config.streaming_min_free_vram = params.streaming_min_free_vram_mb * 1024 * 1024;  // Convert MB to bytes
@@ -1089,7 +1087,6 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["target_free_vram_mb"] = params.target_free_vram_mb;
 
     // Layer streaming options
-    loaded_options_["layer_streaming_enabled"] = params.layer_streaming_enabled;
     loaded_options_["streaming_prefetch_layers"] = params.streaming_prefetch_layers;
     loaded_options_["streaming_keep_layers_behind"] = params.streaming_keep_layers_behind;
     loaded_options_["streaming_min_free_vram_mb"] = params.streaming_min_free_vram_mb;
