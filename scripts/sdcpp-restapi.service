@@ -42,9 +42,19 @@ ReadWritePaths=/opt/sdcpp-restapi/output
 # Read-only access to models and config
 ReadOnlyPaths=/opt/sdcpp-restapi/models /etc/sdcpp-restapi
 
-# Resource limits (uncomment and adjust as needed)
+# Resource limits (uncomment and adjust as needed). install.sh emits these
+# automatically when invoked with --memory-max / --memory-high /
+# --memory-swap-max; this static template is for hand-managed installs.
+# Values follow systemd.resource-control(5): "16G", "70%", "infinity",
+# or "0" (only meaningful for MemorySwapMax = forbid swap).
+#
+# MemoryHigh    soft cap — kernel throttles allocations above this.
+# MemoryMax     hard cap — OOM-kills the service if it exceeds this.
+# MemorySwapMax cap on swap usage. "0" forbids swap entirely.
 # LimitNOFILE=65535
-# MemoryMax=32G
+# MemoryHigh=20G
+# MemoryMax=24G
+# MemorySwapMax=0
 
 # Library path (if using custom libraries)
 Environment=LD_LIBRARY_PATH=/opt/sdcpp-restapi/lib

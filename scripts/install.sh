@@ -38,6 +38,17 @@ UPDATE_WEBUI_ONLY=false
 SET_PERMISSIONS=true
 SERVICE_USER="${SUDO_USER:-$(whoami)}"
 
+# Optional systemd memory limits (empty = directive omitted from the unit,
+# matching prior behavior — no cap). Accepted values are systemd's: "16G",
+# "70%", "infinity", etc. See systemd.resource-control(5).
+#
+# MemoryHigh   = soft cap, kernel throttles allocations above this value.
+# MemoryMax    = hard cap, processes are OOM-killed above this value.
+# MemorySwapMax= cap on swap usage. Set to "0" to forbid swap entirely.
+SERVICE_MEMORY_MAX=""
+SERVICE_MEMORY_HIGH=""
+SERVICE_MEMORY_SWAP_MAX=""
+
 # Configuration values (will be set from existing config or prompts)
 SERVER_HOST=""
 SERVER_PORT=""
@@ -95,6 +106,10 @@ Options:
     --models-dir DIR    Directory for model files
     --no-service        Don't install systemd service
     --no-permissions    Skip setting file ownership (chown operations)
+    --memory-max VAL    Hard cap on RAM (systemd MemoryMax, OOM-kills above);
+                        accepts "16G", "70%", "infinity". Omit for no cap.
+    --memory-high VAL   Soft cap on RAM (systemd MemoryHigh, throttles above)
+    --memory-swap-max VAL  Cap on swap usage; "0" forbids swap entirely
     --help              Show this help message
 
 If a config file already exists at ${CONFIG_FILE},
@@ -106,6 +121,8 @@ Examples:
     sudo $0 --port 9000                        # Use port 9000
     sudo $0 --update-webui                     # Update only Web UI files
     sudo $0 --no-permissions                   # Skip permission changes
+    sudo $0 --memory-max 24G                   # Cap RSS at 24 GiB
+    sudo $0 --memory-high 20G --memory-max 24G # Soft 20 GiB / hard 24 GiB
     sudo $0 --uninstall                        # Remove installation
 
 EOF
@@ -276,6 +293,18 @@ while [[ $# -gt 0 ]]; do
         --no-service)
             INSTALL_SERVICE=false
             shift
+            ;;
+        --memory-max)
+            SERVICE_MEMORY_MAX="$2"
+            shift 2
+            ;;
+        --memory-high)
+            SERVICE_MEMORY_HIGH="$2"
+            shift 2
+            ;;
+        --memory-swap-max)
+            SERVICE_MEMORY_SWAP_MAX="$2"
+            shift 2
             ;;
         --no-permissions)
             SET_PERMISSIONS=false
@@ -803,6 +832,23 @@ CONFIGEOF
     # Install systemd service
     if [[ "${INSTALL_SERVICE}" == true ]]; then
         print_info "Installing systemd service..."
+
+        # Compose optional memory-limit directives. Each is emitted only when
+        # the user passed the matching --memory-* flag, so this script keeps
+        # the previous "no cap by default" behavior — a value-less flag would
+        # silently change the security/availability profile of an existing
+        # install on upgrade.
+        local memory_directives=""
+        if [[ -n "${SERVICE_MEMORY_HIGH}" ]]; then
+            memory_directives+="MemoryHigh=${SERVICE_MEMORY_HIGH}"$'\n'
+        fi
+        if [[ -n "${SERVICE_MEMORY_MAX}" ]]; then
+            memory_directives+="MemoryMax=${SERVICE_MEMORY_MAX}"$'\n'
+        fi
+        if [[ -n "${SERVICE_MEMORY_SWAP_MAX}" ]]; then
+            memory_directives+="MemorySwapMax=${SERVICE_MEMORY_SWAP_MAX}"$'\n'
+        fi
+
         cat > "${SERVICE_FILE}" << SERVICEEOF
 [Unit]
 Description=SDCPP REST API Server
@@ -826,10 +872,10 @@ PrivateTmp=true
 ReadWritePaths=${OUTPUT_DIR} ${CONFIG_DIR}
 ReadOnlyPaths=${MODELS_DIR} ${INSTALL_DIR}/webui ${INSTALL_DIR}/docs
 
-# Resource limits (adjust as needed)
+# Resource limits — set via install.sh --memory-max / --memory-high /
+# --memory-swap-max. Empty by default (no cap), preserving prior behavior.
 # LimitNOFILE=65535
-# MemoryMax=32G
-
+${memory_directives}
 # Environment
 Environment=LD_LIBRARY_PATH=${INSTALL_DIR}/lib
 Environment=SDCPP_WEBUI_PATH=${INSTALL_DIR}/webui
