@@ -49,8 +49,8 @@ const loadParams = ref<LoadModelParams>({
     reload_cond_stage: true,
     reload_diffusion: true,
     target_free_vram_mb: 0,
-    // Layer streaming options
-    layer_streaming_enabled: false,
+    // Layer streaming tuning (only meaningful when offload_mode='layer_streaming').
+    // The mode itself is what enables streaming inside sd.cpp.
     streaming_prefetch_layers: 1,
     streaming_keep_layers_behind: 0,
     streaming_min_free_vram_mb: 0
@@ -299,23 +299,6 @@ watch(selectedArchitecture, () => {
   }
 })
 
-// Auto-couple layer_streaming_enabled with offload_mode. sd.cpp's
-// SD_OFFLOAD_LAYER_STREAMING mode does *layered* execution but the actual
-// per-layer streaming is gated by a separate boolean — so picking
-// layer_streaming in the dropdown without also flipping the flag was a
-// common "I picked layer streaming but it didn't stream" gotcha.
-// This default flips the flag on automatically when the user selects
-// layer_streaming, but leaves the checkbox visible/editable so anyone
-// who explicitly wants the mode without per-layer streaming can opt out.
-watch(() => loadParams.value.options?.offload_mode, (mode, prev) => {
-  if (!loadParams.value.options) return
-  if (mode === 'layer_streaming' && prev !== 'layer_streaming') {
-    loadParams.value.options.layer_streaming_enabled = true
-  } else if (mode !== 'layer_streaming' && prev === 'layer_streaming') {
-    // Switched away — clear the flag so it doesn't leak into a non-LS load.
-    loadParams.value.options.layer_streaming_enabled = false
-  }
-})
 </script>
 
 <template>

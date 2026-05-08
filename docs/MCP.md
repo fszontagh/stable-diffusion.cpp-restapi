@@ -166,7 +166,9 @@ Manage the currently loaded diffusion model.
 `flash_attn`, `n_threads`, `keep_clip_on_cpu`, `keep_vae_on_cpu`, `keep_controlnet_on_cpu`, `offload_to_cpu`, `enable_mmap`, `vae_decode_only`, `vae_tiling`, `vae_tile_size_x`, `vae_tile_size_y`, `vae_tile_overlap`, `weight_type`, `tensor_type_rules`, `flow_shift`, `rng_type`, `prediction`, `lora_apply_mode`, `free_params_immediately`.
 
 *Experimental VRAM offloading* (only when server is built with `SD_EXPERIMENTAL_OFFLOAD=ON`; check `features.experimental_offload`):
-`offload_mode` (enum: `none` / `cond_only` / `cond_diffusion` / `aggressive` / `layer_streaming`), `vram_estimation` (`dryrun` / `formula`), `offload_cond_stage`, `offload_diffusion`, `reload_cond_stage`, `reload_diffusion`, `target_free_vram_mb`, `min_offload_size_mb`, `layer_streaming_enabled`, `streaming_prefetch_layers`, `streaming_keep_layers_behind`, `streaming_min_free_vram_mb`.
+`offload_mode` (enum: `none` / `cond_only` / `cond_diffusion` / `aggressive` / `layer_streaming`), `vram_estimation` (`dryrun` / `formula`), `offload_cond_stage`, `offload_diffusion`, `reload_cond_stage`, `reload_diffusion`, `target_free_vram_mb`, `min_offload_size_mb`, `streaming_prefetch_layers`, `streaming_keep_layers_behind`, `streaming_min_free_vram_mb`.
+
+> Note: setting `offload_mode = "layer_streaming"` is enough to enable per-layer streaming inside sd.cpp — the `streaming_*` fields above only tune behavior, they don't gate it.
 
 > **Schema note:** The tool's `inputSchema` is **flat** — pass all fields at the top level of `arguments`. The MCP handler partitions them correctly for the underlying parser. Any field not explicitly listed above that matches a `ModelLoadParams` key (see `include/model_manager.hpp`) is passed through as well.
 
@@ -185,7 +187,6 @@ Manage the currently loaded diffusion model.
       "llm": "Qwen3-4b-Z-Engineer-V2.gguf",
       "flash_attn": true,
       "offload_mode": "layer_streaming",
-      "layer_streaming_enabled": true,
       "streaming_prefetch_layers": 1,
       "keep_clip_on_cpu": true,
       "vae_tiling": true

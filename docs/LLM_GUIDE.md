@@ -297,7 +297,7 @@ Companion options:
 - `reload_cond_stage` / `reload_diffusion`: reload for the next generation
 - `min_offload_size_mb`: don't offload components smaller than this
 - `target_free_vram_mb`: target free VRAM before VAE decode (0 = always offload)
-- `layer_streaming_enabled`, `streaming_prefetch_layers`, `streaming_keep_layers_behind`, `streaming_min_free_vram_mb`
+- `streaming_prefetch_layers`, `streaming_keep_layers_behind`, `streaming_min_free_vram_mb` — tuning knobs that apply only when `offload_mode = layer_streaming`. The mode itself is what enables streaming inside sd.cpp; there's no separate enable bool.
 
 ### Cache acceleration
 

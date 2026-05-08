@@ -129,7 +129,6 @@ struct ModelLoadParams {
     size_t target_free_vram_mb = 0;             // Target free VRAM before VAE decode (MB), 0 = always offload
 
     // Layer streaming options (for layer_streaming mode - enables models larger than VRAM)
-    bool layer_streaming_enabled = false;       // Enable layer-by-layer streaming execution
     int streaming_prefetch_layers = 1;          // Number of layers to prefetch ahead
     int streaming_keep_layers_behind = 0;       // Layers to keep after execution (for skip connections)
     size_t streaming_min_free_vram_mb = 0;      // Minimum VRAM to keep free during streaming (MB)

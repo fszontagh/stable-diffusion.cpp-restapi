@@ -69,7 +69,6 @@ struct LoadOptions {
             .optional_field("log_offload_events", schema::FieldType::Boolean, "Log offload events", false)
             .optional_field("min_offload_size_mb", schema::FieldType::Integer, "Minimum component size to offload (MB)", 0)
             .optional_field("target_free_vram_mb", schema::FieldType::Integer, "Target free VRAM before VAE (MB)", 0)
-            .optional_field("layer_streaming_enabled", schema::FieldType::Boolean, "Enable layer-by-layer streaming", false)
             .optional_field("streaming_prefetch_layers", schema::FieldType::Integer, "Layers to prefetch ahead", 1)
             .optional_field("streaming_keep_layers_behind", schema::FieldType::Integer, "Layers to keep after execution", 0)
             .optional_field("streaming_min_free_vram_mb", schema::FieldType::Integer, "Min free VRAM during streaming (MB)", 0)
