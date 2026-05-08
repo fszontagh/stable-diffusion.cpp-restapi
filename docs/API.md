@@ -621,7 +621,8 @@ Concurrency: only one load can be in flight at a time. A second `POST /models/lo
 | `keep_controlnet_on_cpu` | boolean | false | Keep ControlNet on CPU |
 | `vae_conv_direct` | boolean | false | Use ggml_conv2d_direct in VAE |
 | `diffusion_conv_direct` | boolean | false | Use ggml_conv2d_direct in diffusion model |
-| `flash_attn` | boolean | true | Enable Flash Attention |
+| `flash_attn` | boolean | true | Enable Flash Attention for CLIP / T5 / conditioner |
+| `diffusion_flash_attn` | boolean | false | Enable Flash Attention specifically for the diffusion model (UNet/DiT/Flux). sd.cpp keeps this separate from `flash_attn` because CUDA support and numerical stability used to differ between the two. |
 | `offload_to_cpu` | boolean | false | Offload model to CPU |
 | `enable_mmap` | boolean | true | Use memory-mapped file loading |
 | `vae_decode_only` | boolean | true | VAE decode only mode |
@@ -2859,7 +2860,50 @@ All error responses follow this format:
 | 202 | Accepted (job queued) |
 | 400 | Bad Request (invalid parameters, no model loaded) |
 | 404 | Not Found (model or job not found) |
+| 409 | Conflict (e.g. another model is already loading) |
 | 500 | Internal Server Error |
+| 504 | Gateway Timeout (e.g. `?wait=true` exceeded its timeout — work continues in background) |
+
+### Strict input validation
+
+Endpoints that accept structured input **reject unknown JSON body fields and unknown query parameters** with `400 Bad Request`. This is intentional — silently ignoring typos like `diffusion_fa` (vs the real field `diffusion_flash_attn`) used to cause "I sent it but nothing happened" bugs.
+
+**Example — unknown body field:**
+
+```bash
+curl -X POST http://localhost:8080/models/load \
+  -H 'Content-Type: application/json' \
+  -d '{"model_name":"foo.gguf","model_type":"diffusion","options":{"diffusion_fa":true}}'
+```
+```json
+{
+  "error": "Unknown field(s) in /models/load options: diffusion_fa. Check the spelling against the OpenAPI schema at /openapi.json."
+}
+```
+
+**Example — unknown query parameter:**
+
+```bash
+curl -X POST 'http://localhost:8080/models/load?waitt=true' ...
+```
+```json
+{
+  "error": "Unknown query parameter(s): waitt. Accepted: wait, timeout."
+}
+```
+
+**Endpoints that strictly validate today:**
+
+| Endpoint | Body keys | Query params |
+|---|---|---|
+| `POST /models/load` | top-level + `options` sub-object | `wait`, `timeout` |
+| `POST /txt2img` | enumerated in `Txt2ImgParams::from_json` | n/a |
+| `POST /img2img` | enumerated in `Img2ImgParams::from_json` | n/a |
+| `POST /txt2vid` | enumerated in `Txt2VidParams::from_json` | n/a |
+
+The full closed key list per endpoint is reflected in the auto-generated OpenAPI spec at `GET /openapi.json` — the schema is the source of truth, the C++ parsers are kept in sync with it.
+
+**Type coercion is still tolerant.** Strict-key validation is independent from type coercion: `"steps": "9"` (string-encoded number) is still coerced to `9`, because many naive HTTP clients (shell scripts, form-encoded wrappers) emit numbers as strings. The boundary is "the field name must exist", not "the value must be exactly the right JSON type".
 
 ---
 

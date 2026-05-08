@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <unordered_set>
 
 #include "stable-diffusion.h"
 
@@ -161,8 +162,48 @@ bool ModelFilter::is_empty() const {
            (!search.has_value() || search.value().empty());
 }
 
+// Reject unknown keys at the JSON-parsing boundary. Silently dropping
+// unrecognized fields used to cause user-facing bugs ("I sent diffusion_fa
+// but it had no effect" — wrong field name, parser ignored it). Strict
+// rejection makes typos surface immediately as 400.
+//
+// `where` is a human-readable label for the message; `j` is the object to
+// scan; `known` is the closed set of accepted keys at this level.
+static void reject_unknown_keys(const std::string& where,
+                                const nlohmann::json& j,
+                                const std::unordered_set<std::string>& known) {
+    if (!j.is_object()) return;
+    std::vector<std::string> unknown;
+    for (auto it = j.begin(); it != j.end(); ++it) {
+        if (known.find(it.key()) == known.end()) {
+            unknown.push_back(it.key());
+        }
+    }
+    if (!unknown.empty()) {
+        std::string msg = "Unknown field(s) in " + where + ": ";
+        for (size_t i = 0; i < unknown.size(); ++i) {
+            if (i) msg += ", ";
+            msg += unknown[i];
+        }
+        msg += ". Check the spelling against the OpenAPI schema at /openapi.json.";
+        throw std::runtime_error(msg);
+    }
+}
+
 ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
     ModelLoadParams params;
+
+    // Top-level allowed keys for POST /models/load body.
+    static const std::unordered_set<std::string> KNOWN_TOP_LEVEL = {
+        "model_name", "model_type",
+        // Component model paths
+        "vae", "clip_l", "clip_g", "clip_vision", "t5xxl", "controlnet",
+        "llm", "llm_vision", "taesd",
+        "high_noise_diffusion_model", "photo_maker",
+        // Nested options object
+        "options",
+    };
+    reject_unknown_keys("/models/load body", j, KNOWN_TOP_LEVEL);
 
     params.model_name = j.value("model_name", "");
 
@@ -207,11 +248,47 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
 
     if (j.contains("options")) {
         auto& opts = j["options"];
+        // Allowed keys inside the "options" sub-object. Must enumerate every
+        // key the parser below consumes — drift here means real options get
+        // rejected as unknown. Sorted by section to mirror the parse order
+        // for diff-friendliness.
+        static const std::unordered_set<std::string> KNOWN_OPTIONS = {
+            // Performance / threading
+            "n_threads", "flash_attn", "diffusion_flash_attn",
+            // Memory residency
+            "keep_clip_on_cpu", "keep_vae_on_cpu", "keep_controlnet_on_cpu",
+            "offload_to_cpu", "enable_mmap", "free_params_immediately",
+            "max_vram",
+            // VAE/diffusion compute
+            "vae_decode_only", "vae_conv_direct", "diffusion_conv_direct",
+            "tae_preview_only", "force_sdxl_vae_conv_scale",
+            // Sampling defaults
+            "flow_shift", "weight_type", "tensor_type_rules",
+            // RNG
+            "rng_type", "sampler_rng_type",
+            // Model behavior
+            "prediction", "lora_apply_mode",
+            // VAE tiling
+            "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
+            // Chroma-specific
+            "chroma_use_dit_mask", "chroma_use_t5_mask", "chroma_t5_mask_pad",
+            // Experimental offload (only honored when SDCPP_EXPERIMENTAL_OFFLOAD is on,
+            // but accepted in the schema regardless so OFFLOAD=OFF builds don't 400
+            // on configs authored against an OFFLOAD=ON build).
+            "offload_mode", "vram_estimation",
+            "offload_cond_stage", "offload_diffusion",
+            "reload_cond_stage", "reload_diffusion",
+            "log_offload_events", "min_offload_size_mb", "target_free_vram_mb",
+            "layer_streaming_enabled", "streaming_prefetch_layers",
+            "streaming_keep_layers_behind", "streaming_min_free_vram_mb",
+        };
+        reject_unknown_keys("/models/load options", opts, KNOWN_OPTIONS);
         params.n_threads = opts.value("n_threads", -1);
         params.keep_clip_on_cpu = opts.value("keep_clip_on_cpu", true);
         params.keep_vae_on_cpu = opts.value("keep_vae_on_cpu", false);
         params.keep_controlnet_on_cpu = opts.value("keep_controlnet_on_cpu", false);
         params.flash_attn = opts.value("flash_attn", true);
+        params.diffusion_flash_attn = opts.value("diffusion_flash_attn", false);
         params.offload_to_cpu = opts.value("offload_to_cpu", false);
         params.enable_mmap = opts.value("enable_mmap", true);
         params.vae_decode_only = opts.value("vae_decode_only", false);
@@ -786,7 +863,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.keep_clip_on_cpu = params.keep_clip_on_cpu;
     ctx_params.keep_vae_on_cpu = params.keep_vae_on_cpu;
     ctx_params.keep_control_net_on_cpu = params.keep_controlnet_on_cpu;
-    ctx_params.flash_attn = params.flash_attn;  // Enable flash attention for all models (CLIP, VAE, diffusion)
+    ctx_params.flash_attn = params.flash_attn;  // Flash attention for CLIP/T5/conditioner
+    ctx_params.diffusion_flash_attn = params.diffusion_flash_attn;  // ditto for the diffusion model
     ctx_params.offload_params_to_cpu = params.offload_to_cpu;
     ctx_params.enable_mmap = params.enable_mmap;
     ctx_params.vae_decode_only = params.vae_decode_only;
@@ -961,6 +1039,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["keep_vae_on_cpu"] = params.keep_vae_on_cpu;
     loaded_options_["keep_controlnet_on_cpu"] = params.keep_controlnet_on_cpu;
     loaded_options_["flash_attn"] = params.flash_attn;
+    loaded_options_["diffusion_flash_attn"] = params.diffusion_flash_attn;
     loaded_options_["offload_to_cpu"] = params.offload_to_cpu;
     loaded_options_["enable_mmap"] = params.enable_mmap;
     loaded_options_["vae_decode_only"] = params.vae_decode_only;

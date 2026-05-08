@@ -19,6 +19,8 @@ export interface LoadOptions {
   keep_vae_on_cpu?: boolean
   keep_controlnet_on_cpu?: boolean
   flash_attn?: boolean
+  /** Flash attention specifically for the diffusion model (UNet/DiT/Flux). */
+  diffusion_flash_attn?: boolean
   offload_to_cpu?: boolean
   enable_mmap?: boolean
   vae_decode_only?: boolean
@@ -171,6 +173,7 @@ export interface LoadModelParams {
     vae_conv_direct?: boolean
     diffusion_conv_direct?: boolean
     flash_attn?: boolean
+    diffusion_flash_attn?: boolean
     offload_to_cpu?: boolean
     enable_mmap?: boolean
     vae_decode_only?: boolean
@@ -342,6 +345,7 @@ export interface JobModelSettings {
     keep_vae_on_cpu?: boolean
     keep_controlnet_on_cpu?: boolean
     flash_attn?: boolean
+    diffusion_flash_attn?: boolean
     offload_to_cpu?: boolean
     enable_mmap?: boolean
     vae_decode_only?: boolean

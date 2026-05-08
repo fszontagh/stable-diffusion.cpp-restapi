@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <regex>
 #include <map>
+#include <unordered_set>
 #include <unistd.h>
 
 #include "stable-diffusion.h"
@@ -558,8 +559,64 @@ std::vector<std::string> parse_string_array(const nlohmann::json& j, const std::
     return result;
 }
 
+// Reject unknown keys at the JSON-parsing boundary. Lets typos surface as
+// 400 instead of being silently dropped. `where` is a label for the error
+// message, `j` is the object to scan, `known` enumerates accepted keys.
+//
+// Note: server-side metadata fields stamped onto queued jobs by the
+// expand_prompt path (variation_group_id, variation_index, variation_total,
+// variation_template) are listed here and are accepted on submit too — a
+// client replaying a prior job's params shouldn't be forced to strip them.
+static const std::unordered_set<std::string> VARIATION_METADATA_KEYS = {
+    "variation_group_id", "variation_index", "variation_total", "variation_template",
+};
+static void reject_unknown_keys(const std::string& where,
+                                const nlohmann::json& j,
+                                const std::unordered_set<std::string>& known) {
+    if (!j.is_object()) return;
+    std::vector<std::string> unknown;
+    for (auto it = j.begin(); it != j.end(); ++it) {
+        if (known.find(it.key()) == known.end() &&
+            VARIATION_METADATA_KEYS.find(it.key()) == VARIATION_METADATA_KEYS.end()) {
+            unknown.push_back(it.key());
+        }
+    }
+    if (!unknown.empty()) {
+        std::string msg = "Unknown field(s) in " + where + ": ";
+        for (size_t i = 0; i < unknown.size(); ++i) {
+            if (i) msg += ", ";
+            msg += unknown[i];
+        }
+        msg += ". Check the spelling against the OpenAPI schema at /openapi.json.";
+        throw std::runtime_error(msg);
+    }
+}
+
 Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     Txt2ImgParams p;
+
+    // Closed allow-list of every key the parser below consumes. Drift here
+    // means valid keys appear "unknown" → strict-validation 400s a real
+    // request. Sorted by section to mirror parse order.
+    static const std::unordered_set<std::string> KNOWN = {
+        "prompt", "negative_prompt", "sampler", "scheduler",
+        "width", "height", "steps", "batch_count", "clip_skip",
+        "cfg_scale", "seed",
+        "distilled_guidance", "eta", "shifted_timestep", "flow_shift",
+        "slg_scale", "skip_layers", "slg_start", "slg_end",
+        "custom_sigmas",
+        "ref_images", "auto_resize_ref_image", "increase_ref_index",
+        "control_strength", "control_image_base64",
+        "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
+        "cache_mode", "easycache",
+        "easycache_threshold", "easycache_start", "easycache_end",
+        "spectrum_w", "spectrum_m", "spectrum_lam",
+        "spectrum_window_size", "spectrum_flex_window",
+        "spectrum_warmup_steps", "spectrum_stop_percent",
+        "pm_id_images", "pm_id_embed_path", "pm_style_strength",
+        "upscale", "upscale_auto_unload", "upscale_repeats",
+    };
+    reject_unknown_keys("/txt2img body", j, KNOWN);
 
     // String parameters
     p.prompt = parse_string(j, "prompt", "");
@@ -736,6 +793,27 @@ nlohmann::json Txt2ImgParams::to_json() const {
 
 Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     Img2ImgParams p;
+
+    static const std::unordered_set<std::string> KNOWN = {
+        "prompt", "negative_prompt", "sampler", "scheduler",
+        "width", "height", "steps", "batch_count", "clip_skip",
+        "cfg_scale", "img_cfg_scale", "strength", "seed",
+        "distilled_guidance", "eta", "shifted_timestep", "flow_shift",
+        "slg_scale", "skip_layers", "slg_start", "slg_end",
+        "custom_sigmas",
+        "init_image_base64", "mask_image_base64",
+        "ref_images", "auto_resize_ref_image", "increase_ref_index",
+        "control_strength", "control_image_base64",
+        "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
+        "cache_mode", "easycache",
+        "easycache_threshold", "easycache_start", "easycache_end",
+        "spectrum_w", "spectrum_m", "spectrum_lam",
+        "spectrum_window_size", "spectrum_flex_window",
+        "spectrum_warmup_steps", "spectrum_stop_percent",
+        "pm_id_images", "pm_id_embed_path", "pm_style_strength",
+        "upscale", "upscale_auto_unload", "upscale_repeats",
+    };
+    reject_unknown_keys("/img2img body", j, KNOWN);
 
     // String parameters
     p.prompt = parse_string(j, "prompt", "");
@@ -942,6 +1020,24 @@ nlohmann::json Img2ImgParams::to_json() const {
 
 Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     Txt2VidParams p;
+
+    static const std::unordered_set<std::string> KNOWN = {
+        "prompt", "negative_prompt", "sampler", "scheduler",
+        "width", "height", "video_frames", "fps", "steps",
+        "cfg_scale", "distilled_guidance", "eta", "flow_shift", "seed",
+        "clip_skip",
+        "slg_scale", "skip_layers", "slg_start", "slg_end",
+        "init_image_base64", "end_image_base64",
+        "control_image_base64", "control_frames", "vace_strength",
+        "strength",
+        // High-noise (MoE) variants
+        "high_noise_steps", "high_noise_cfg_scale",
+        "high_noise_distilled_guidance", "high_noise_sampler",
+        "high_noise_slg_scale", "high_noise_skip_layers",
+        "high_noise_slg_start", "high_noise_slg_end",
+        "moe_boundary",
+    };
+    reject_unknown_keys("/txt2vid body", j, KNOWN);
 
     // String parameters
     p.prompt = parse_string(j, "prompt", "");

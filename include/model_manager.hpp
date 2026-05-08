@@ -93,6 +93,12 @@ struct ModelLoadParams {
     bool keep_vae_on_cpu = false;
     bool keep_controlnet_on_cpu = false;        // Keep ControlNet on CPU for low VRAM
     bool flash_attn = true;
+    bool diffusion_flash_attn = false;          // Flash attention specifically for the diffusion model
+                                                 // (UNet/DiT/Flux). sd.cpp keeps this separate from
+                                                 // flash_attn (which is also for CLIP/T5/conditioner)
+                                                 // because CUDA support / numerical stability used to
+                                                 // diverge between the two. Default off — match
+                                                 // sd.cpp's struct default.
     bool offload_to_cpu = false;
     bool enable_mmap = true;                    // Use memory-mapped file loading for models
     bool vae_decode_only = true;

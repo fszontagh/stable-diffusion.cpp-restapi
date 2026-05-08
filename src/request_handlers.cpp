@@ -29,6 +29,7 @@
 #include <array>
 #include <cstdint>
 #include <chrono>
+#include <unordered_set>
 #ifndef _WIN32
 #include <unistd.h>  // getpid() for atomic-rename temp files in WebDAV PUT
 #else
@@ -1036,6 +1037,31 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
     // concurrent wait=true calls can saturate the worker pool. Default
     // timeout 600 sec covers a 10-min load on slow disks.
     try {
+        // Strict query-param validation: reject anything not in the
+        // closed allow-list with a 400. Same UX rationale as the body
+        // validator — typos like ?waitt=true should fail loudly instead
+        // of being silently ignored (the user thinks they enabled
+        // synchronous wait, the server doesn't).
+        static const std::unordered_set<std::string> KNOWN_QUERY = {
+            "wait", "timeout",
+        };
+        std::vector<std::string> unknown_qp;
+        for (const auto& kv : req.params) {
+            if (KNOWN_QUERY.find(kv.first) == KNOWN_QUERY.end()) {
+                unknown_qp.push_back(kv.first);
+            }
+        }
+        if (!unknown_qp.empty()) {
+            std::string msg = "Unknown query parameter(s): ";
+            for (size_t i = 0; i < unknown_qp.size(); ++i) {
+                if (i) msg += ", ";
+                msg += unknown_qp[i];
+            }
+            msg += ". Accepted: wait, timeout.";
+            send_error(res, msg, 400);
+            return;
+        }
+
         auto body = parse_json_body(req);
         auto params = ModelLoadParams::from_json(body);
 
@@ -1295,19 +1321,21 @@ void RequestHandlers::submit_generation_jobs(const httplib::Request& req,
         auto body = parse_json_body(req);
         const auto type = static_cast<GenerationType>(generation_type_int);
 
-        // Decide whether this is a template-expansion submission. Read
-        // BEFORE normalization since expand_prompt isn't on the typed
-        // struct (typed roundtrip would drop it); normalize() preserves
-        // unknown keys but we want to strip this one before storing.
+        // Decide whether this is a template-expansion submission, then
+        // strip the helper flag before normalization. expand_prompt isn't a
+        // generation param (the typed struct doesn't model it) and the
+        // strict validator inside normalize_generation_body() would reject
+        // it as an unknown field. Stripping here also keeps it out of the
+        // per-variation params persisted on each queued job.
         bool expand = body.value("expand_prompt", false);
+        body.erase("expand_prompt");
 
         // Type-coerce + validate the request body at the API boundary so
         // bad input (e.g. "steps": "abc") fails fast as a 400 rather than
-        // crashing the worker. See normalize_generation_body() comment for
-        // rationale. parse_int/parse_float/parse_bool happily accept
-        // string-encoded numbers/booleans ("9", "1.0", "false") so naive
-        // HTTP clients keep working — they just get clean numeric JSON
-        // stored on the queue item rather than the strings they sent.
+        // crashing the worker, and unknown fields ("diffusion_fa") are
+        // surfaced as 400 instead of being silently dropped. See the
+        // normalize_generation_body() comment + Txt2ImgParams::from_json's
+        // KNOWN set for the accepted shape.
         try {
             body = normalize_generation_body(type, body);
         } catch (const std::exception& e) {
@@ -1319,10 +1347,6 @@ void RequestHandlers::submit_generation_jobs(const httplib::Request& req,
         if (body.contains("prompt") && body["prompt"].is_string()) {
             prompt = body["prompt"].get<std::string>();
         }
-
-        // Strip the helper flag from the body — it's not a generation param,
-        // and we don't want it persisted on every individual job.
-        body.erase("expand_prompt");
 
         // Fast path: no expansion requested, or no template syntax present.
         // Behaves identically to the previous direct add_job() flow.
