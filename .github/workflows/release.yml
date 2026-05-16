@@ -16,6 +16,7 @@ env:
 
 jobs:
   build:
+    continue-on-error: ${{ matrix.allow_failure || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -69,6 +70,13 @@ jobs:
             container: "rocm/dev-ubuntu-24.04:7.2"
             deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev zip"
             rocm_compiler: true
+            # sd.cpp's pickle_io.cpp uses a self-referential PickleValue
+            # struct (std::vector<PickleValue> as a member) which amdclang++
+            # in rocm/dev-ubuntu-24.04:7.2 rejects under libstdc++-13's
+            # stricter operator= overload resolution. GCC tolerates it.
+            # Allow ROCm to soft-fail so the release job can ship the other
+            # 14 variants; revisit when sd.cpp lands a forward-declare fix.
+            allow_failure: true
 
           # ============================================
           # Ubuntu 24.04 builds
@@ -119,6 +127,13 @@ jobs:
             container: "rocm/dev-ubuntu-24.04:7.2"
             deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev zip"
             rocm_compiler: true
+            # sd.cpp's pickle_io.cpp uses a self-referential PickleValue
+            # struct (std::vector<PickleValue> as a member) which amdclang++
+            # in rocm/dev-ubuntu-24.04:7.2 rejects under libstdc++-13's
+            # stricter operator= overload resolution. GCC tolerates it.
+            # Allow ROCm to soft-fail so the release job can ship the other
+            # 14 variants; revisit when sd.cpp lands a forward-declare fix.
+            allow_failure: true
 
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container || null }}
