@@ -68,10 +68,27 @@ function scoreComponent(
   if (architectureId) {
     const archLower = architectureId.toLowerCase()
 
-    // Flux/Z-Image use ae.gguf style VAE
-    if ((archLower.includes('flux') || archLower.includes('z-image') || archLower.includes('zimage'))
-        && name.includes('ae')) {
-      score += 80
+    // Strip directory + extension so we score on the file stem only.
+    // Without this, a substring match like `name.includes('ae')` would
+    // hit *every* filename with the letters "ae" — `sdxl_vae.safetensors`
+    // would score the same as `ae.safetensors` for Z-Image/Flux and the
+    // sort tiebreak picked the wrong VAE.
+    const basename = name.split('/').pop() || name
+    const stem = basename.replace(/\.(safetensors|gguf|bin|pt|pth|ckpt)$/i, '')
+
+    // Flux/Z-Image use a VAE literally named `ae[.ext]` (sometimes with
+    // a quant/precision suffix like `ae_fp16` or `ae-q8_0`). Match the
+    // stem strictly: starts with "ae" followed by a separator or end.
+    // This excludes `sdxl_vae`, `vae-ft-mse-...`, `qwen_image_vae`, etc.
+    if (archLower.includes('flux') || archLower.includes('z-image') || archLower.includes('zimage')) {
+      if (/^ae(?:[_.\-]|$)/i.test(stem)) {
+        score += 80
+      }
+      // Strongly demote SDXL-style VAEs for these architectures so a
+      // partial match elsewhere can't accidentally promote them.
+      if (stem.toLowerCase().includes('sdxl') || /(^|[_.\-])vae([_.\-]|$)/i.test(stem)) {
+        score -= 40
+      }
     }
 
     // Z-Image prefers Qwen3 4B for LLM
@@ -96,8 +113,9 @@ function scoreComponent(
       score += 85
     }
 
-    // SDXL uses specific VAE
-    if (archLower.includes('sdxl') && name.includes('sdxl')) {
+    // SDXL uses specific VAE — match the SDXL token in the stem so it
+    // doesn't fire when the path happens to contain "sdxl" elsewhere.
+    if (archLower.includes('sdxl') && /(^|[_.\-])sdxl([_.\-]|$)/i.test(stem)) {
       score += 80
     }
   }
