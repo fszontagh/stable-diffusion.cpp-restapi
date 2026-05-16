@@ -1872,7 +1872,16 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
         group_by = req.get_param_value("group_by");
     }
 
-    // Pagination parameters
+    // Pagination parameters.
+    // The endpoint accepts either `page` (1-based) or `offset` (0-based item
+    // index), not both. They're equivalent expressions of the same cursor —
+    // accepting both in one request would silently let one override the other,
+    // so we 400 instead of guessing intent.
+    if (req.has_param("page") && req.has_param("offset")) {
+        send_error(res, "Pass either 'page' or 'offset', not both.", 400);
+        return;
+    }
+
     size_t limit = 20;
     size_t page = 1;
 
@@ -1882,6 +1891,11 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
         } catch (...) {
             limit = 20;
         }
+        // Match how page=0 is clamped to 1. Without this, limit=0 would
+        // make filter.offset arithmetic below a no-op and force the queue
+        // manager to silently substitute its internal default (20), so the
+        // echoed `limit` would disagree with what the caller asked for.
+        if (limit < 1) limit = 1;
     }
 
     if (req.has_param("page")) {
@@ -1899,6 +1913,11 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
         } catch (...) {
             filter.offset = 0;
         }
+    } else if (req.has_param("page")) {
+        // Derive offset from page so the non-grouped path actually paginates.
+        // Without this, `?page=N` is parsed but never reaches the queue
+        // manager, so every page returns offset=0 (the first page).
+        filter.offset = (page - 1) * limit;
     }
 
     filter.limit = limit;
