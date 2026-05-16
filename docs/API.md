@@ -1295,11 +1295,33 @@ Get jobs with filtering, pagination, and optional date grouping.
 | `search` | string | - | Search in prompt/negative_prompt (case-insensitive) |
 | `architecture` | string | - | Filter by model architecture (case-insensitive partial match) |
 | `limit` | integer | 20 | Maximum items per page |
-| `page` | integer | 1 | Page number (1-based) |
-| `offset` | integer | 0 | Items to skip (alternative to page-based pagination) |
+| `page` | integer | 1 | Page number (1-based). Mutually exclusive with `offset`. |
+| `offset` | integer | 0 | Items to skip (0-based item index). Mutually exclusive with `page`. |
 | `before` | integer | - | Items created before this Unix timestamp |
 | `after` | integer | - | Items created after this Unix timestamp |
 | `group_by` | string | - | Group response by `date` |
+
+**Pagination — pick one cursor style, not both:**
+
+Page-based (most callers):
+```
+GET /queue?limit=20&page=1
+GET /queue?limit=20&page=2
+GET /queue?limit=20&page=5
+```
+
+Offset-based (cursor-style scrolling):
+```
+GET /queue?limit=20&offset=0
+GET /queue?limit=20&offset=20
+GET /queue?limit=20&offset=40
+```
+
+Sending both `page` and `offset` in the same request returns **HTTP 400** — they're equivalent expressions of the same cursor, and accepting both would silently let one override the other. Use `page` *or* `offset`, not both. When neither is supplied, the server returns page 1 (`offset=0`).
+
+The response payload echoes back the resolved `page`, `offset`, `limit`, `total_pages`, `has_more`, and `has_prev` — drive the next request off those rather than assuming.
+
+> **`page` in the response is approximate when you paginated by raw `offset`.** It's computed as `(offset / limit) + 1` (integer division). If your `offset` happens to be a clean page boundary (a multiple of `limit`), `page` is exact. Otherwise it rounds down — e.g. `?offset=5&limit=3` returns `page: 2` even though the window starts mid-page-2. **`offset` is the ground truth**; treat `page` as informational only when not using the page-based API.
 
 **Response (standard pagination):**
 
