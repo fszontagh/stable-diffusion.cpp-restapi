@@ -28,46 +28,46 @@ jobs:
             variant: noavx
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=OFF -DGGML_AVX2=OFF"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm"
           - os: ubuntu-22.04
             variant: avx
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=OFF"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm"
           - os: ubuntu-22.04
             variant: avx2
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm"
           - os: ubuntu-22.04
             variant: avx512
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX512=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm"
           # GPU variants
           - os: ubuntu-22.04
             variant: cuda
             cmake_flags: "-DSD_CUDA=ON"
             container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
-            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+            deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git"
           - os: ubuntu-22.04
             variant: cuda-experimental
             cmake_flags: "-DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON"
             container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
-            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+            deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git"
           # Vulkan build - requires Vulkan SDK for glslc
           - os: ubuntu-22.04
             variant: vulkan
             cmake_flags: "-DSD_VULKAN=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev nodejs npm wget"
+            deps: "cmake ninja-build build-essential libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm wget"
             vulkan_sdk: true
           # ROCm build - uses rocm/dev-ubuntu-24.04:7.2 container
           - os: ubuntu-22.04
             variant: rocm
             cmake_flags: '-DSD_HIPBLAS=ON "-DGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032" "-DAMDGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"'
             container: "rocm/dev-ubuntu-24.04:7.2"
-            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev zip"
+            deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev zip"
             rocm_compiler: true
 
           # ============================================
@@ -78,46 +78,46 @@ jobs:
             variant: noavx
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=OFF -DGGML_AVX2=OFF"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev libcurl4-openssl-dev zlib1g-dev libzstd-dev nodejs npm"
           - os: ubuntu-24.04
             variant: avx
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=OFF"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev libcurl4-openssl-dev zlib1g-dev libzstd-dev nodejs npm"
           - os: ubuntu-24.04
             variant: avx2
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev libcurl4-openssl-dev zlib1g-dev libzstd-dev nodejs npm"
           - os: ubuntu-24.04
             variant: avx512
             cmake_flags: "-DGGML_NATIVE=OFF -DGGML_AVX512=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm"
+            deps: "cmake ninja-build build-essential libssl-dev libcurl4-openssl-dev zlib1g-dev libzstd-dev nodejs npm"
           # GPU variants - CUDA uses 22.04 container for compatibility
           - os: ubuntu-24.04
             variant: cuda
             cmake_flags: "-DSD_CUDA=ON"
             container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
-            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+            deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git"
           - os: ubuntu-24.04
             variant: cuda-experimental
             cmake_flags: "-DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON"
             container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
-            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git"
+            deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git"
           # Vulkan build - requires Vulkan SDK for glslc
           - os: ubuntu-24.04
             variant: vulkan
             cmake_flags: "-DSD_VULKAN=ON"
             container: ""
-            deps: "cmake ninja-build build-essential libssl-dev zlib1g-dev libzstd-dev nodejs npm wget"
+            deps: "cmake ninja-build build-essential libssl-dev libcurl4-openssl-dev zlib1g-dev libzstd-dev nodejs npm wget"
             vulkan_sdk: true
           # ROCm build - uses rocm/dev-ubuntu-24.04:7.2 container
           - os: ubuntu-24.04
             variant: rocm
             cmake_flags: '-DSD_HIPBLAS=ON "-DGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032" "-DAMDGPU_TARGETS=gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"'
             container: "rocm/dev-ubuntu-24.04:7.2"
-            deps: "cmake ninja-build libssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev zip"
+            deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git hip-dev hipblas-dev rocm-dev zip"
             rocm_compiler: true
 
     runs-on: ${{ matrix.os }}
