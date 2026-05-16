@@ -5,7 +5,7 @@ C++20 REST API server for [stable-diffusion.cpp](https://github.com/leejet/stabl
 ## Features
 
 - **Generation**: txt2img, img2img, txt2vid, upscaling (ESRGAN)
-- **Model Architectures**: SD 1.x/2.x, SDXL, Flux, SD3, Wan, Z-Image, Qwen, Chroma
+- **Model Architectures**: SD 1.x/2.x, SDXL, Flux, Flux.2, SD3, Wan, Z-Image, Qwen, Chroma, Anima, HiDream O1 (full list: `GET /architectures`)
 - **Queue System**: Job queue with persistence and WebSocket progress updates
 - **Live Preview**: Real-time preview during generation (TAE/VAE modes)
 - **Web UI**: Integrated Vue.js interface with memory monitoring

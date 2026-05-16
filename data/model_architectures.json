@@ -578,6 +578,26 @@
         "width": 1024,
         "height": 1024
       }
+    },
+    "HiDream-O1": {
+      "name": "HiDream O1",
+      "description": "HiDream O1 image model (Comfy-Org). Self-contained checkpoint — bundles diffusion, Qwen2 text/vision conditioner, and FakeVAE. Defaults below match the Dev (distilled) variant; for the Full variant raise cfg_scale to ~5.0 and steps to ~28.",
+      "aliases": ["HiDream O1", "HiDream-O1-Image", "hidream_o1", "hidream-o1"],
+      "requiredComponents": {},
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "vae_decode_only": false
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
     }
   },
   "version": 2,
