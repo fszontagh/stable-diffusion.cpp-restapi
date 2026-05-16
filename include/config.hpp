@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <nlohmann/json.hpp>
 
 namespace sdcpp {
@@ -12,11 +13,19 @@ struct ServerConfig {
     std::string host = "0.0.0.0";
     int port = 8080;
     int ws_port = 0;  // DEPRECATED: WebSocket now uses same port as HTTP. Ignored if set.
-    int threads = 8;
+    int threads = 32;
     // Floor for forwarding stable-diffusion.cpp's own log messages to the
     // server log. One of: "debug", "info", "warn", "error", "off". Default
     // "warn" matches the previous release-mode behavior.
     std::string sd_log_level = "warn";
+
+    // Peers (IPs or IPv4 CIDRs) we trust to inject X-Forwarded-Proto /
+    // X-Forwarded-Host. Used when constructing absolute URLs returned in
+    // responses (e.g. job output_urls). Empty list = never trust the
+    // forwarded headers — the literal Host header is used instead. Set
+    // this to the address(es) of your reverse proxy (e.g. ["127.0.0.1",
+    // "10.0.0.0/8"]) when the server runs behind nginx/Caddy/Traefik.
+    std::vector<std::string> trusted_proxies;
 };
 
 /**
@@ -102,6 +111,14 @@ struct AuthConfig {
     std::string username;            // Configured username (empty = use env var)
     std::string password;            // Configured password (empty = use env var)
     int token_ttl_minutes = 1440;    // Bearer token lifetime (default 24h)
+
+    // When true (default), the static `/output/*` and `/thumb/*` handlers
+    // bypass the bearer/cookie middleware so generated images can be
+    // embedded in third-party clients via direct URL (Discord, Slack, an
+    // <img src="..."> in a separate site, etc.). When false, those paths
+    // require the same auth as everything else. Has no effect when
+    // `enabled=false` — there's no auth to bypass.
+    bool allow_public_outputs = true;
 };
 
 /**

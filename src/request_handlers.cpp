@@ -5,6 +5,7 @@
 #include "settings_manager.hpp"
 #include "memory_utils.hpp"
 #include "auth_manager.hpp"
+#include "url_utils.hpp"
 #include "version.hpp"
 #include "utils.hpp"
 #include "prompt_template.hpp"
@@ -44,6 +45,123 @@ namespace fs = std::filesystem;
 
 namespace sdcpp {
 
+// Serve a regular file with proper HTTP caching and chunked streaming.
+//
+// Why this exists: the previous code path read each file into a
+// std::stringstream, copied the contents into a std::string, then handed
+// that to res.set_content() — three allocations per request and a
+// worker thread pinned for the entire transfer. Worse, no cache headers
+// were sent at all, so every browser repaint of an output image did a
+// full re-download. This helper:
+//
+//   - Sends Cache-Control: public, max-age=31536000, immutable. Outputs
+//     are write-once (the filename embeds job_id) so aggressive caching
+//     is safe.
+//   - Sends ETag (size-mtime) + Last-Modified, and short-circuits with
+//     304 Not Modified when the client's If-None-Match / If-Modified-Since
+//     matches.
+//   - Streams the file via set_content_provider() with a 64 KB buffer
+//     instead of buffering the whole thing in RAM. httplib auto-handles
+//     Range: requests on top of this (Accept-Ranges: bytes), which is
+//     what mobile video players need to seek.
+static void serve_file_cached(const httplib::Request& req,
+                              httplib::Response& res,
+                              const fs::path& full_path,
+                              const std::string& mime) {
+    std::error_code ec;
+    auto file_size = fs::file_size(full_path, ec);
+    if (ec) {
+        res.status = 500;
+        res.set_content("Cannot stat file", "text/plain");
+        return;
+    }
+    auto file_mtime = fs::last_write_time(full_path, ec);
+    if (ec) {
+        res.status = 500;
+        res.set_content("Cannot stat file", "text/plain");
+        return;
+    }
+    // C++20 file_clock → system_clock for an RFC 1123 timestamp.
+    auto sys_mtime = std::chrono::file_clock::to_sys(file_mtime);
+    std::time_t mtime_t = std::chrono::system_clock::to_time_t(sys_mtime);
+
+    std::string etag =
+        "\"" + std::to_string(static_cast<uint64_t>(file_size))
+        + "-" + std::to_string(static_cast<int64_t>(mtime_t)) + "\"";
+
+    char lm_buf[64];
+    std::strftime(lm_buf, sizeof(lm_buf),
+                  "%a, %d %b %Y %H:%M:%S GMT", std::gmtime(&mtime_t));
+    std::string last_modified(lm_buf);
+
+    // 304 short-circuit. Strong-compare the ETag (no W/ prefix in use)
+    // and exact-match Last-Modified. Sending the same caching headers on
+    // the 304 lets the browser keep its existing cache entry alive.
+    std::string inm = req.get_header_value("If-None-Match");
+    std::string ims = req.get_header_value("If-Modified-Since");
+    bool not_modified =
+        (!inm.empty() && inm == etag) ||
+        (!ims.empty() && ims == last_modified);
+    if (not_modified) {
+        res.status = 304;
+        res.set_header("ETag", etag);
+        res.set_header("Last-Modified", last_modified);
+        res.set_header("Cache-Control", "public, max-age=31536000, immutable");
+        return;
+    }
+
+    res.set_header("ETag", etag);
+    res.set_header("Last-Modified", last_modified);
+    res.set_header("Cache-Control", "public, max-age=31536000, immutable");
+    res.set_header("Accept-Ranges", "bytes");
+
+    const std::string path_str = full_path.string();
+    res.set_content_provider(
+        static_cast<size_t>(file_size), mime,
+        [path_str](size_t offset, size_t length, httplib::DataSink& sink) -> bool {
+            // Fixed-length provider: do NOT call sink.done() — that field
+            // is only wired up by httplib for set_content_provider_without_length().
+            // Calling it here throws std::bad_function_call. We just write
+            // exactly `length` bytes from `offset` and return true; httplib
+            // tracks completion via the declared content length.
+            std::ifstream f(path_str, std::ios::binary);
+            if (!f) return false;
+            f.seekg(static_cast<std::streamoff>(offset));
+            if (!f) return false;
+            constexpr size_t CHUNK = 64 * 1024;
+            std::array<char, CHUNK> buf{};
+            size_t remaining = length;
+            while (remaining > 0 && f) {
+                size_t to_read = std::min(remaining, CHUNK);
+                f.read(buf.data(), static_cast<std::streamsize>(to_read));
+                auto n = f.gcount();
+                if (n <= 0) break;
+                if (!sink.write(buf.data(), static_cast<size_t>(n))) {
+                    // Client disconnected; bail out cleanly.
+                    return false;
+                }
+                remaining -= static_cast<size_t>(n);
+            }
+            return true;
+        });
+}
+
+// Decorate a serialized QueueItem with absolute `output_urls[]` derived
+// from the current request. Caller-provided base_url is computed once
+// per request via compute_base_url() so listing endpoints don't pay the
+// header-parse cost N times.
+static void inject_output_urls(nlohmann::json& job_json, const std::string& base_url) {
+    if (!job_json.contains("outputs") || !job_json["outputs"].is_array()) {
+        return;
+    }
+    std::vector<std::string> outs;
+    outs.reserve(job_json["outputs"].size());
+    for (const auto& v : job_json["outputs"]) {
+        if (v.is_string()) outs.push_back(v.get<std::string>());
+    }
+    job_json["output_urls"] = build_output_urls(outs, base_url);
+}
+
 RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queue_manager,
                                  AuthManager& auth_manager,
                                  const Config& config,
@@ -54,6 +172,8 @@ RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queu
     : model_manager_(model_manager), queue_manager_(queue_manager),
       auth_manager_(auth_manager),
       paths_config_(config.paths),
+      allow_public_outputs_(config.auth.allow_public_outputs),
+      trusted_proxies_(config.server.trusted_proxies),
       output_dir_(output_dir), webui_dir_(webui_dir), docs_dir_(docs_dir)
     // ArchitectureManager uses config directory (where model_architectures.json lives), not output directory
     , architecture_manager_(std::make_unique<ArchitectureManager>(
@@ -195,6 +315,21 @@ void RequestHandlers::register_routes(httplib::Server& server) {
                 // /output/, /thumb/, /webdav/, /assets/).
                 if (AuthManager::is_always_allowed(req.path)) {
                     return httplib::Server::HandlerResponse::Unhandled;
+                }
+
+                // Optional public-outputs bypass. When `auth.allow_public_outputs`
+                // is true (default), generated images and thumbnails can be
+                // fetched without auth so they can be embedded in third-party
+                // clients via direct URL. Toggleable in config; only takes
+                // effect when auth is otherwise enabled.
+                if (allow_public_outputs_) {
+                    auto starts_with = [&](const std::string& p) {
+                        return req.path.size() >= p.size() &&
+                               req.path.compare(0, p.size(), p) == 0;
+                    };
+                    if (starts_with("/output/") || starts_with("/thumb/")) {
+                        return httplib::Server::HandlerResponse::Unhandled;
+                    }
                 }
 
                 // Resolve "who is this caller?" trying, in order:
@@ -1103,6 +1238,22 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
             return;
         }
 
+        // Reject if a model is already loaded. We require an explicit
+        // /models/unload before loading another one so that automation
+        // submitting POST /models/load twice in a row can't accidentally
+        // tear down an in-use model. Caller decides when to unload.
+        if (model_manager_.is_model_loaded()) {
+            nlohmann::json err = {
+                {"error", "A model is already loaded. Call POST /models/unload "
+                          "first, then POST /models/load."},
+                {"loaded_model", model_manager_.get_loaded_model_name()}
+            };
+            res.status = 409;
+            res.set_header("Content-Type", "application/json");
+            res.set_content(err.dump(), "application/json");
+            return;
+        }
+
         std::cout << "[RequestHandlers] Loading model (" << (wait ? "wait" : "async") << "): "
                   << params.model_name
                   << (wait ? " timeout=" + std::to_string(timeout_sec) + "s" : "")
@@ -1756,6 +1907,7 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
     auto status = queue_manager_.get_status();
 
     // Handle grouped response
+    const std::string base_url = compute_base_url(req, trusted_proxies_);
     if (group_by == "date") {
         auto grouped_result = queue_manager_.get_jobs_grouped_by_date(filter, page, limit);
 
@@ -1769,7 +1921,9 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
 
             nlohmann::json items = nlohmann::json::array();
             for (const auto& job : group.items) {
-                items.push_back(job.to_json());
+                nlohmann::json job_json = job.to_json();
+                inject_output_urls(job_json, base_url);
+                items.push_back(std::move(job_json));
             }
             group_json["items"] = items;
             groups.push_back(group_json);
@@ -1797,7 +1951,9 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
     nlohmann::json items = nlohmann::json::array();
 
     for (const auto& job : page_result.items) {
-        items.push_back(job.to_json());
+        nlohmann::json job_json = job.to_json();
+        inject_output_urls(job_json, base_url);
+        items.push_back(std::move(job_json));
     }
 
     status["items"] = items;
@@ -1841,7 +1997,9 @@ void RequestHandlers::handle_get_job(const httplib::Request& req, httplib::Respo
         return;
     }
 
-    send_json(res, job->to_json());
+    nlohmann::json body = job->to_json();
+    inject_output_urls(body, compute_base_url(req, trusted_proxies_));
+    send_json(res, body);
 }
 
 void RequestHandlers::handle_get_job_preview(const httplib::Request& req, httplib::Response& res) {
@@ -1924,12 +2082,15 @@ void RequestHandlers::handle_delete_jobs(const httplib::Request& req, httplib::R
     }
 }
 
-void RequestHandlers::handle_get_recycle_bin(const httplib::Request& /*req*/, httplib::Response& res) {
+void RequestHandlers::handle_get_recycle_bin(const httplib::Request& req, httplib::Response& res) {
     auto deleted_jobs = queue_manager_.get_deleted_jobs();
 
+    const std::string base_url = compute_base_url(req, trusted_proxies_);
     nlohmann::json items = nlohmann::json::array();
     for (const auto& item : deleted_jobs) {
-        items.push_back(item.to_json());
+        nlohmann::json job_json = item.to_json();
+        inject_output_urls(job_json, base_url);
+        items.push_back(std::move(job_json));
     }
 
     send_json(res, {
@@ -2300,16 +2461,11 @@ void RequestHandlers::handle_thumbnail(const httplib::Request& req, httplib::Res
         }
     }
 
-    // Serve the thumbnail
-    std::ifstream file(thumb_path, std::ios::binary);
-    if (!file) {
-        send_error(res, "Cannot read thumbnail", 500);
-        return;
-    }
-
-    std::ostringstream oss;
-    oss << file.rdbuf();
-    res.set_content(oss.str(), "image/jpeg");
+    // Serve the thumbnail via the cached streaming helper (same
+    // ETag / Last-Modified / 304 / chunked-streaming pipeline as
+    // /output, so the gallery doesn't refetch thumbnails on each
+    // repaint).
+    serve_file_cached(req, res, fs::path(thumb_path), "image/jpeg");
 }
 
 std::string RequestHandlers::generate_directory_html(const std::string& dir_path, const std::string& url_path,
@@ -2969,21 +3125,10 @@ void RequestHandlers::handle_file_browser(const httplib::Request& req, httplib::
         std::string html = generate_directory_html(full_path.string(), url_path, sort_by, sort_asc, page, per_page);
         res.set_content(html, "text/html");
     } else {
-        // File: serve it
-        std::ifstream file(full_path, std::ios::binary);
-        if (!file) {
-            send_error(res, "Cannot read file", 500);
-            return;
-        }
-
-        // Read file content
-        std::ostringstream oss;
-        oss << file.rdbuf();
-        std::string content = oss.str();
-
-        // Set content type and serve
-        std::string mime_type = get_mime_type(full_path.string());
-        res.set_content(content, mime_type);
+        // File: stream via the cached helper. Adds Cache-Control / ETag /
+        // Last-Modified, handles If-None-Match → 304, and streams the
+        // body in 64 KB chunks (which also gives us Range: support).
+        serve_file_cached(req, res, full_path, get_mime_type(full_path.string()));
     }
 }
 
