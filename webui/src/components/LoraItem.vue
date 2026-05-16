@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useAppStore } from '../stores/app'
 
 const props = defineProps<{
   name: string
@@ -13,6 +14,22 @@ const emit = defineEmits<{
   'update:weight': [value: number]
   'remove': []
 }>()
+
+const store = useAppStore()
+const justCopied = ref(false)
+
+const loraTag = computed(() => `<lora:${props.name}:${props.weight}>`)
+
+async function copyLoraTag() {
+  try {
+    await navigator.clipboard.writeText(loraTag.value)
+    justCopied.value = true
+    setTimeout(() => { justCopied.value = false }, 1200)
+    store.showToast?.('Copied: ' + loraTag.value, 'info')
+  } catch {
+    store.showToast?.('Clipboard unavailable', 'warning')
+  }
+}
 
 const displayWeight = computed({
   get: () => props.weight,
@@ -63,6 +80,15 @@ function handleNumberInput(event: Event) {
         :value="weight.toFixed(1)"
         @change="handleNumberInput"
       />
+      <button
+        class="lora-copy"
+        @click="copyLoraTag"
+        :title="`Copy ${loraTag}`"
+        :aria-label="`Copy LoRA tag for ${name}`"
+      >
+        <span v-if="justCopied">&#10003;</span>
+        <span v-else>&#128203;</span>
+      </button>
       <button class="lora-remove" @click="emit('remove')" title="Remove LoRA">
         &times;
       </button>
@@ -133,6 +159,7 @@ function handleNumberInput(event: Event) {
   border-color: var(--primary-color, #007bff);
 }
 
+.lora-copy,
 .lora-remove {
   background: none;
   border: none;
@@ -141,6 +168,14 @@ function handleNumberInput(event: Event) {
   cursor: pointer;
   padding: 0 0.25rem;
   line-height: 1;
+}
+
+.lora-copy {
+  font-size: 1rem;
+}
+
+.lora-copy:hover {
+  color: var(--primary-color, #007bff);
 }
 
 .lora-remove:hover {
