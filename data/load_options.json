@@ -97,17 +97,17 @@
     },
     "vae_conv_direct": {
       "label": "VAE Direct Convolution",
-      "description": "Use ggml_conv2d_direct (im2col + matmul) in the VAE instead of the FFT-based path. Faster on some GPUs (notably consumer-grade RTX), slower on others.",
+      "description": "Route the VAE's Conv2D through ggml_conv2d_direct instead of the default im2col+gemm path (sd.cpp PR #744). The direct kernel uses dramatically less compute-buffer memory and is faster on Vulkan / OpenCL / CPU — PR benchmarks show ~2-4× faster VAE decode and lets SDXL@1024 fit in <3 GB instead of OOMing. Backend-dependent: on CUDA the direct path is currently slower for the VAE.",
       "type": "boolean",
       "default": false,
-      "recommended": "Z-Image: enable. Other architectures: bench it; effect varies by GPU and image size."
+      "recommended": "Vulkan / OpenCL / CPU: enable — large VRAM and speed win for the VAE step, especially at higher resolutions. CUDA: leave OFF (measured: slower VAE decode). Verified against sd.cpp PR #744 + a local CUDA test."
     },
     "diffusion_conv_direct": {
       "label": "Diffusion Direct Convolution",
-      "description": "Same as `vae_conv_direct` but for the diffusion model. Affects every sampler step.",
+      "description": "Same Conv2D direct kernel (sd.cpp PR #744) applied to the diffusion model's Conv2D layers. Affects every sampler step, so any per-step delta scales by --steps. With recent ggml updates the Vulkan slowdown is mostly gone but still slightly slower; CUDA shows the same pattern as the VAE flag.",
       "type": "boolean",
       "default": false,
-      "recommended": "Bench against off on your hardware. Effect is small but consistent — pick the faster one and stick with it."
+      "recommended": "Vulkan / OpenCL / CPU: try it — usually neutral or a small win and lowers compute-buffer memory. CUDA: leave OFF. Flux/DiT models don't use Conv2D in the transformer, so this flag is a no-op for them (only matters for UNet-style architectures + ESRGAN/ControlNet)."
     },
     "tae_preview_only": {
       "label": "TAESD Preview Only",
