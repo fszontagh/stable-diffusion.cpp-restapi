@@ -2096,7 +2096,8 @@ Get available generation options including samplers, schedulers, and quantizatio
 {
     "samplers": [
         "euler", "euler_a", "heun", "dpm2", "dpm++2s_a", "dpm++2m", "dpm++2mv2",
-        "ipndm", "ipndm_v", "lcm", "ddim_trailing", "tcd", "res_multistep", "res_2s"
+        "ipndm", "ipndm_v", "lcm", "ddim_trailing", "tcd", "res_multistep", "res_2s",
+        "er_sde", "euler_cfg_pp", "euler_a_cfg_pp"
     ],
     "schedulers": [
         "discrete", "karras", "exponential", "ays", "gits", "sgm_uniform",
@@ -3000,6 +3001,9 @@ Available sampling methods:
 | `tcd` | TCD sampler |
 | `res_multistep` | Res Multistep sampler |
 | `res_2s` | Res 2S sampler |
+| `er_sde` | ER-SDE sampler |
+| `euler_cfg_pp` | Euler CFG++ sampler |
+| `euler_a_cfg_pp` | Euler Ancestral CFG++ sampler |
 
 ### Schedulers
 

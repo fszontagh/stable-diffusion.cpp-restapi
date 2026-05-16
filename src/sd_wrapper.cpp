@@ -1671,6 +1671,8 @@ std::vector<std::string> SDWrapper::generate_img2img(
             spatial_multiple = 16;  // vae=8, down=2
         } else if (ver == "Flux.2" || ver == "Flux.2 klein") {
             spatial_multiple = 16;  // vae=16, down=1
+        } else if (ver == "HiDream O1") {
+            spatial_multiple = 32;  // FakeVAE (no downscale), PATCH_SIZE=32
         } else if (ver.find("SD 1") != std::string::npos ||
                    ver.find("SD 2") != std::string::npos ||
                    ver.find("SDXL") != std::string::npos ||

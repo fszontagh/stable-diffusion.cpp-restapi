@@ -1078,7 +1078,9 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             "tcd",
             "res_multistep",
             "res_2s",
-            "er_sde"
+            "er_sde",
+            "euler_cfg_pp",
+            "euler_a_cfg_pp"
         }},
         {"schedulers", {
             "discrete",
