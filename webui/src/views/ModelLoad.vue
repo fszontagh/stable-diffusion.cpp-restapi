@@ -21,6 +21,34 @@ const selectedArchitecture = ref<string>('')
 const isAutoDetected = ref(false)
 const optionDescriptions = ref<Record<string, OptionDescription>>({})
 
+// True when any model is currently loaded server-side. The backend
+// refuses POST /models/load with 409 in this state, so we mirror that
+// in the UI: disable the Load button and offer an Unload action.
+const anyModelLoaded = computed(() => store.modelLoaded)
+const loadedModelName = computed(() => store.health?.model_name ?? '')
+
+// Three-state button label:
+//   - clicking on the model that's already loaded → "Apply Changes"
+//     (we unload-then-load it with the form's current options).
+//   - clicking on a different model while another is loaded → "Switch Model"
+//     (same orchestration; just labelled honestly so the user understands
+//     it'll unload the current one first).
+//   - nothing loaded → "Load Model".
+const isReloadingSame = computed(() =>
+  anyModelLoaded.value && loadedModelName.value === selectedModel.value?.name
+)
+const loadButtonLabel = computed(() => {
+  if (loading.value) return 'Loading...'
+  if (isReloadingSame.value) return 'Apply Changes'
+  if (anyModelLoaded.value) return 'Switch Model'
+  return 'Load Model'
+})
+const loadButtonTitle = computed(() => {
+  if (isReloadingSame.value) return 'Unload and reload with current options'
+  if (anyModelLoaded.value) return `Unload ${loadedModelName.value} first, then load this model`
+  return ''
+})
+
 // Load params
 const loadParams = ref<LoadModelParams>({
   model_name: '',
@@ -143,10 +171,20 @@ function autoSelectComponent(
   }
 }
 
-// Load the model
+// Load the model. If a model is already loaded, the backend now refuses
+// /models/load with 409 — so we transparently call /models/unload first
+// (synchronous on the server, fast on every backend) and then submit the
+// new load. From the user's perspective this is "Apply Changes": same
+// model with different options, or swap to a different model entirely.
 async function handleLoadModel() {
   loading.value = true
   try {
+    if (anyModelLoaded.value) {
+      store.showToast(`Unloading ${loadedModelName.value}...`, 'info')
+      await api.unloadModel()
+      store.fetchHealth()
+    }
+
     const params: LoadModelParams = {
       model_name: loadParams.value.model_name,
       model_type: loadParams.value.model_type
@@ -181,6 +219,13 @@ async function handleLoadModel() {
 
 // Initialize on mount
 onMounted(async () => {
+  // Always refresh /health so the loaded-model state we restore from is
+  // fresh. Without this, navigating Models → Edit right after loading
+  // could see a stale `is_loaded` flag on the cached models list and skip
+  // the restore branch — the form would then show defaults instead of
+  // the values the user actually loaded with.
+  await store.fetchHealth()
+
   // Ensure we have models data
   if (!store.models) {
     await store.fetchModels()
@@ -216,8 +261,17 @@ onMounted(async () => {
     // user's options with raw architecture defaults.
     let restoredFromPriorLoad = false
 
+    // Decide "is THIS model currently loaded?" from live /health, not just
+    // the cached `is_loaded` flag on the models list. The list can be
+    // stale (e.g. last fetched before the load completed); /health is the
+    // source of truth. Comparing the canonical loaded name to the
+    // selected model name closes that window.
+    const thisModelLoaded =
+      (selectedModel.value.is_loaded === true) ||
+      (store.modelLoaded && store.health?.model_name === selectedModel.value.name)
+
     // If model is already loaded, pre-populate with current components and options
-    if (selectedModel.value.is_loaded && store.loadedComponents) {
+    if (thisModelLoaded && store.loadedComponents) {
       loadParams.value.vae = store.loadedComponents.vae || ''
       loadParams.value.clip_l = store.loadedComponents.clip_l || ''
       loadParams.value.clip_g = store.loadedComponents.clip_g || ''
@@ -316,9 +370,10 @@ watch(selectedArchitecture, () => {
           class="btn btn-primary"
           @click="handleLoadModel"
           :disabled="loading || !selectedModel"
+          :title="loadButtonTitle"
         >
           <span v-if="loading" class="spinner"></span>
-          {{ loading ? 'Loading...' : (selectedModel?.is_loaded ? 'Apply Changes' : 'Load Model') }}
+          {{ loadButtonLabel }}
         </button>
       </div>
     </div>
@@ -338,6 +393,18 @@ watch(selectedArchitecture, () => {
 
     <!-- Model load form -->
     <div v-else-if="selectedModel" class="load-form">
+      <!-- Already-loaded notice. We don't block — clicking the primary
+           button performs unload+load — but we surface the state so the
+           user knows the current model will be replaced. -->
+      <div v-if="anyModelLoaded && !isReloadingSame" class="card warning-banner">
+        <strong>{{ loadedModelName }} is currently loaded</strong>
+        <p>Clicking <em>Switch Model</em> will unload it, then load the model below.</p>
+      </div>
+      <div v-else-if="isReloadingSame" class="card warning-banner warning-banner-info">
+        <strong>This model is currently loaded</strong>
+        <p>Clicking <em>Apply Changes</em> will unload it and reload it with the options below.</p>
+      </div>
+
       <!-- Model Information -->
       <section class="card section-card">
         <h2 class="section-title">Model Information</h2>
@@ -794,9 +861,10 @@ watch(selectedArchitecture, () => {
           class="btn btn-primary"
           @click="handleLoadModel"
           :disabled="loading || !selectedModel"
+          :title="loadButtonTitle"
         >
           <span v-if="loading" class="spinner"></span>
-          {{ loading ? 'Loading...' : (selectedModel?.is_loaded ? 'Apply Changes' : 'Load Model') }}
+          {{ loadButtonLabel }}
         </button>
       </div>
     </div>
@@ -1066,6 +1134,32 @@ details[open] .accordion-header::before {
 .error-card {
   text-align: center;
   padding: 2rem;
+}
+
+.warning-banner {
+  border-left: 4px solid var(--warning-color, #f0ad4e);
+  background: rgba(240, 173, 78, 0.08);
+  margin-bottom: 1rem;
+}
+
+.warning-banner strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--warning-color, #f0ad4e);
+}
+
+.warning-banner p {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-secondary, #888);
+}
+
+.warning-banner-info {
+  border-left-color: var(--primary-color, #007bff);
+  background: rgba(0, 123, 255, 0.06);
+}
+
+.warning-banner-info strong {
+  color: var(--primary-color, #007bff);
 }
 
 .loading-state {
