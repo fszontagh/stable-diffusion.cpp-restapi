@@ -214,6 +214,9 @@ export interface LoadModelParams {
 
 export interface GenerationParams {
   prompt: string
+  // Optional display title attached to the queue job. Stored on the
+  // QueueItem (not on params) and surfaced in the WebUI Queue card.
+  title?: string
   negative_prompt?: string
   width?: number
   height?: number
@@ -295,6 +298,7 @@ export interface Txt2VidParams extends GenerationParams {
 
 export interface UpscaleParams {
   image_base64: string
+  title?: string
   upscale_factor?: number
   tile_size?: number
   repeats?: number
@@ -309,6 +313,7 @@ export interface LoadUpscalerParams {
 export interface ConvertParams {
   input_path: string
   output_type: string
+  title?: string
   model_type?: string
   output_path?: string
   vae_path?: string
@@ -396,6 +401,7 @@ export interface Job {
   model_settings?: JobModelSettings
   error?: string
   linked_job_id?: string
+  title?: string
 }
 
 export interface RecycleBinResponse {

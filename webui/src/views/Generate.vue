@@ -69,6 +69,7 @@ const REF_IMAGE_STORAGE_KEY = 'generateSettings_refImage'
 
 // Common params
 const prompt = ref('')
+const title = ref('')
 const negativePrompt = ref('')
 const width = ref(512)
 const height = ref(512)
@@ -1312,6 +1313,7 @@ async function handleSubmit() {
     const baseParams: GenerationParams = {
       prompt: finalPrompt,
       negative_prompt: finalNegativePrompt,
+      ...(title.value.trim() ? { title: title.value.trim() } : {}),
       width: width.value,
       height: height.value,
       steps: steps.value,
@@ -1496,6 +1498,16 @@ async function handleSubmit() {
 
         <!-- Prompt Section -->
         <div class="card">
+          <div class="form-group">
+            <label class="form-label">Title (optional)</label>
+            <input
+              v-model="title"
+              type="text"
+              class="form-input"
+              maxlength="200"
+              placeholder="Display label for this queue job"
+            />
+          </div>
           <div class="form-group" data-setting="prompt" :class="{ 'setting-highlighted': highlightedSetting === 'prompt' }">
             <label class="form-label">Prompt</label>
             <HighlightedPrompt

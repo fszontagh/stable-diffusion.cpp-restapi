@@ -35,6 +35,7 @@ struct JobStatusResponse {
             .required_field("job_id", schema::FieldType::String, "Job UUID")
             .required_field("type", schema::FieldType::String, "Job type (txt2img, img2img, etc.)")
             .required_field("status", schema::FieldType::String, "Job status")
+            .optional_field("title", schema::FieldType::String, "User-supplied display title (only present when set)", "")
             .object_field("progress", "Generation progress (step/total_steps)")
             .required_field("created_at", schema::FieldType::String, "Creation timestamp (ISO8601)")
             .optional_field("started_at", schema::FieldType::String, "Start timestamp (ISO8601)")

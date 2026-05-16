@@ -1291,6 +1291,7 @@ async function sendImageToUpscale(outputPath: string) {
           <div class="job-type">
             <span class="job-icon" v-html="getTypeIcon(job.type, job)"></span>
             <span class="job-type-label">{{ getTypeName(job.type, job) }}</span>
+            <span v-if="job.title" class="job-title-suffix"> - {{ job.title }}</span>
           </div>
           <div class="job-header-right">
             <span class="job-time-relative" :title="formatDate(job.created_at)">{{ formatRelativeTime(job.created_at) }}</span>
@@ -1542,6 +1543,7 @@ async function sendImageToUpscale(outputPath: string) {
               <div class="job-type">
                 <span class="job-icon" v-html="getTypeIcon(job.type, job)"></span>
                 <span class="job-type-label">{{ getTypeName(job.type, job) }}</span>
+                <span v-if="job.title" class="job-title-suffix"> - {{ job.title }}</span>
               </div>
               <div class="job-header-right">
                 <span class="job-time-relative" :title="formatDate(job.created_at)">{{ formatRelativeTime(job.created_at) }}</span>
@@ -2283,6 +2285,16 @@ async function sendImageToUpscale(outputPath: string) {
 
 .job-type-label {
   font-weight: 500;
+}
+
+.job-title-suffix {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-weight: 400;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Job Content Layout */

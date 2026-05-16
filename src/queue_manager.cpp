@@ -91,6 +91,9 @@ nlohmann::json QueueItem::to_json() const {
     if (!linked_job_id.empty()) {
         j[F::LINKED_JOB_ID] = linked_job_id;
     }
+    if (!title.empty()) {
+        j[F::TITLE] = title;
+    }
 
     // Recycle bin fields
     if (status == QueueStatus::Deleted) {
@@ -130,6 +133,9 @@ QueueItem QueueItem::from_json(const nlohmann::json& j) {
     }
     if (j.contains(F::LINKED_JOB_ID)) {
         item.linked_job_id = j[F::LINKED_JOB_ID].get<std::string>();
+    }
+    if (j.contains(F::TITLE) && j[F::TITLE].is_string()) {
+        item.title = j[F::TITLE].get<std::string>();
     }
 
     // Recycle bin fields
@@ -322,7 +328,8 @@ void QueueManager::stop() {
     std::cout << "[QueueManager] Worker thread stopped" << std::endl;
 }
 
-std::string QueueManager::add_job(GenerationType type, const nlohmann::json& params) {
+std::string QueueManager::add_job(GenerationType type, const nlohmann::json& params,
+                                  const std::string& title) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
 
     QueueItem item;
@@ -330,6 +337,7 @@ std::string QueueManager::add_job(GenerationType type, const nlohmann::json& par
     item.type = type;
     item.status = QueueStatus::Pending;
     item.params = params;
+    item.title = title;
     item.created_at = utils::get_time_now();
 
     // Capture current model settings at job creation time
@@ -343,11 +351,15 @@ std::string QueueManager::add_job(GenerationType type, const nlohmann::json& par
 
     // Broadcast job added event via WebSocket
     if (auto* ws = get_websocket_server()) {
-        ws->broadcast(WSEventType::JobAdded, {
+        nlohmann::json payload = {
             {"job_id", item.job_id},
             {"type", generation_type_to_string(type)},
             {"queue_position", pending_queue_.size()}
-        });
+        };
+        if (!item.title.empty()) {
+            payload[F::TITLE] = item.title;
+        }
+        ws->broadcast(WSEventType::JobAdded, payload);
     }
 
     // Log job creation with details

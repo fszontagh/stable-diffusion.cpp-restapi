@@ -1493,6 +1493,15 @@ void RequestHandlers::submit_generation_jobs(const httplib::Request& req,
         bool expand = body.value("expand_prompt", false);
         body.erase("expand_prompt");
 
+        // Optional user-supplied display title. Stored on the QueueItem
+        // (not on params) so it never reaches the typed generation
+        // structs — strip before strict validation.
+        std::string title;
+        if (body.contains("title") && body["title"].is_string()) {
+            title = body["title"].get<std::string>();
+        }
+        body.erase("title");
+
         // Type-coerce + validate the request body at the API boundary so
         // bad input (e.g. "steps": "abc") fails fast as a 400 rather than
         // crashing the worker, and unknown fields ("diffusion_fa") are
@@ -1514,7 +1523,7 @@ void RequestHandlers::submit_generation_jobs(const httplib::Request& req,
         // Fast path: no expansion requested, or no template syntax present.
         // Behaves identically to the previous direct add_job() flow.
         if (!expand || prompt.find('{') == std::string::npos) {
-            std::string job_id = queue_manager_.add_job(type, body);
+            std::string job_id = queue_manager_.add_job(type, body, title);
             auto status = queue_manager_.get_status();
             send_json(res, {
                 {"job_id", job_id},
@@ -1559,7 +1568,7 @@ void RequestHandlers::submit_generation_jobs(const httplib::Request& req,
             job_params["variation_index"] = static_cast<int>(i);
             job_params["variation_total"] = static_cast<int>(variations.size());
             job_params["variation_template"] = prompt;
-            job_ids.push_back(queue_manager_.add_job(type, job_params));
+            job_ids.push_back(queue_manager_.add_job(type, job_params, title));
         }
 
         auto status = queue_manager_.get_status();
@@ -1584,6 +1593,14 @@ void RequestHandlers::handle_upscale(const httplib::Request& req, httplib::Respo
 
         auto body = parse_json_body(req);
 
+        // Optional user-supplied display title — strip before strict
+        // validation since UpscaleParams doesn't model it.
+        std::string title;
+        if (body.contains("title") && body["title"].is_string()) {
+            title = body["title"].get<std::string>();
+        }
+        body.erase("title");
+
         // Validate body shape at the boundary so unknown fields fail fast
         // as 400 (instead of being silently dropped on the way to the
         // worker). Discard the parsed result — we store the raw body on
@@ -1595,7 +1612,7 @@ void RequestHandlers::handle_upscale(const httplib::Request& req, httplib::Respo
             return;
         }
 
-        std::string job_id = queue_manager_.add_job(GenerationType::Upscale, body);
+        std::string job_id = queue_manager_.add_job(GenerationType::Upscale, body, title);
         
         auto status = queue_manager_.get_status();
         
@@ -1612,6 +1629,14 @@ void RequestHandlers::handle_upscale(const httplib::Request& req, httplib::Respo
 void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Response& res) {
     try {
         auto body = parse_json_body(req);
+
+        // Optional user-supplied display title — strip before strict
+        // validation since it isn't a convert parameter.
+        std::string title;
+        if (body.contains("title") && body["title"].is_string()) {
+            title = body["title"].get<std::string>();
+        }
+        body.erase("title");
 
         // Strict body validation: reject unknown fields.
         static const std::unordered_set<std::string> KNOWN_CONVERT_KEYS = {
@@ -1720,7 +1745,7 @@ void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Respo
         // Update body with output_path for the queue job
         body["output_path"] = output_path;
 
-        std::string job_id = queue_manager_.add_job(GenerationType::Convert, body);
+        std::string job_id = queue_manager_.add_job(GenerationType::Convert, body, title);
 
         auto status = queue_manager_.get_status();
 

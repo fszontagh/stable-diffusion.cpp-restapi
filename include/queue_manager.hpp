@@ -68,6 +68,14 @@ struct QueueItem {
     nlohmann::json model_settings;  // Model settings at time of job creation
     ProgressInfo progress;
 
+    // Optional user-supplied display title. Set at job creation time via
+    // the request body (`"title": "..."`); empty by default. Surfaced
+    // next to the type label in the WebUI Queue card and in /queue
+    // responses. Not a generation parameter — strict body validation
+    // strips it from `params` before the typed parser runs, so the
+    // typed structs don't need to enumerate it.
+    std::string title;
+
     std::chrono::system_clock::time_point created_at;
     std::chrono::system_clock::time_point started_at;
     std::chrono::system_clock::time_point completed_at;
@@ -195,7 +203,8 @@ public:
      * @param params Generation parameters as JSON
      * @return Job ID (UUID)
      */
-    std::string add_job(GenerationType type, const nlohmann::json& params);
+    std::string add_job(GenerationType type, const nlohmann::json& params,
+                        const std::string& title = "");
 
     /**
      * Add a model download job with automatic hash job

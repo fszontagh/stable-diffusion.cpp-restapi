@@ -11,6 +11,7 @@ struct GenerationRequestBase {
         auto builder = schema::SchemaBuilder("GenerationRequestBase", "Common generation parameters");
         builder
             .required_field("prompt", schema::FieldType::String, "Text prompt for generation")
+            .optional_field("title", schema::FieldType::String, "Optional display title for the queue job (free-form, shown next to the type label in the WebUI)", "")
             .optional_field("negative_prompt", schema::FieldType::String, "Negative prompt", "")
             .arch_default_field("width", schema::FieldType::Integer, "Image width in pixels")
             .arch_default_field("height", schema::FieldType::Integer, "Image height in pixels")
@@ -112,6 +113,7 @@ struct UpscaleRequest {
     static schema::SchemaDescriptor schema() {
         return schema::SchemaBuilder("UpscaleRequest", "Image upscaling request")
             .required_field("image_base64", schema::FieldType::String, "Image to upscale as base64")
+            .optional_field("title", schema::FieldType::String, "Optional display title for the queue job", "")
             .optional_field("upscale_factor", schema::FieldType::Integer, "Upscale factor", 4)
             .optional_field("tile_size", schema::FieldType::Integer, "Processing tile size", 128)
             .optional_field("repeats", schema::FieldType::Integer, "Number of upscale passes", 1)
@@ -126,6 +128,7 @@ struct ConvertRequest {
             .required_field("output_type", schema::FieldType::String, "Target quantization type")
             .enum_field("model_type", "Model type for name resolution", MODEL_TYPE_VALUES)
             .optional_field("output_path", schema::FieldType::String, "Output path (auto-generated if empty)")
+            .optional_field("title", schema::FieldType::String, "Optional display title for the queue job", "")
             .build();
     }
 };

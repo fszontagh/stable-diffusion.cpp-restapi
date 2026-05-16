@@ -919,6 +919,7 @@ Generate images from text prompt.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `prompt` | string | Yes | - | Text prompt for generation (supports `<lora:name:weight>` syntax) |
+| `title` | string | No | `""` | Optional display title attached to the queue job. Shown next to the type label in the WebUI Queue card and returned on `/queue` items. Stripped from `params` before strict validation runs, so it does not pollute the generation parameters. |
 | `negative_prompt` | string | No | `""` | Negative prompt |
 | `width` | integer | No | 512 | Image width in pixels |
 | `height` | integer | No | 512 | Image height in pixels |
@@ -1076,6 +1077,7 @@ Generate images from an existing image and text prompt.
 | `control_image_base64` | string | No | - | Base64-encoded pre-processed control image (requires ControlNet) |
 | `control_strength` | float | No | 0.9 | ControlNet influence strength (0.0 - 1.0) |
 | `expand_prompt` | boolean | No | false | If `true`, parse `prompt` for `{a\|b\|c}` / `{N$$a\|b\|c}` syntax and create one queue item per variation. See [Prompt Expansion](#prompt-expansion) under `/txt2img`. |
+| `title` | string | No | `""` | Optional display title attached to the queue job (same semantics as `/txt2img`). |
 
 All other parameters are the same as [Text to Image](#text-to-image) including advanced guidance (SLG, distilled_guidance), reference images, VAE tiling, EasyCache, PhotoMaker, upscaling, and the `expand_prompt` flag.
 
@@ -1125,6 +1127,7 @@ Generate video frames from text prompt (requires video-capable model like Wan).
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `prompt` | string | Yes | - | Text prompt for generation (supports `<lora:name:weight>` syntax) |
+| `title` | string | No | `""` | Optional display title attached to the queue job (same semantics as `/txt2img`). |
 | `negative_prompt` | string | No | `""` | Negative prompt |
 | `width` | integer | No | 832 | Video width in pixels |
 | `height` | integer | No | 480 | Video height in pixels |
@@ -1200,6 +1203,7 @@ Upscale an image using ESRGAN. Requires an upscaler model to be loaded.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `image_base64` | string | Yes | - | Base64-encoded input image |
+| `title` | string | No | `""` | Optional display title attached to the queue job (same semantics as `/txt2img`). |
 | `upscale_factor` | integer | No | 4 | Target upscale factor |
 | `tile_size` | integer | No | 128 | Tile size for processing (VRAM optimization) |
 | `repeats` | integer | No | 1 | Run upscaler multiple times |
@@ -1466,6 +1470,7 @@ Get status of a specific job.
 | `params` | object | Original request parameters |
 | `model_settings` | object | Model configuration at job creation time |
 | `linked_job_id` | string | ID of linked job (e.g., hash job linked to download job) |
+| `title` | string | User-supplied display title (only present when set at submission time). |
 | `error` | string | Error message (only if status is `failed`) |
 
 **Error Response (404):**
@@ -2167,6 +2172,7 @@ Convert a model to GGUF format with specified quantization.
 | `output_path` | string | No | Output path (auto-generated if not provided) |
 | `vae_path` | string | No | VAE to bake into the model |
 | `tensor_type_rules` | string | No | Custom tensor quantization rules |
+| `title` | string | No | Optional display title attached to the queue job (same semantics as `/txt2img`). |
 
 **Response (202 Accepted):**
 
