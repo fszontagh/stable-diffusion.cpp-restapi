@@ -298,6 +298,7 @@ set(SDCPP_SOURCES
     src/cuda_arch_check.cpp
     src/docs_index.cpp
     src/prompt_template.cpp
+    src/url_utils.cpp
 )
 
 # Add assistant sources only if enabled

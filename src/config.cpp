@@ -16,7 +16,8 @@ void to_json(nlohmann::json& j, const ServerConfig& c) {
         {"port", c.port},
         {"ws_port", c.ws_port},
         {"threads", c.threads},
-        {"sd_log_level", c.sd_log_level}
+        {"sd_log_level", c.sd_log_level},
+        {"trusted_proxies", c.trusted_proxies}
     };
 }
 
@@ -26,6 +27,12 @@ void from_json(const nlohmann::json& j, ServerConfig& c) {
     c.ws_port = j.value("ws_port", 0);  // deprecated, kept for backward compat
     c.threads = j.value("threads", 8);
     c.sd_log_level = j.value("sd_log_level", std::string{"warn"});
+    if (j.contains("trusted_proxies") && j["trusted_proxies"].is_array()) {
+        c.trusted_proxies.clear();
+        for (const auto& v : j["trusted_proxies"]) {
+            if (v.is_string()) c.trusted_proxies.push_back(v.get<std::string>());
+        }
+    }
 }
 
 // PathsConfig JSON serialization
@@ -139,7 +146,8 @@ void to_json(nlohmann::json& j, const AuthConfig& c) {
         // lossless, but callers that expose Config to clients (e.g. the
         // settings endpoint) MUST scrub or omit `auth.password` before sending.
         {"password", c.password},
-        {"token_ttl_minutes", c.token_ttl_minutes}
+        {"token_ttl_minutes", c.token_ttl_minutes},
+        {"allow_public_outputs", c.allow_public_outputs}
     };
 }
 
@@ -148,6 +156,7 @@ void from_json(const nlohmann::json& j, AuthConfig& c) {
     c.username = j.value("username", "");
     c.password = j.value("password", "");
     c.token_ttl_minutes = j.value("token_ttl_minutes", 1440);
+    c.allow_public_outputs = j.value("allow_public_outputs", true);
 }
 
 // RecycleBinConfig JSON serialization

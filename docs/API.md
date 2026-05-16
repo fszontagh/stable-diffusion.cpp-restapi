@@ -95,6 +95,27 @@ When the server is built with auth enabled and a username/password is configured
 
 Endpoints exempt from auth: `/login` (the static HTML page), `/login.css`, `/auth/login`, `/health`, `/openapi.json`, `/docs/`, `/ui/` (the SPA shell), and `/webdav/` (which uses HTTP Basic).
 
+**Public output access (`auth.allow_public_outputs`)** — when this option is `true` (default), `/output/<path>` and `/thumb/<path>` also bypass auth so generated images can be embedded in third-party clients via direct URL (Discord/Slack unfurls, an `<img src="https://host/output/.../output_0.png">` in another site, scripts that don't carry a token). Set `auth.allow_public_outputs: false` in `config.json` to require the same bearer/cookie auth on those paths as everywhere else. Has no effect when `auth.enabled: false` — there's nothing to bypass.
+
+```json
+{
+  "auth": {
+    "enabled": true,
+    "allow_public_outputs": true
+  }
+}
+```
+
+**Trusted reverse proxies (`server.trusted_proxies`)** — when the server is fronted by a reverse proxy that terminates TLS (nginx, Caddy, Traefik, kube-ingress), the proxy injects `X-Forwarded-Proto` and `X-Forwarded-Host`. The server only honors those headers when the connecting peer's IP is in this allowlist; otherwise the literal `Host` header (with `http://`) is used. Empty list = never trust forwarded headers. The list affects URL construction in responses (e.g. `output_urls[]`) and is the *only* way to get `https://` URLs returned in payloads when behind a TLS-terminating proxy. Entries may be exact IPs (`"127.0.0.1"`, `"::1"`) or IPv4 CIDRs (`"10.0.0.0/8"`).
+
+```json
+{
+  "server": {
+    "trusted_proxies": ["127.0.0.1", "10.0.0.0/8"]
+  }
+}
+```
+
 ### Login
 
 #### `POST /auth/login`
@@ -558,6 +579,17 @@ Pass `?wait=true` to **block the response** until the load completes (or fails, 
 | `timeout` | int | `600` | Seconds to wait before giving up (only honored when `wait=true`). Capped at `3600` (1 hour). On timeout the response is `504` and the load *continues* in the background. |
 
 Concurrency: only one load can be in flight at a time. A second `POST /models/load` (with or without `wait`) returns `409 Conflict` until the first finishes.
+
+**A model is already loaded:** `POST /models/load` returns `409 Conflict` if any model is currently loaded. To load a different model — or to reload the same one with different options — call `POST /models/unload` first, then `POST /models/load`. This guard prevents automation from accidentally re-loading on top of an in-use model. Example response:
+
+```json
+{
+    "error": "A model is already loaded. Call POST /models/unload first, then POST /models/load.",
+    "loaded_model": "SD1x/realisticStockPhoto_v30SD15.safetensors"
+}
+```
+
+`POST /models/unload` is synchronous — it returns only after the model has been freed — so a script can safely chain it: `unload && load`. The WebUI's *Load Model* / *Switch Model* / *Apply Changes* buttons do exactly this internally, calling `/models/unload` and then `/models/load` in sequence.
 
 **Request Body:**
 
@@ -1430,6 +1462,7 @@ Get status of a specific job.
 | `started_at` | string | ISO 8601 timestamp when processing started (if applicable) |
 | `completed_at` | string | ISO 8601 timestamp when job completed (if applicable) |
 | `outputs` | array | List of output file paths (relative to `/output/`) |
+| `output_urls` | array | Absolute URLs to each output file. Built from the request's `Host` header by default; promoted to `X-Forwarded-Host` / `X-Forwarded-Proto` when the connecting peer is in `server.trusted_proxies`. Direct GETs to these URLs work without auth when `auth.allow_public_outputs` is `true` (default). |
 | `params` | object | Original request parameters |
 | `model_settings` | object | Model configuration at job creation time |
 | `linked_job_id` | string | ID of linked job (e.g., hash job linked to download job) |

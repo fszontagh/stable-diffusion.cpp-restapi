@@ -2,7 +2,8 @@
     "server": {
         "host": "0.0.0.0",
         "port": 8080,
-        "threads": 8
+        "threads": 32,
+        "trusted_proxies": []
     },
     "paths": {
         "checkpoints": "/path/to/checkpoints",
@@ -48,5 +49,12 @@
     "recycle_bin": {
         "enabled": true,
         "retention_minutes": 10080
+    },
+    "auth": {
+        "enabled": true,
+        "username": "",
+        "password": "",
+        "token_ttl_minutes": 1440,
+        "allow_public_outputs": true
     }
 }

@@ -346,6 +346,22 @@ int main(int argc, char* argv[]) {
         // buffers multipart bodies in memory — keep that in mind when sizing.
         server.set_payload_max_length(static_cast<size_t>(50) * 1024 * 1024 * 1024);
 
+        // Wire the configured worker pool size. Without this, cpp-httplib
+        // uses its default (≈ hardware_concurrency-1) and the
+        // `server.threads` knob in config.json is silently ignored. A
+        // larger pool keeps `/output` and `/thumb` GETs responsive when a
+        // generation job is also tying up workers with long-poll progress
+        // and WS frames. Clamp to a sane range so a misconfigured value
+        // doesn't allocate thousands of threads.
+        {
+            int t = config.server.threads;
+            if (t < 4)   t = 4;
+            if (t > 256) t = 256;
+            server.new_task_queue = [t]() { return new httplib::ThreadPool(t); };
+            std::cout << "HTTP worker pool size: " << t
+                      << (t == config.server.threads ? "" : " (clamped)") << std::endl;
+        }
+
         // Set error logger for debugging HTTP connection issues
         server.set_error_logger([](const httplib::Error& err, const httplib::Request* req) {
             std::string path = req ? req->path : "unknown";
