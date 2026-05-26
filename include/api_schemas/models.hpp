@@ -66,7 +66,7 @@ struct LoadOptions {
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
             .enum_field("offload_mode", "VRAM offload strategy", OFFLOAD_MODE_VALUES, "none")
             .enum_field("vram_estimation", "VRAM estimation method", VRAM_ESTIMATION_VALUES, "dryrun")
-            .optional_field("offload_cond_stage", schema::FieldType::Boolean, "Offload conditioning after use", false)
+            .optional_field("offload_cond_stage", schema::FieldType::Boolean, "Offload conditioning (LLM/CLIP/T5) to CPU after the prompt is encoded. Default is true for most offload modes; the restapi flips it to false when offload_mode=layer_streaming to avoid per-gen mmap fault-in of the encoder weights.", false)
             .optional_field("offload_diffusion", schema::FieldType::Boolean, "Offload diffusion after sampling", false)
             .optional_field("reload_cond_stage", schema::FieldType::Boolean, "Reload conditioning for next gen", true)
             .optional_field("reload_diffusion", schema::FieldType::Boolean, "Reload diffusion for next gen", true)

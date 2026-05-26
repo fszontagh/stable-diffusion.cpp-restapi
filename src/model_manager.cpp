@@ -344,7 +344,18 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         // Dynamic tensor offloading options (experimental)
         params.offload_mode = opts.value("offload_mode", "none");
         params.vram_estimation = opts.value("vram_estimation", "dryrun");
-        params.offload_cond_stage = opts.value("offload_cond_stage", true);
+        // offload_cond_stage default is mode-aware: in layer_streaming the
+        // diffusion is already paying for VRAM via per-layer dispatch — adding
+        // a per-gen kick of the LLM/CLIP back to CPU then trying to reload it
+        // produces seconds-to-minutes of disk thrashing on each generation
+        // (mmap fault-in of multi-GB encoder weights). Default `false` for
+        // layer_streaming so cond_stage stays resident across gens. Other
+        // offload modes keep the original `true` default — those modes are
+        // explicitly opt-in for aggressive VRAM recycling.
+        const bool offload_cond_stage_default =
+            params.offload_mode != "layer_streaming";
+        params.offload_cond_stage =
+            opts.value("offload_cond_stage", offload_cond_stage_default);
         params.offload_diffusion = opts.value("offload_diffusion", false);
         params.reload_cond_stage = opts.value("reload_cond_stage", true);
         params.reload_diffusion = opts.value("reload_diffusion", true);
