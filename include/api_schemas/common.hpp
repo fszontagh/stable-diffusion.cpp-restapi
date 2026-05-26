@@ -9,12 +9,12 @@ namespace api {
 inline const std::vector<std::string> SAMPLER_VALUES = {
     "euler", "euler_a", "heun", "dpm2", "dpm++2s_a", "dpm++2m", "dpm++2mv2",
     "ipndm", "ipndm_v", "lcm", "ddim_trailing", "tcd", "res_multistep", "res_2s",
-    "er_sde", "euler_cfg_pp", "euler_a_cfg_pp"
+    "er_sde", "euler_cfg_pp", "euler_a_cfg_pp", "euler_ge"
 };
 
 inline const std::vector<std::string> SCHEDULER_VALUES = {
     "discrete", "karras", "exponential", "ays", "gits", "sgm_uniform",
-    "simple", "smoothstep", "kl_optimal", "lcm", "bong_tangent"
+    "simple", "smoothstep", "kl_optimal", "lcm", "bong_tangent", "ltx2"
 };
 
 inline const std::vector<std::string> MODEL_TYPE_VALUES = {
@@ -24,7 +24,7 @@ inline const std::vector<std::string> MODEL_TYPE_VALUES = {
 
 inline const std::vector<std::string> WEIGHT_TYPE_VALUES = {
     "f32", "f16", "bf16", "q8_0", "q5_0", "q5_1", "q4_0", "q4_1",
-    "q4_k", "q5_k", "q6_k", "q8_k", "q3_k", "q2_k", "nvfp4"
+    "q4_k", "q5_k", "q6_k", "q8_k", "q3_k", "q2_k", "mxfp4", "nvfp4", "q1_0"
 };
 
 inline const std::vector<std::string> RNG_TYPE_VALUES = {

@@ -200,6 +200,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         "vae", "clip_l", "clip_g", "clip_vision", "t5xxl", "controlnet",
         "llm", "llm_vision", "taesd",
         "high_noise_diffusion_model", "photo_maker",
+        "audio_vae", "embeddings_connectors",
         // Nested options object
         "options",
     };
@@ -245,6 +246,12 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
     if (j.contains("photo_maker") && !j["photo_maker"].is_null()) {
         params.photo_maker = j["photo_maker"].get<std::string>();
     }
+    if (j.contains("audio_vae") && !j["audio_vae"].is_null()) {
+        params.audio_vae = j["audio_vae"].get<std::string>();
+    }
+    if (j.contains("embeddings_connectors") && !j["embeddings_connectors"].is_null()) {
+        params.embeddings_connectors = j["embeddings_connectors"].get<std::string>();
+    }
 
     if (j.contains("options")) {
         auto& opts = j["options"];
@@ -272,6 +279,8 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
             "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
             // Chroma-specific
             "chroma_use_dit_mask", "chroma_use_t5_mask", "chroma_t5_mask_pad",
+            // Backend routing (sd.cpp post-2026-05-16)
+            "backend", "params_backend",
             // Experimental offload (only honored when SDCPP_EXPERIMENTAL_OFFLOAD is on,
             // but accepted in the schema regardless so OFFLOAD=OFF builds don't 400
             // on configs authored against an OFFLOAD=ON build).
@@ -326,6 +335,10 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.chroma_use_dit_mask = opts.value("chroma_use_dit_mask", true);
         params.chroma_use_t5_mask = opts.value("chroma_use_t5_mask", false);
         params.chroma_t5_mask_pad = opts.value("chroma_t5_mask_pad", 1);
+
+        // Backend routing
+        params.backend = opts.value("backend", "");
+        params.params_backend = opts.value("params_backend", "");
 
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
         // Dynamic tensor offloading options (experimental)
@@ -854,6 +867,29 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         std::cout << "[ModelManager] PhotoMaker: " << *params.photo_maker << std::endl;
     }
 
+    // LTXAV audio VAE + embeddings connectors. Audio VAE lives in the same
+    // directory as regular VAEs; embeddings connectors live alongside text
+    // encoders (T5 directory). Resolution is best-effort here — sd.cpp will
+    // error out at load time if the file isn't loadable.
+    std::string audio_vae_path;
+    if (params.audio_vae) {
+        auto audio_vae_info = get_model(*params.audio_vae, ModelType::VAE);
+        if (audio_vae_info) {
+            audio_vae_path = audio_vae_info->full_path;
+            ctx_params.audio_vae_path = audio_vae_path.c_str();
+            std::cout << "[ModelManager] Audio VAE: " << *params.audio_vae << std::endl;
+        }
+    }
+    std::string embeddings_connectors_path;
+    if (params.embeddings_connectors) {
+        auto ec_info = get_model(*params.embeddings_connectors, ModelType::T5);
+        if (ec_info) {
+            embeddings_connectors_path = ec_info->full_path;
+            ctx_params.embeddings_connectors_path = embeddings_connectors_path.c_str();
+            std::cout << "[ModelManager] Embeddings connectors: " << *params.embeddings_connectors << std::endl;
+        }
+    }
+
     // Note: LoRA paths are now passed directly in generate_image params via sd_lora_t
     // The lora_model_dir parameter was removed in sd.cpp c3ad6a1
 
@@ -912,6 +948,13 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.chroma_use_dit_mask = params.chroma_use_dit_mask;
     ctx_params.chroma_use_t5_mask = params.chroma_use_t5_mask;
     ctx_params.chroma_t5_mask_pad = params.chroma_t5_mask_pad;
+
+    // Backend routing. Pointers into sd_ctx_params_t must stay valid for the
+    // duration of new_sd_ctx() — `params` outlives that call here, so passing
+    // c_str() is safe. Empty strings → nullptr so sd.cpp falls back to its
+    // built-in selection logic.
+    ctx_params.backend = params.backend.empty() ? nullptr : params.backend.c_str();
+    ctx_params.params_backend = params.params_backend.empty() ? nullptr : params.params_backend.c_str();
 
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
     // Dynamic tensor offloading options (experimental)
@@ -1414,13 +1457,17 @@ bool ModelManager::load_upscaler(const std::string& model_name, int n_threads, i
     std::cout << "[ModelManager] Loading upscaler: " << model_name << std::endl;
     std::cout << "[ModelManager] Using " << threads << " threads, tile_size=" << tile_size << std::endl;
     
-    // Load upscaler
+    // Load upscaler. New trailing args in sd.cpp (post-2026-05-16 master):
+    // backend / params_backend let callers route the upscaler to a specific
+    // backend by name. Empty/null = let sd.cpp pick (matches old behavior).
     upscaler_context_ = new_upscaler_ctx(
         model_info->full_path.c_str(),
         false,      // offload_params_to_cpu
         false,      // direct
         threads,
-        tile_size
+        tile_size,
+        nullptr,    // backend
+        nullptr     // params_backend
     );
     
     if (upscaler_context_ == nullptr) {

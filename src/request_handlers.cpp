@@ -1080,7 +1080,8 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             "res_2s",
             "er_sde",
             "euler_cfg_pp",
-            "euler_a_cfg_pp"
+            "euler_a_cfg_pp",
+            "euler_ge"
         }},
         {"schedulers", {
             "discrete",
@@ -1093,7 +1094,8 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             "smoothstep",
             "kl_optimal",
             "lcm",
-            "bong_tangent"
+            "bong_tangent",
+            "ltx2"
         }},
         {"quantization_types", nlohmann::json::array({
             {{"id", "f32"}, {"name", "F32 (32-bit float)"}, {"bits", 32}},
@@ -1110,7 +1112,9 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             {{"id", "q8_k"}, {"name", "Q8_K (8-bit K-quant)"}, {"bits", 8}},
             {{"id", "q3_k"}, {"name", "Q3_K (3-bit K-quant)"}, {"bits", 3}},
             {{"id", "q2_k"}, {"name", "Q2_K (2-bit K-quant)"}, {"bits", 2}},
-            {{"id", "nvfp4"}, {"name", "NVFP4 (4-bit NVIDIA float)"}, {"bits", 4}}
+            {{"id", "mxfp4"}, {"name", "MXFP4 (4-bit OCP microscaling float)"}, {"bits", 4}},
+            {{"id", "nvfp4"}, {"name", "NVFP4 (4-bit NVIDIA float)"}, {"bits", 4}},
+            {{"id", "q1_0"}, {"name", "Q1_0 (1-bit, experimental)"}, {"bits", 1}}
         })}
     };
 

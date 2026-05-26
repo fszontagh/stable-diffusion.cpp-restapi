@@ -39,6 +39,8 @@ struct GenerationRequestBase {
             .optional_field("vae_tile_size_x", schema::FieldType::Integer, "VAE tile width (0 for auto)", 0)
             .optional_field("vae_tile_size_y", schema::FieldType::Integer, "VAE tile height (0 for auto)", 0)
             .optional_field("vae_tile_overlap", schema::FieldType::Number, "VAE tile overlap ratio", 0.5)
+            .optional_field("temporal_tiling", schema::FieldType::Boolean, "Enable temporal VAE tiling (LTX video models — splits the time axis into tiles to reduce memory pressure during decode)", false)
+            .optional_field("extra_tiling_args", schema::FieldType::String, "Extra key=value tiling args (passed through to sd.cpp's tiling parser, model-specific)")
             .optional_field("cache_mode", schema::FieldType::String, "Cache acceleration mode: easycache, spectrum (empty = disabled)")
             .optional_field("easycache", schema::FieldType::Boolean, "Enable EasyCache (deprecated, use cache_mode)", false)
             .optional_field("easycache_threshold", schema::FieldType::Number, "EasyCache similarity threshold", 0.2)
