@@ -160,8 +160,10 @@ When a user asks for generation defaults ("what steps should I use for Flux?"), 
 | Chroma | ae.safetensors, t5xxl | — | — | — | — | — |
 | Wan | video VAE, t5xxl | — | — | — | — | — |
 | HiDream-O1 | — (self-contained checkpoint) | **1.0** (Dev) / ~5.0 (Full) | 20 (Dev) / ~28 (Full) | euler | discrete | 1024×1024 |
+| Longcat-Image | ae.safetensors (Flux VAE), Qwen2.5-VL 7B LLM | 5.0 | 20 | euler | discrete (flow_shift=3) | 1024×1024 |
+| LTXAV (video) | video VAE, audio_vae, Gemma-3 12B LLM, embeddings_connectors | 6.0 | 20 | euler | **ltx2** | 1280×720, 33 frames @ 24fps |
 
-**Full list of architecture keys:** Anima, Chroma, Chroma-Radiance, Flux, Flux Kontext, Flux Schnell, Flux2 Dev, Flux2 Klein 4B, Flux2 Klein 9B, Flux2 Klein Base 4B, Flux2 Klein Base 9B, HiDream-O1, LCM, LCM-SDXL, Ovis, Qwen, Qwen Image Edit, SD1, SD2, SD3, SDXL, SDXS-512, SSD-1B, Vega, Wan, Z-Image.
+**Full list of architecture keys:** Anima, Chroma, Chroma-Radiance, Flux, Flux Kontext, Flux Schnell, Flux2 Dev, Flux2 Klein 4B, Flux2 Klein 9B, Flux2 Klein Base 4B, Flux2 Klein Base 9B, HiDream-O1, LCM, LCM-SDXL, Longcat-Image, LTXAV, Ovis, Qwen, Qwen Image Edit, SD1, SD2, SD3, SDXL, SDXS-512, SSD-1B, Vega, Wan, Z-Image.
 
 To read the live preset list from a running server: `GET /architectures` or MCP resource `sdcpp://architectures`.
 
@@ -237,9 +239,9 @@ Submitted to `POST /txt2img`, `/img2img`, `/txt2vid`. Defined in `GenerationRequ
 | `upscale` | Auto-upscale after generation (requires a loaded upscaler) |
 | `upscale_repeats`, `upscale_auto_unload` | Upscale-after-gen knobs |
 
-**Sampler enum values:** `euler`, `euler_a`, `heun`, `dpm2`, `dpm++2s_a`, `dpm++2m`, `dpm++2mv2`, `ipndm`, `ipndm_v`, `lcm`, `ddim_trailing`, `tcd`, `res_multistep`, `res_2s`, `er_sde`, `euler_cfg_pp`, `euler_a_cfg_pp`.
+**Sampler enum values:** `euler`, `euler_a`, `heun`, `dpm2`, `dpm++2s_a`, `dpm++2m`, `dpm++2mv2`, `ipndm`, `ipndm_v`, `lcm`, `ddim_trailing`, `tcd`, `res_multistep`, `res_2s`, `er_sde`, `euler_cfg_pp`, `euler_a_cfg_pp`, `euler_ge`.
 
-**Scheduler enum values:** `discrete`, `karras`, `exponential`, `ays`, `gits`, `sgm_uniform`, `simple`, `smoothstep`, `kl_optimal`, `lcm`, `bong_tangent`.
+**Scheduler enum values:** `discrete`, `karras`, `exponential`, `ays`, `gits`, `sgm_uniform`, `simple`, `smoothstep`, `kl_optimal`, `lcm`, `bong_tangent`, `ltx2`.
 
 ### img2img-specific options
 

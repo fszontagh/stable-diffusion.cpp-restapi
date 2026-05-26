@@ -2119,11 +2119,11 @@ Get available generation options including samplers, schedulers, and quantizatio
     "samplers": [
         "euler", "euler_a", "heun", "dpm2", "dpm++2s_a", "dpm++2m", "dpm++2mv2",
         "ipndm", "ipndm_v", "lcm", "ddim_trailing", "tcd", "res_multistep", "res_2s",
-        "er_sde", "euler_cfg_pp", "euler_a_cfg_pp"
+        "er_sde", "euler_cfg_pp", "euler_a_cfg_pp", "euler_ge"
     ],
     "schedulers": [
         "discrete", "karras", "exponential", "ays", "gits", "sgm_uniform",
-        "simple", "smoothstep", "kl_optimal", "lcm", "bong_tangent"
+        "simple", "smoothstep", "kl_optimal", "lcm", "bong_tangent", "ltx2"
     ],
     "quantization_types": [
         {"id": "f32", "name": "F32 (32-bit float)", "bits": 32},
@@ -3026,6 +3026,7 @@ Available sampling methods:
 | `er_sde` | ER-SDE sampler |
 | `euler_cfg_pp` | Euler CFG++ sampler |
 | `euler_a_cfg_pp` | Euler Ancestral CFG++ sampler |
+| `euler_ge` | Euler Gradient Estimation sampler |
 
 ### Schedulers
 
@@ -3044,6 +3045,7 @@ Available scheduler types:
 | `kl_optimal` | KL Optimal scheduler |
 | `lcm` | LCM scheduler |
 | `bong_tangent` | Bong Tangent scheduler |
+| `ltx2` | LTX2 scheduler (default for LTXAV / LTX 2.3 video models) |
 
 ### Model Types
 
