@@ -240,7 +240,8 @@
       "description": "Move the text encoder (LLM for Z-Image, CLIP/T5 for SD3/Flux) to CPU after the prompt is encoded. Makes the text encoder available for the next generation but lets the diffusion model reclaim the freed VRAM.",
       "type": "boolean",
       "default": true,
-      "recommended": "On when using any `offload_mode` other than `none`."
+      "default_when": {"offload_mode": "layer_streaming", "value": false},
+      "recommended": "On for `aggressive` and `cond_*` offload modes (where the point is to free as much VRAM as possible per stage). **Off for `layer_streaming`** — the diffusion is already paying its way via per-layer dispatch, so kicking the encoder out and reloading it from disk every generation just adds 5-60s of mmap fault-in cost per gen with no benefit. The restapi flips the default automatically when `offload_mode=layer_streaming`."
     },
     "offload_diffusion": {
       "label": "Offload Diffusion After Sampling",
