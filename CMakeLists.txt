@@ -195,15 +195,17 @@ else()
         # Pinned to the upstream commit that the fork's feature/vram-offloading-v2
         # branch most recently merged from, so the public API surface (samplers,
         # ctx_params fields, gen_params fields) matches between OFFLOAD=ON/OFF.
-        # 0b82969 is leejet/master at the time of the last fork resync — includes
-        # HiDream O1 (#1485), Euler CFG++ samplers (#1354), and mmap (#1414).
+        # 1ceb5bd is leejet/master at the time of the last fork resync — includes
+        # Longcat-Image (#1053), LTXAV/LTX 2.3 (#1463, #1505), Gradient Estimation
+        # sampler (#1484), `--max-vram -1` auto-detect (#1498), and the breaking
+        # generate_video/new_upscaler_ctx signature changes.
         # GIT_SHALLOW must be FALSE because GIT_TAG is a commit SHA — shallow
         # clone with a SHA fails (`fatal: reference is not a tree`). Full clone
         # adds ~25 MB to the build context but is reliable.
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        0b8296915c4094090cff6bd2e09a5e98288c3c7d
+            GIT_TAG        1ceb5bd9df7784bcdf67dd9ed8bf0198b542ebc9
             GIT_SHALLOW    FALSE
             GIT_SUBMODULES ${SDCPP_SUBMODULES}
             GIT_SUBMODULES_RECURSE TRUE

@@ -90,6 +90,8 @@ struct Txt2ImgParams {
     int vae_tile_size_x = 0;            // 0 = auto
     int vae_tile_size_y = 0;
     float vae_tile_overlap = 0.5f;
+    bool temporal_tiling = false;       // LTX video: split the time axis into tiles too
+    std::string extra_tiling_args = ""; // Pass-through key=value list for sd.cpp's tiling parser
 
     // Cache acceleration for DiT models (optional)
     std::string cache_mode = "";                    // "", "easycache", "spectrum"
@@ -180,6 +182,8 @@ struct Img2ImgParams {
     int vae_tile_size_x = 0;            // 0 = auto
     int vae_tile_size_y = 0;
     float vae_tile_overlap = 0.5f;
+    bool temporal_tiling = false;       // LTX video: split the time axis into tiles too
+    std::string extra_tiling_args = ""; // Pass-through key=value list for sd.cpp's tiling parser
 
     // Cache acceleration for DiT models (optional)
     std::string cache_mode = "";                    // "", "easycache", "spectrum"
@@ -291,6 +295,8 @@ struct Txt2VidParams {
     int vae_tile_size_x = 0;            // 0 = auto
     int vae_tile_size_y = 0;
     float vae_tile_overlap = 0.5f;
+    bool temporal_tiling = false;       // LTX video: split the time axis into tiles too
+    std::string extra_tiling_args = ""; // Pass-through key=value list for sd.cpp's tiling parser
 
     // Cache acceleration for DiT models (optional)
     std::string cache_mode = "";                    // "", "easycache", "spectrum"

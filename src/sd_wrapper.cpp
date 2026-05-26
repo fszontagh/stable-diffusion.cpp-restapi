@@ -5,11 +5,14 @@
 #include <iostream>
 #include <iomanip>
 #include <filesystem>
+#include <fstream>
 #include <cstring>
+#include <cmath>
 #include <stdexcept>
 #include <regex>
 #include <map>
 #include <unordered_set>
+#include <vector>
 #include <unistd.h>
 
 #include "stable-diffusion.h"
@@ -207,6 +210,63 @@ std::string build_error_message(const std::string& base_message) {
         return base_message;
     }
     return base_message + ": " + sd_error;
+}
+
+// Serialize sd.cpp's sd_audio_t (32-bit float PCM, sd.cpp's native layout) to a
+// standard RIFF/WAV file with 16-bit signed PCM samples. Mirrors the reference
+// implementation in sd.cpp's examples/common/media_io.cpp::write_wav_to_file —
+// we don't link that source (it's an example, not part of libstable-diffusion),
+// so the writer lives here. Layout note: sd.cpp delivers audio through a permute
+// that produces a planar buffer for multi-channel output, but for LTXAV (the only
+// model that exercises this today) audio_vae outputs mono, so the WAV's
+// "interleaved" semantic is degenerate and matches.
+static bool save_audio_wav(const std::string& path, const sd_audio_t* audio) {
+    if (audio == nullptr || audio->data == nullptr ||
+        audio->sample_count == 0 || audio->channels == 0 || audio->sample_rate == 0) {
+        return false;
+    }
+    std::ofstream file(path, std::ios::binary);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    const uint32_t bits_per_sample  = 16;
+    const uint32_t bytes_per_sample = bits_per_sample / 8;
+    const uint32_t block_align      = audio->channels * bytes_per_sample;
+    const uint32_t byte_rate        = audio->sample_rate * block_align;
+    const uint64_t total_samples    = audio->sample_count * audio->channels;
+    const uint32_t data_size        = static_cast<uint32_t>(total_samples * bytes_per_sample);
+    const uint32_t riff_size        = 36 + data_size;
+
+    file.write("RIFF", 4);
+    file.write(reinterpret_cast<const char*>(&riff_size), sizeof(riff_size));
+    file.write("WAVE", 4);
+    file.write("fmt ", 4);
+
+    const uint32_t fmt_size            = 16;
+    const uint16_t audio_format        = 1;  // PCM
+    const uint16_t wav_channels        = static_cast<uint16_t>(audio->channels);
+    const uint16_t wav_block_align     = static_cast<uint16_t>(block_align);
+    const uint16_t wav_bits_per_sample = static_cast<uint16_t>(bits_per_sample);
+    file.write(reinterpret_cast<const char*>(&fmt_size), sizeof(fmt_size));
+    file.write(reinterpret_cast<const char*>(&audio_format), sizeof(audio_format));
+    file.write(reinterpret_cast<const char*>(&wav_channels), sizeof(wav_channels));
+    file.write(reinterpret_cast<const char*>(&audio->sample_rate), sizeof(audio->sample_rate));
+    file.write(reinterpret_cast<const char*>(&byte_rate), sizeof(byte_rate));
+    file.write(reinterpret_cast<const char*>(&wav_block_align), sizeof(wav_block_align));
+    file.write(reinterpret_cast<const char*>(&wav_bits_per_sample), sizeof(wav_bits_per_sample));
+
+    file.write("data", 4);
+    file.write(reinterpret_cast<const char*>(&data_size), sizeof(data_size));
+
+    std::vector<int16_t> pcm(total_samples);
+    for (size_t i = 0; i < pcm.size(); ++i) {
+        const float s = std::max(-1.0f, std::min(1.0f, audio->data[i]));
+        pcm[i] = static_cast<int16_t>(std::lrint(s * 32767.0f));
+    }
+    file.write(reinterpret_cast<const char*>(pcm.data()),
+               static_cast<std::streamsize>(pcm.size() * sizeof(int16_t)));
+    return file.good();
 }
 
 } // anonymous namespace
@@ -608,6 +668,7 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
         "ref_images", "auto_resize_ref_image", "increase_ref_index",
         "control_strength", "control_image_base64",
         "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
+        "temporal_tiling", "extra_tiling_args",
         "cache_mode", "easycache",
         "easycache_threshold", "easycache_start", "easycache_end",
         "spectrum_w", "spectrum_m", "spectrum_lam",
@@ -673,6 +734,8 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     p.vae_tile_size_x = parse_int(j, "vae_tile_size_x", 0);
     p.vae_tile_size_y = parse_int(j, "vae_tile_size_y", 0);
     p.vae_tile_overlap = parse_float(j, "vae_tile_overlap", 0.5f);
+    p.temporal_tiling = parse_bool(j, "temporal_tiling", false);
+    p.extra_tiling_args = parse_string(j, "extra_tiling_args", "");
 
     // Cache acceleration for DiT models
     p.cache_mode = parse_string(j, "cache_mode", "");
@@ -805,6 +868,7 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
         "ref_images", "auto_resize_ref_image", "increase_ref_index",
         "control_strength", "control_image_base64",
         "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
+        "temporal_tiling", "extra_tiling_args",
         "cache_mode", "easycache",
         "easycache_threshold", "easycache_start", "easycache_end",
         "spectrum_w", "spectrum_m", "spectrum_lam",
@@ -893,6 +957,8 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     p.vae_tile_size_x = parse_int(j, "vae_tile_size_x", 0);
     p.vae_tile_size_y = parse_int(j, "vae_tile_size_y", 0);
     p.vae_tile_overlap = parse_float(j, "vae_tile_overlap", 0.5f);
+    p.temporal_tiling = parse_bool(j, "temporal_tiling", false);
+    p.extra_tiling_args = parse_string(j, "extra_tiling_args", "");
 
     // Cache acceleration for DiT models
     p.cache_mode = parse_string(j, "cache_mode", "");
@@ -1036,6 +1102,10 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
         "high_noise_slg_scale", "high_noise_skip_layers",
         "high_noise_slg_start", "high_noise_slg_end",
         "moe_boundary",
+        // VAE tiling (was always parsed but missing from the known-keys allowlist —
+        // reject_unknown_keys would 400 any txt2vid request that set it).
+        "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
+        "temporal_tiling", "extra_tiling_args",
     };
     reject_unknown_keys("/txt2vid body", j, KNOWN);
 
@@ -1137,6 +1207,8 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     p.vae_tile_size_x = parse_int(j, "vae_tile_size_x", 0);
     p.vae_tile_size_y = parse_int(j, "vae_tile_size_y", 0);
     p.vae_tile_overlap = parse_float(j, "vae_tile_overlap", 0.5f);
+    p.temporal_tiling = parse_bool(j, "temporal_tiling", false);
+    p.extra_tiling_args = parse_string(j, "extra_tiling_args", "");
 
     return p;
 }
@@ -1490,6 +1562,9 @@ std::vector<std::string> SDWrapper::generate_txt2img(
         gen_params.vae_tiling_params.tile_size_x = params.vae_tile_size_x;
         gen_params.vae_tiling_params.tile_size_y = params.vae_tile_size_y;
         gen_params.vae_tiling_params.target_overlap = params.vae_tile_overlap;
+        gen_params.vae_tiling_params.temporal_tiling = params.temporal_tiling;
+        gen_params.vae_tiling_params.extra_tiling_args =
+            params.extra_tiling_args.empty() ? nullptr : params.extra_tiling_args.c_str();
     }
 
     // PhotoMaker support
@@ -1812,6 +1887,9 @@ std::vector<std::string> SDWrapper::generate_img2img(
         gen_params.vae_tiling_params.tile_size_x = params.vae_tile_size_x;
         gen_params.vae_tiling_params.tile_size_y = params.vae_tile_size_y;
         gen_params.vae_tiling_params.target_overlap = params.vae_tile_overlap;
+        gen_params.vae_tiling_params.temporal_tiling = params.temporal_tiling;
+        gen_params.vae_tiling_params.extra_tiling_args =
+            params.extra_tiling_args.empty() ? nullptr : params.extra_tiling_args.c_str();
     }
 
     // PhotoMaker support
@@ -2032,19 +2110,32 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
         vid_params.cache.spectrum_stop_percent = params.spectrum_stop_percent;
     }
 
-    // VAE tiling for large videos
+    // VAE tiling for large videos. temporal_tiling on the video path is the
+    // common case — LTX 2.3 et al. split along the time axis as well as XY.
     if (params.vae_tiling) {
         vid_params.vae_tiling_params.enabled = true;
         vid_params.vae_tiling_params.tile_size_x = params.vae_tile_size_x;
         vid_params.vae_tiling_params.tile_size_y = params.vae_tile_size_y;
         vid_params.vae_tiling_params.target_overlap = params.vae_tile_overlap;
+        vid_params.vae_tiling_params.temporal_tiling = params.temporal_tiling;
+        vid_params.vae_tiling_params.extra_tiling_args =
+            params.extra_tiling_args.empty() ? nullptr : params.extra_tiling_args.c_str();
     }
 
-    // Generate video frames
+    // Generate video frames.
+    // sd.cpp's generate_video API changed (PR-merged 2026-05-16+): now returns bool
+    // and writes through out-params. audio_out is left nullptr — the LTXAV audio VAE
+    // is wired separately (see save_video_audio below); for non-LTXAV models the
+    // audio_out path is never populated by sd.cpp anyway.
     int num_frames = 0;
-    sd_image_t* frames = generate_video(ctx, &vid_params, &num_frames);
+    sd_image_t* frames = nullptr;
+    sd_audio_t* audio_out = nullptr;
+    bool video_ok = generate_video(ctx, &vid_params, &frames, &num_frames, &audio_out);
 
-    if (frames == nullptr) {
+    if (!video_ok || frames == nullptr) {
+        if (audio_out) {
+            free_sd_audio(audio_out);
+        }
         throw std::runtime_error(build_error_message("Video generation failed"));
     }
 
@@ -2065,6 +2156,19 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
         }
     }
     free(frames);
+
+    // LTXAV (and any future audio-VAE models) populate audio_out alongside the
+    // frames. Save it as a sibling audio.wav so callers can mux it back with
+    // the frame sequence. The non-audio path leaves audio_out null and skips this.
+    if (audio_out != nullptr) {
+        std::string audio_path = (fs::path(job_output_dir) / "audio.wav").string();
+        if (save_audio_wav(audio_path, audio_out)) {
+            outputs.push_back(job_id + "/audio.wav");
+        } else {
+            std::cerr << "[SDWrapper] Failed to save audio to " << audio_path << std::endl;
+        }
+        free_sd_audio(audio_out);
+    }
 
     // Check if any frames were successfully generated
     if (outputs.empty()) {

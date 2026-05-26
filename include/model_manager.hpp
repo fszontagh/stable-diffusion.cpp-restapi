@@ -86,6 +86,8 @@ struct ModelLoadParams {
     std::optional<std::string> taesd;           // Tiny AutoEncoder for previews
     std::optional<std::string> high_noise_diffusion_model;  // High-noise diffusion (MoE)
     std::optional<std::string> photo_maker;     // PhotoMaker model
+    std::optional<std::string> audio_vae;       // Audio VAE (LTXAV / LTX 2.3 — for video models with sound)
+    std::optional<std::string> embeddings_connectors;  // Embeddings connectors (LTXAV)
 
     // Options
     int n_threads = -1;
@@ -155,6 +157,12 @@ struct ModelLoadParams {
     bool chroma_use_dit_mask = true;
     bool chroma_use_t5_mask = false;
     int chroma_t5_mask_pad = 1;
+
+    // Backend routing (sd.cpp post-2026-05-16). Empty = let sd.cpp pick the
+    // default backend (matches the historical behavior of selecting the
+    // first available accelerator at build time).
+    std::string backend = "";                   // Main compute backend ("cuda", "vulkan", "rocm", "metal", "opencl", "")
+    std::string params_backend = "";            // Override for parameter storage backend (typically empty)
 
     static ModelLoadParams from_json(const nlohmann::json& j);
 };

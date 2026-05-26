@@ -598,6 +598,62 @@
         "width": 1024,
         "height": 1024
       }
+    },
+    "Longcat-Image": {
+      "name": "LongCat-Image",
+      "description": "Meituan LongCat-Image (and -Edit). Uses the Flux VAE (ae.safetensors) and Qwen2.5-VL 7B as the multimodal text encoder. Supports character-level text rendering when the target text is wrapped in single, double, or Chinese quotes.",
+      "aliases": ["Longcat-Image", "LongCat-Image", "LongCat-Image-Edit", "longcat_image", "longcat-image"],
+      "requiredComponents": {
+        "vae": "ae.safetensors (Flux VAE)",
+        "llm": "Qwen2.5-VL 7B (GGUF or safetensors)"
+      },
+      "optionalComponents": {
+        "llm_vision": "mmproj file for image editing with GGUF text encoders"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": false
+      },
+      "generationDefaults": {
+        "cfg_scale": 5.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "flow_shift": 3.0,
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "LTXAV": {
+      "name": "LTX 2.3 (LTXAV)",
+      "description": "Lightricks LTX 2.3 video model. Generates frames + optional audio (saved as audio.wav alongside the frames). Requires a separate audio VAE and an embeddings_connectors file in addition to the diffusion model, video VAE, and Gemma-3 12B LLM text encoder.",
+      "aliases": ["LTXAV", "LTX2", "LTX-2.3", "ltx2", "ltxav"],
+      "requiredComponents": {
+        "vae": "ltx-2.3 video VAE (safetensors)",
+        "audio_vae": "ltx-2.3 audio VAE (safetensors)",
+        "llm": "gemma-3-12b-it (GGUF or safetensors)",
+        "embeddings_connectors": "ltx-2.3 embeddings_connectors (safetensors)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": false
+      },
+      "generationDefaults": {
+        "cfg_scale": 6.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "ltx2",
+        "width": 1280,
+        "height": 720,
+        "video_frames": 33,
+        "fps": 24,
+        "negative_prompt": "worst quality, low quality, blurry, distorted, artifacts"
+      }
     }
   },
   "version": 2,

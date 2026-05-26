@@ -22,6 +22,8 @@ struct LoadModelRequest {
             .optional_field("taesd", schema::FieldType::String, "TAESD model for fast preview")
             .optional_field("high_noise_diffusion_model", schema::FieldType::String, "High-noise diffusion model (for dual-stage)")
             .optional_field("photo_maker", schema::FieldType::String, "PhotoMaker model name")
+            .optional_field("audio_vae", schema::FieldType::String, "Audio VAE (LTXAV / LTX 2.3 — for video models that produce sound)")
+            .optional_field("embeddings_connectors", schema::FieldType::String, "Embeddings connectors (LTXAV / LTX 2.3)")
             .ref_field("options", "LoadOptions", "Model loading options");
         return builder.build();
     }
@@ -59,6 +61,8 @@ struct LoadOptions {
             .optional_field("chroma_use_dit_mask", schema::FieldType::Boolean, "Use DiT attention mask (Chroma)", false)
             .optional_field("chroma_use_t5_mask", schema::FieldType::Boolean, "Use T5 attention mask (Chroma)", false)
             .optional_field("chroma_t5_mask_pad", schema::FieldType::Integer, "T5 mask padding (Chroma)", 0)
+            .optional_field("backend", schema::FieldType::String, "Main compute backend override (empty = sd.cpp picks)")
+            .optional_field("params_backend", schema::FieldType::String, "Parameter storage backend override (empty = same as backend)")
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
             .enum_field("offload_mode", "VRAM offload strategy", OFFLOAD_MODE_VALUES, "none")
             .enum_field("vram_estimation", "VRAM estimation method", VRAM_ESTIMATION_VALUES, "dryrun")
