@@ -118,8 +118,8 @@ struct ModelLoadParams {
     std::string weight_type;                    // Weight type (f32, f16, q8_0, q4_0, etc.)
     std::string tensor_type_rules;              // Per-tensor weight rules (e.g., "^vae\.=f16")
 
-#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
-    // Dynamic tensor offloading options (experimental - requires forked sd.cpp)
+#if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
+    // ── feature/vram-offloading-v2 fields (legacy multi-mode offload API) ──
     std::string offload_mode = "none";          // none, cond_only, cond_diffusion, aggressive, layer_streaming
     std::string vram_estimation = "dryrun";     // dryrun (accurate), formula (fast)
     bool offload_cond_stage = true;             // Offload LLM/CLIP after conditioning
@@ -134,6 +134,14 @@ struct ModelLoadParams {
     int streaming_prefetch_layers = 1;          // Number of layers to prefetch ahead
     int streaming_keep_layers_behind = 0;       // Layers to keep after execution (for skip connections)
     size_t streaming_min_free_vram_mb = 0;      // Minimum VRAM to keep free during streaming (MB)
+#elif defined(SDCPP_UNIFIED_STREAMING)
+    // ── feature/unified-streaming field (new minimal API) ──────────────────
+    // Single bool that engages sd.cpp's residency-aware streaming planner on
+    // top of max_vram. Has no effect when max_vram == 0 — the planner uses
+    // the max_vram budget to decide which layers stay resident vs streamed,
+    // with async H2D prefetch overlapping next-segment load against current
+    // segment compute.
+    bool stream_layers = false;
 #endif
 
     // RNG options
