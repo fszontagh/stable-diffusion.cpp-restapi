@@ -63,6 +63,12 @@ option(SD_EXPERIMENTAL_OFFLOAD "Enable experimental dynamic tensor offloading (r
 #                  sd_offload_config_t struct and the sd_offload_to_cpu/
 #                  sd_reload_to_gpu helpers.
 option(SD_UNIFIED_STREAMING "Use the unified-streaming fork branch instead of vram-offloading-v2 (requires SD_EXPERIMENTAL_OFFLOAD=ON)" OFF)
+# Local-build optimization: when ON, ask nvcc to compile only for the GPU
+# physically present in this machine (uses CMAKE_CUDA_ARCHITECTURES=native).
+# Cuts a clean CUDA build by ~40-60% because nvcc skips the ~6 other arches
+# it normally emits. NEVER turn this on for CI / release builds — the
+# resulting binary won't run on any other GPU model.
+option(SD_CUDA_ARCH_NATIVE "Compile CUDA only for the local GPU (faster local builds, non-portable binary)" OFF)
 option(SDCPP_MCP "Build MCP (Model Context Protocol) server support" ON)
 set(SDCPP_LOCAL_SOURCE "" CACHE PATH "Path to local stable-diffusion.cpp source (for development/testing)")
 
@@ -93,6 +99,16 @@ find_package(CURL REQUIRED)
 if(SD_CUDA)
     find_package(CUDAToolkit REQUIRED)
     message(STATUS "CUDA toolkit found: ${CUDAToolkit_VERSION}")
+    # Local-build-only: pin CUDA arch to the host GPU. Must be set BEFORE
+    # the sd.cpp subdirectory is added, otherwise sd.cpp's ggml-cuda target
+    # has already snapshotted the default arch list. The `native` value tells
+    # nvcc to probe the local device and emit code only for its compute
+    # capability — for a single-GPU workstation this is roughly a 4× speedup
+    # on the clean ggml-cuda kernel compile.
+    if(SD_CUDA_ARCH_NATIVE)
+        set(CMAKE_CUDA_ARCHITECTURES "native" CACHE STRING "CUDA arches" FORCE)
+        message(STATUS "CUDA arch:       native (local GPU only — binary NOT portable)")
+    endif()
 endif()
 
 #
@@ -292,6 +308,34 @@ if(SD_CUDA AND TARGET stable-diffusion)
     message(STATUS "Added CUDA include directories to stable-diffusion target")
 endif()
 
+# Suppress noisy warnings from third-party headers vendored by sd.cpp. These
+# are well-known signal-free patterns: stb_image* (single-header libs with
+# conditional dead code), darts.h (T5 tokenizer using old C++ enum
+# arithmetic), and util.cpp's std::wstring_convert (deprecated in C++17 but
+# still widely used). Scoped to the stable-diffusion target so restapi
+# sources keep every warning enabled. The flags use $<COMPILE_LANGUAGE:CXX>
+# so nvcc's command line stays untouched (nvcc rejects these flags).
+if(TARGET stable-diffusion)
+    target_compile_options(stable-diffusion PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-value>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-variable>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-missing-field-initializers>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-enum-enum-conversion>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-declarations>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-stringop-overflow>
+    )
+endif()
+
+# httplib's own SSL wrappers reference its deprecated SSLClient::ssl_context /
+# get_verify_result / set_server_certificate_verifier APIs — 3 warnings per
+# TU that pulls in httplib.h. We can't suppress them cleanly: making httplib's
+# include SYSTEM (the usual fix) causes CMake's include dedup to lose priority
+# to sd.cpp's older bundled httplib (which lacks WebSocket), and per-target
+# -Wno-deprecated-declarations would hide real deprecations in our own code.
+# Accept the 3 warnings as residue; revisit if httplib pushes a fix or we
+# switch off httplib.
+
 #
 # Main executable
 #
@@ -338,6 +382,16 @@ target_include_directories(sdcpp-restapi PRIVATE
     ${stable-diffusion_SOURCE_DIR}
     ${stable-diffusion_SOURCE_DIR}/include
     ${stable-diffusion_SOURCE_DIR}/src
+)
+# Mark sd.cpp's thirdparty/ as a SYSTEM include — that's where the noisy
+# single-header libraries live (stb_image*, stb_image_resize, stb_image_write,
+# darts.h). GCC suppresses warnings from anything found under a -isystem path,
+# so the ~95 stb/darts warnings emitted while compiling our src/stb_impl.cpp
+# (and any other restapi TU that pulls in those headers) go away.
+# Doesn't affect the bundled httplib priority dance below — that uses a
+# separate non-system BEFORE include for httplib_SOURCE_DIR, and httplib.h is
+# never accessed via this thirdparty path.
+target_include_directories(sdcpp-restapi SYSTEM PRIVATE
     ${stable-diffusion_SOURCE_DIR}/thirdparty
 )
 
@@ -346,7 +400,12 @@ target_include_directories(sdcpp-restapi PRIVATE
 # sd.cpp's thirdparty/ propagates an old httplib.h via PUBLIC includes.
 # httplib::httplib adds its path as -isystem, which CMake deduplicates against -I.
 # Solution: strip httplib's system include from the target and add it as a BEFORE
-# non-system include on our target. This way our path comes first in the -I list.
+# non-system include on our target. This way our path comes first in the -I list,
+# so our newer httplib (with WebSocket) wins over sd.cpp's bundled older copy.
+# Trade-off: keeping this as non-system means GCC emits warnings from httplib.h
+# itself (3 SSL deprecations — see note above the suppression block for why
+# we don't fix those). Switching to SYSTEM would lose the priority over the
+# bundled httplib and break WebSocket compilation.
 set_target_properties(httplib PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
 set_target_properties(httplib PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "")
 target_include_directories(sdcpp-restapi BEFORE PRIVATE ${httplib_SOURCE_DIR})
