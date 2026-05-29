@@ -82,7 +82,12 @@ const loadParams = ref<LoadModelParams>({
     // The mode itself is what enables streaming inside sd.cpp.
     streaming_prefetch_layers: 1,
     streaming_keep_layers_behind: 0,
-    streaming_min_free_vram_mb: 0
+    streaming_min_free_vram_mb: 0,
+    // Unified-streaming variant: replaces the multi-mode offload_mode + streaming_*
+    // tuning with a single toggle. Only honored when the binary was built with
+    // -DSD_UNIFIED_STREAMING=ON (store.unifiedStreamingEnabled === true);
+    // otherwise this field is accepted by the parser but ignored at runtime.
+    stream_layers: false
   }
 })
 
@@ -351,6 +356,19 @@ watch(selectedArchitecture, () => {
     if (requiredComponents.value.llm) {
       autoSelectComponent('llm', llmSuggestions.value)
     }
+  }
+})
+
+// Mirror sd.cpp's bd44d2d auto-coupling at the UX layer: when the user enables
+// stream_layers, also tick offload_to_cpu (streaming needs host-resident
+// weights to pull segments from). One-way: turning stream_layers off does
+// NOT un-tick offload_to_cpu — the user may want offload_to_cpu on its own.
+// sd.cpp does the same coupling at load time, so the actual generation would
+// work either way; this just keeps the form state honest about what's about
+// to be sent.
+watch(() => loadParams.value.options?.stream_layers, (enabled) => {
+  if (enabled && loadParams.value.options) {
+    loadParams.value.options.offload_to_cpu = true
   }
 })
 
@@ -741,116 +759,149 @@ watch(selectedArchitecture, () => {
         </div>
       </details>
 
-      <!-- Offload Settings (only available with experimental offload build) -->
+      <!-- Offload Settings (only available with experimental offload build).
+           Two mutually-exclusive UIs render here depending on which fork branch
+           the backend was built against — the feature flag `unified_streaming`
+           on /health drives the choice. See store.unifiedStreamingEnabled. -->
       <details v-if="store.experimentalOffloadEnabled" class="card section-card accordion">
         <summary class="accordion-header">VRAM Offloading</summary>
         <div class="accordion-content">
-          <div class="form-group">
-            <label class="form-label">Offload Mode</label>
-            <select v-model="loadParams.options!.offload_mode" class="form-select">
-              <option value="none">Disabled (keep all on GPU)</option>
-              <option value="cond_only">After Conditioning (offload LLM/CLIP)</option>
-              <option value="cond_diffusion">After Cond + Diffusion</option>
-              <option value="aggressive">Aggressive (offload each component)</option>
-              <option value="layer_streaming">Layer Streaming (for models larger than VRAM)</option>
-            </select>
-            <small class="form-hint">
-              {{ getOptionDesc('offload_mode')?.description || 'Temporarily move model components to CPU during generation to free VRAM for VAE decode.' }}
-            </small>
-          </div>
 
-          <div v-if="loadParams.options!.offload_mode !== 'none'" class="offload-options">
+          <!-- ── feature/unified-streaming UI ─────────────────────────────
+               Single stream_layers toggle on top of max_vram. The planner
+               handles residency split + async H2D prefetch automatically. -->
+          <template v-if="store.unifiedStreamingEnabled">
             <div class="form-group">
-              <label class="form-label">VRAM Estimation Method</label>
-              <select v-model="loadParams.options!.vram_estimation" class="form-select">
-                <option value="dryrun">Dry-run (Accurate, default)</option>
-                <option value="formula">Formula (Faster, approximate)</option>
+              <label class="form-checkbox">
+                <input v-model="loadParams.options!.stream_layers" type="checkbox" />
+                <span>Stream layers (residency + async prefetch)</span>
+              </label>
+              <small class="form-hint">
+                Engages sd.cpp's residency-aware streaming planner on top of the <code>max_vram</code>
+                budget. The planner decides which transformer segments stay resident vs streamed,
+                and overlaps next-segment H2D copy with current-segment compute. Requires
+                <strong>max_vram &gt; 0</strong> to do anything; otherwise this flag is silently a no-op.
+                Auto-enables <strong>Offload to CPU</strong> (Performance section) since
+                streaming pulls segments from host-resident weights — sd.cpp would do the same
+                implicit coupling at load time, this just keeps the form state honest.
+              </small>
+            </div>
+            <div v-if="loadParams.options!.stream_layers && !loadParams.options!.max_vram" class="form-hint" style="color: var(--color-warning, #c80);">
+              ⚠ stream_layers is enabled but max_vram is 0 — set max_vram in Performance section above
+              (typically ~80% of free VRAM) for streaming to engage.
+            </div>
+          </template>
+
+          <!-- ── feature/vram-offloading-v2 UI (legacy multi-mode) ──────── -->
+          <template v-else>
+            <div class="form-group">
+              <label class="form-label">Offload Mode</label>
+              <select v-model="loadParams.options!.offload_mode" class="form-select">
+                <option value="none">Disabled (keep all on GPU)</option>
+                <option value="cond_only">After Conditioning (offload LLM/CLIP)</option>
+                <option value="cond_diffusion">After Cond + Diffusion</option>
+                <option value="aggressive">Aggressive (offload each component)</option>
+                <option value="layer_streaming">Layer Streaming (for models larger than VRAM)</option>
               </select>
               <small class="form-hint">
-                {{ getOptionDesc('vram_estimation')?.description || 'How to estimate VRAM needed before VAE decode.' }}
+                {{ getOptionDesc('offload_mode')?.description || 'Temporarily move model components to CPU during generation to free VRAM for VAE decode.' }}
               </small>
             </div>
 
-            <div class="options-grid">
-              <label class="form-checkbox">
-                <input v-model="loadParams.options!.offload_cond_stage" type="checkbox" />
-                <span>Offload LLM/CLIP after conditioning</span>
-              </label>
-              <label
-                v-if="loadParams.options!.offload_mode === 'aggressive' || loadParams.options!.offload_mode === 'cond_diffusion'"
-                class="form-checkbox"
-              >
-                <input v-model="loadParams.options!.offload_diffusion" type="checkbox" />
-                <span>Offload diffusion model after sampling</span>
-              </label>
-              <label class="form-checkbox">
-                <input v-model="loadParams.options!.reload_cond_stage" type="checkbox" />
-                <span>Reload LLM/CLIP after generation</span>
-              </label>
-              <label class="form-checkbox">
-                <input v-model="loadParams.options!.reload_diffusion" type="checkbox" />
-                <span>Reload diffusion model after generation</span>
-              </label>
+            <div v-if="loadParams.options!.offload_mode !== 'none'" class="offload-options">
+              <div class="form-group">
+                <label class="form-label">VRAM Estimation Method</label>
+                <select v-model="loadParams.options!.vram_estimation" class="form-select">
+                  <option value="dryrun">Dry-run (Accurate, default)</option>
+                  <option value="formula">Formula (Faster, approximate)</option>
+                </select>
+                <small class="form-hint">
+                  {{ getOptionDesc('vram_estimation')?.description || 'How to estimate VRAM needed before VAE decode.' }}
+                </small>
+              </div>
+
+              <div class="options-grid">
+                <label class="form-checkbox">
+                  <input v-model="loadParams.options!.offload_cond_stage" type="checkbox" />
+                  <span>Offload LLM/CLIP after conditioning</span>
+                </label>
+                <label
+                  v-if="loadParams.options!.offload_mode === 'aggressive' || loadParams.options!.offload_mode === 'cond_diffusion'"
+                  class="form-checkbox"
+                >
+                  <input v-model="loadParams.options!.offload_diffusion" type="checkbox" />
+                  <span>Offload diffusion model after sampling</span>
+                </label>
+                <label class="form-checkbox">
+                  <input v-model="loadParams.options!.reload_cond_stage" type="checkbox" />
+                  <span>Reload LLM/CLIP after generation</span>
+                </label>
+                <label class="form-checkbox">
+                  <input v-model="loadParams.options!.reload_diffusion" type="checkbox" />
+                  <span>Reload diffusion model after generation</span>
+                </label>
+              </div>
+
+              <!-- Advanced VRAM settings -->
+              <div class="form-group mt-3">
+                <label class="form-label">Target Free VRAM (MB)</label>
+                <input
+                  v-model.number="loadParams.options!.target_free_vram_mb"
+                  type="number"
+                  class="form-input"
+                  min="0"
+                  step="256"
+                  placeholder="0 = always offload"
+                />
+                <small class="form-hint">Target free VRAM before VAE decode. 0 = always offload when mode is set.</small>
+              </div>
             </div>
 
-            <!-- Advanced VRAM settings -->
-            <div class="form-group mt-3">
-              <label class="form-label">Target Free VRAM (MB)</label>
-              <input
-                v-model.number="loadParams.options!.target_free_vram_mb"
-                type="number"
-                class="form-input"
-                min="0"
-                step="256"
-                placeholder="0 = always offload"
-              />
-              <small class="form-hint">Target free VRAM before VAE decode. 0 = always offload when mode is set.</small>
-            </div>
-          </div>
+            <!-- Layer Streaming Options (for layer_streaming mode) -->
+            <div v-if="loadParams.options!.offload_mode === 'layer_streaming'" class="layer-streaming-options">
+              <h4 class="options-group-title">Layer Streaming Configuration</h4>
+              <p class="form-hint mb-3">
+                Layer streaming enables running models larger than your VRAM by streaming layers one-by-one.
+              </p>
 
-          <!-- Layer Streaming Options (for layer_streaming mode) -->
-          <div v-if="loadParams.options!.offload_mode === 'layer_streaming'" class="layer-streaming-options">
-            <h4 class="options-group-title">Layer Streaming Configuration</h4>
-            <p class="form-hint mb-3">
-              Layer streaming enables running models larger than your VRAM by streaming layers one-by-one.
-            </p>
+              <div class="form-group">
+                <label class="form-label">Prefetch Layers</label>
+                <input
+                  v-model.number="loadParams.options!.streaming_prefetch_layers"
+                  type="number"
+                  class="form-input"
+                  min="0"
+                  max="4"
+                />
+                <small class="form-hint">Number of layers to prefetch ahead (default: 1). Higher = more VRAM, potentially faster.</small>
+              </div>
 
-            <div class="form-group">
-              <label class="form-label">Prefetch Layers</label>
-              <input
-                v-model.number="loadParams.options!.streaming_prefetch_layers"
-                type="number"
-                class="form-input"
-                min="0"
-                max="4"
-              />
-              <small class="form-hint">Number of layers to prefetch ahead (default: 1). Higher = more VRAM, potentially faster.</small>
-            </div>
+              <div class="form-group">
+                <label class="form-label">Keep Layers Behind</label>
+                <input
+                  v-model.number="loadParams.options!.streaming_keep_layers_behind"
+                  type="number"
+                  class="form-input"
+                  min="0"
+                  max="4"
+                />
+                <small class="form-hint">Layers to keep after execution for skip connections. Increase if you see artifacts.</small>
+              </div>
 
-            <div class="form-group">
-              <label class="form-label">Keep Layers Behind</label>
-              <input
-                v-model.number="loadParams.options!.streaming_keep_layers_behind"
-                type="number"
-                class="form-input"
-                min="0"
-                max="4"
-              />
-              <small class="form-hint">Layers to keep after execution for skip connections. Increase if you see artifacts.</small>
+              <div class="form-group">
+                <label class="form-label">Min Free VRAM (MB)</label>
+                <input
+                  v-model.number="loadParams.options!.streaming_min_free_vram_mb"
+                  type="number"
+                  class="form-input"
+                  min="0"
+                  step="256"
+                />
+                <small class="form-hint">Minimum VRAM to keep free during streaming. 0 = no limit.</small>
+              </div>
             </div>
+          </template>
 
-            <div class="form-group">
-              <label class="form-label">Min Free VRAM (MB)</label>
-              <input
-                v-model.number="loadParams.options!.streaming_min_free_vram_mb"
-                type="number"
-                class="form-input"
-                min="0"
-                step="256"
-              />
-              <small class="form-hint">Minimum VRAM to keep free during streaming. 0 = no limit.</small>
-            </div>
-          </div>
         </div>
       </details>
 

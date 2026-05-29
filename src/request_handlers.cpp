@@ -1043,6 +1043,16 @@ void RequestHandlers::handle_health(const httplib::Request& req, httplib::Respon
 #else
             {"experimental_offload", false},
 #endif
+            // Distinguishes which fork branch backs the experimental_offload
+            // build. true → fork's feature/unified-streaming (single
+            // stream_layers + max_vram); false → fork's feature/vram-offloading-v2
+            // (legacy offload_mode + offload_config). Only meaningful when
+            // experimental_offload is true.
+#ifdef SDCPP_UNIFIED_STREAMING
+            {"unified_streaming", true},
+#else
+            {"unified_streaming", false},
+#endif
 #ifdef SDCPP_MCP_ENABLED
             {"mcp", true},
 #else

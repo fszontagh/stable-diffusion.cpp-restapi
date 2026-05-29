@@ -719,6 +719,12 @@ json McpServer::resource_health() {
 #else
             {"experimental_offload", false},
 #endif
+            // Distinguishes the experimental fork variant — see /health for the full doc.
+#ifdef SDCPP_UNIFIED_STREAMING
+            {"unified_streaming", true},
+#else
+            {"unified_streaming", false},
+#endif
 #ifdef SDCPP_WEBSOCKET_ENABLED
             {"websocket", true},
 #else

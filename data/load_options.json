@@ -194,7 +194,7 @@
         "immediately": "Immediately — merge into weights at load (fast generation, immutable)",
         "at_runtime": "At runtime — apply per-generation (mutable, ~5% slower per step)"
       },
-      "recommended": "`at_runtime` for server use — lets generation requests change LoRAs without reloading the model."
+      "recommended": "`auto` for the unified-streaming + offload-to-cpu path — sd.cpp's planner needs to know whether base weights will be mutated before deciding chunk-K residency. Forcing `at_runtime` on a streaming workload makes every chunk re-apply the LoRA delta after the base tensor streams in, which costs extra per-step time. Use `at_runtime` explicitly only when you need to hot-swap LoRAs without reloading the model and you're not streaming."
     },
     "force_sdxl_vae_conv_scale": {
       "label": "Force SDXL VAE Conv Scale",
@@ -305,6 +305,13 @@
       "type": "number",
       "default": 0,
       "recommended": "0 (disabled) unless you're co-running other GPU workloads and need predictable headroom."
+    },
+    "stream_layers": {
+      "label": "Stream Layers (unified-streaming)",
+      "description": "Engage sd.cpp's residency+async-prefetch streaming on top of the `max_vram` budget. The planner picks the resident/streamed split automatically and overlaps next-segment H2D with current-segment compute, so per-step overhead is much lower than the legacy per-layer streaming. Only exposed when restapi is built with `-DSD_UNIFIED_STREAMING=ON` against the fork's `feature/unified-streaming` branch. Has no effect when `max_vram == 0`.",
+      "type": "boolean",
+      "default": false,
+      "recommended": "On with `max_vram` set to ~80% of your free VRAM. Replaces the legacy `offload_mode=layer_streaming` workflow — don't combine the two (they target different fork branches)."
     },
     "chroma_use_dit_mask": {
       "label": "Chroma DiT Mask",

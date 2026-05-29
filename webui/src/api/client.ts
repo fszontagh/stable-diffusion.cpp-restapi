@@ -59,6 +59,12 @@ export interface LoadOptions {
   streaming_prefetch_layers?: number
   streaming_keep_layers_behind?: number
   streaming_min_free_vram_mb?: number
+
+  // Unified-streaming variant: engages residency+async-prefetch streaming on
+  // top of `max_vram`. Only honored when the binary was built with
+  // -DSD_UNIFIED_STREAMING=ON; otherwise it parses fine but the value is
+  // ignored at runtime. Has no effect when max_vram == 0.
+  stream_layers?: boolean
 }
 
 export interface MemoryInfo {
@@ -118,6 +124,19 @@ export interface HealthResponse {
   memory?: MemoryResponse
   features?: {
     experimental_offload: boolean
+    /**
+     * True when the binary was built with -DSD_UNIFIED_STREAMING=ON against
+     * the fork's `feature/unified-streaming` branch. Only meaningful when
+     * `experimental_offload` is also true.
+     *
+     * - false (default for OFFLOAD=OFF and OFFLOAD=ON+UNIFIED=OFF):
+     *   the legacy offload_mode/streaming_* vocabulary is the canonical UI.
+     * - true: the new `stream_layers` boolean is the canonical UI;
+     *   offload_mode and streaming_* options are ignored at runtime.
+     */
+    unified_streaming?: boolean
+    mcp?: boolean
+    auth_required?: boolean
   }
 }
 
@@ -209,6 +228,11 @@ export interface LoadModelParams {
     streaming_prefetch_layers?: number
     streaming_keep_layers_behind?: number
     streaming_min_free_vram_mb?: number
+
+    // Unified-streaming variant: replaces the multi-mode offload_mode + streaming_*
+    // tuning with a single toggle on top of max_vram. Only honored when the binary
+    // was built with -DSD_UNIFIED_STREAMING=ON. See store.unifiedStreamingEnabled.
+    stream_layers?: boolean
   }
 }
 

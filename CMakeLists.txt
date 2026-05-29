@@ -51,6 +51,18 @@ option(SDCPP_WEBSOCKET "Build WebSocket server for real-time updates" ON)
 option(FORCE_WEBSOCKET "Force WebSocket even if WebUI is disabled" OFF)
 option(SDCPP_ASSISTANT "Build LLM Assistant feature" ON)
 option(SD_EXPERIMENTAL_OFFLOAD "Enable experimental dynamic tensor offloading (requires forked sd.cpp)" OFF)
+# Selects which fork branch the experimental build pulls. Only meaningful when
+# SD_EXPERIMENTAL_OFFLOAD=ON. Two fork variants exist with incompatible offload
+# APIs — see CMakeLists.txt FetchContent block + #ifdef SDCPP_UNIFIED_STREAMING
+# in model_manager.cpp for which code paths are gated by this.
+#   OFF (default): feature/vram-offloading-v2 — legacy sd_offload_config_t API,
+#                  per-component offload modes (none/cond_only/aggressive/
+#                  layer_streaming), full streaming knobs.
+#   ON:            feature/unified-streaming — new minimal API with a single
+#                  stream_layers bool on top of max_vram. Removes the entire
+#                  sd_offload_config_t struct and the sd_offload_to_cpu/
+#                  sd_reload_to_gpu helpers.
+option(SD_UNIFIED_STREAMING "Use the unified-streaming fork branch instead of vram-offloading-v2 (requires SD_EXPERIMENTAL_OFFLOAD=ON)" OFF)
 option(SDCPP_MCP "Build MCP (Model Context Protocol) server support" ON)
 set(SDCPP_LOCAL_SOURCE "" CACHE PATH "Path to local stable-diffusion.cpp source (for development/testing)")
 
@@ -177,7 +189,17 @@ else()
     # we don't link the example server, so we skip it.
     set(SDCPP_SUBMODULES "ggml" "thirdparty/libwebm" "thirdparty/libwebp")
     if(SD_EXPERIMENTAL_OFFLOAD)
-        message(STATUS "Experimental offload: ENABLED - Using forked sd.cpp with VRAM offloading")
+        # Pick which fork branch supplies the experimental offload code. Both
+        # branches are on the same fork repo; only the public offload API and
+        # streaming implementation differ. See SD_UNIFIED_STREAMING option doc
+        # for the full distinction.
+        if(SD_UNIFIED_STREAMING)
+            set(SDCPP_FORK_BRANCH "feature/unified-streaming")
+            message(STATUS "Experimental offload: ENABLED (unified-streaming) - Using forked sd.cpp feature/unified-streaming branch")
+        else()
+            set(SDCPP_FORK_BRANCH "feature/vram-offloading-v2")
+            message(STATUS "Experimental offload: ENABLED (vram-offloading-v2) - Using forked sd.cpp feature/vram-offloading-v2 branch")
+        endif()
         # Track the branch tip so user-pushed improvements (e.g. the May 4
         # streaming speedup wave) are pulled automatically on rebuild.
         # GIT_SHALLOW works with branch names — and would NOT work if we pinned
@@ -186,7 +208,7 @@ else()
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/fszontagh/stable-diffusion.cpp.git
-            GIT_TAG        feature/vram-offloading-v2
+            GIT_TAG        ${SDCPP_FORK_BRANCH}
             GIT_SHALLOW    TRUE
             GIT_SUBMODULES ${SDCPP_SUBMODULES}
             GIT_SUBMODULES_RECURSE TRUE
@@ -218,54 +240,45 @@ endif()
 if(NOT SDCPP_USING_LOCAL_SOURCE AND NOT stable-diffusion_POPULATED)
     FetchContent_Populate(stable-diffusion)
 
-    # Apply sd_get_model_version_name patch directly
-    set(SD_PATCH_MARKER "${stable-diffusion_SOURCE_DIR}/.sdcpp_restapi_patched")
-    if(NOT EXISTS "${SD_PATCH_MARKER}")
-        message(STATUS "Applying sdcpp-restapi patches to stable-diffusion.cpp...")
-
-        # Patch stable-diffusion.h - add function declaration
-        # Note: As of commit 28ef93c, header moved to include/stable-diffusion.h
-        if(EXISTS "${stable-diffusion_SOURCE_DIR}/include/stable-diffusion.h")
-            set(SD_HEADER_PATH "${stable-diffusion_SOURCE_DIR}/include/stable-diffusion.h")
-        else()
-            set(SD_HEADER_PATH "${stable-diffusion_SOURCE_DIR}/stable-diffusion.h")
-        endif()
-        file(READ "${SD_HEADER_PATH}" SD_HEADER_CONTENT)
-        string(FIND "${SD_HEADER_CONTENT}" "sd_get_model_version_name" SD_HEADER_PATCHED)
-        if(SD_HEADER_PATCHED EQUAL -1)
-            string(REPLACE
-                "SD_API enum scheduler_t sd_get_default_scheduler(const sd_ctx_t* sd_ctx, enum sample_method_t sample_method);"
-                "SD_API enum scheduler_t sd_get_default_scheduler(const sd_ctx_t* sd_ctx, enum sample_method_t sample_method);\n\n// Get the model architecture/version name (e.g., \"SD 1.x\", \"SDXL\", \"Flux\", \"Z-Image\", etc.)\nSD_API const char* sd_get_model_version_name(const sd_ctx_t* sd_ctx);"
-                SD_HEADER_CONTENT "${SD_HEADER_CONTENT}")
-            file(WRITE "${SD_HEADER_PATH}" "${SD_HEADER_CONTENT}")
-            message(STATUS "  Patched ${SD_HEADER_PATH}")
-        endif()
-
-        # Check if stable-diffusion.cpp already has the implementation (newer versions may include it)
-        # Note: As of commit 28ef93c, source moved to src/stable-diffusion.cpp
-        if(EXISTS "${stable-diffusion_SOURCE_DIR}/src/stable-diffusion.cpp")
-            set(SD_CPP_PATH "${stable-diffusion_SOURCE_DIR}/src/stable-diffusion.cpp")
-        else()
-            set(SD_CPP_PATH "${stable-diffusion_SOURCE_DIR}/stable-diffusion.cpp")
-        endif()
-        file(READ "${SD_CPP_PATH}" SD_CPP_CONTENT)
-        string(FIND "${SD_CPP_CONTENT}" "sd_get_model_version_name" SD_CPP_PATCHED)
-        if(SD_CPP_PATCHED EQUAL -1)
-            # Add implementation after sd_get_default_scheduler function
-            string(REPLACE
-                "    return DISCRETE_SCHEDULER;\n}"
-                "    return DISCRETE_SCHEDULER;\n}\n\nconst char* sd_get_model_version_name(const sd_ctx_t* sd_ctx) {\n    if (sd_ctx != nullptr && sd_ctx->sd != nullptr) {\n        if (sd_ctx->sd->version < VERSION_COUNT) {\n            return model_version_to_str[sd_ctx->sd->version];\n        }\n    }\n    return \"Unknown\";\n}"
-                SD_CPP_CONTENT "${SD_CPP_CONTENT}")
-            file(WRITE "${SD_CPP_PATH}" "${SD_CPP_CONTENT}")
-            message(STATUS "  Patched ${SD_CPP_PATH}")
-        else()
-            message(STATUS "  ${SD_CPP_PATH} already has sd_get_model_version_name")
-        endif()
-
-        file(WRITE "${SD_PATCH_MARKER}" "patched by sdcpp-restapi")
-        message(STATUS "Patches applied successfully")
+    # Apply sd_get_model_version_name patch directly. The guard inspects the
+    # actual source content rather than a marker file — a marker file is too
+    # easy to fool when developers switch fork branches via `git reset --hard`
+    # in the _deps tree (the marker is untracked, survives the reset, then
+    # CMake skips patching even though the function is no longer present).
+    # Locate header + impl up-front; both paths moved around sd.cpp 28ef93c.
+    if(EXISTS "${stable-diffusion_SOURCE_DIR}/include/stable-diffusion.h")
+        set(SD_HEADER_PATH "${stable-diffusion_SOURCE_DIR}/include/stable-diffusion.h")
     else()
-        message(STATUS "stable-diffusion.cpp already patched")
+        set(SD_HEADER_PATH "${stable-diffusion_SOURCE_DIR}/stable-diffusion.h")
+    endif()
+    if(EXISTS "${stable-diffusion_SOURCE_DIR}/src/stable-diffusion.cpp")
+        set(SD_CPP_PATH "${stable-diffusion_SOURCE_DIR}/src/stable-diffusion.cpp")
+    else()
+        set(SD_CPP_PATH "${stable-diffusion_SOURCE_DIR}/stable-diffusion.cpp")
+    endif()
+
+    # Patch header — add function declaration if not already present.
+    file(READ "${SD_HEADER_PATH}" SD_HEADER_CONTENT)
+    string(FIND "${SD_HEADER_CONTENT}" "sd_get_model_version_name" SD_HEADER_PATCHED)
+    if(SD_HEADER_PATCHED EQUAL -1)
+        message(STATUS "Patching ${SD_HEADER_PATH} — adding sd_get_model_version_name declaration")
+        string(REPLACE
+            "SD_API enum scheduler_t sd_get_default_scheduler(const sd_ctx_t* sd_ctx, enum sample_method_t sample_method);"
+            "SD_API enum scheduler_t sd_get_default_scheduler(const sd_ctx_t* sd_ctx, enum sample_method_t sample_method);\n\n// Get the model architecture/version name (e.g., \"SD 1.x\", \"SDXL\", \"Flux\", \"Z-Image\", etc.)\nSD_API const char* sd_get_model_version_name(const sd_ctx_t* sd_ctx);"
+            SD_HEADER_CONTENT "${SD_HEADER_CONTENT}")
+        file(WRITE "${SD_HEADER_PATH}" "${SD_HEADER_CONTENT}")
+    endif()
+
+    # Patch impl — add implementation if not already present.
+    file(READ "${SD_CPP_PATH}" SD_CPP_CONTENT)
+    string(FIND "${SD_CPP_CONTENT}" "sd_get_model_version_name" SD_CPP_PATCHED)
+    if(SD_CPP_PATCHED EQUAL -1)
+        message(STATUS "Patching ${SD_CPP_PATH} — adding sd_get_model_version_name impl")
+        string(REPLACE
+            "    return DISCRETE_SCHEDULER;\n}"
+            "    return DISCRETE_SCHEDULER;\n}\n\nconst char* sd_get_model_version_name(const sd_ctx_t* sd_ctx) {\n    if (sd_ctx != nullptr && sd_ctx->sd != nullptr) {\n        if (sd_ctx->sd->version < VERSION_COUNT) {\n            return model_version_to_str[sd_ctx->sd->version];\n        }\n    }\n    return \"Unknown\";\n}"
+            SD_CPP_CONTENT "${SD_CPP_CONTENT}")
+        file(WRITE "${SD_CPP_PATH}" "${SD_CPP_CONTENT}")
     endif()
 
     # Now add the subdirectory
@@ -401,9 +414,17 @@ if(SDCPP_ASSISTANT)
     target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_ASSISTANT_ENABLED=1)
 endif()
 
-# Experimental offload compile definition
+# Experimental offload compile definitions. Two flags travel together — code
+# that gates on SDCPP_UNIFIED_STREAMING always also gates on
+# SDCPP_EXPERIMENTAL_OFFLOAD (the unified-streaming branch can't be active
+# without the experimental fork being selected).
 if(SD_EXPERIMENTAL_OFFLOAD)
     target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_EXPERIMENTAL_OFFLOAD=1)
+    if(SD_UNIFIED_STREAMING)
+        target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_UNIFIED_STREAMING=1)
+    endif()
+elseif(SD_UNIFIED_STREAMING)
+    message(WARNING "SD_UNIFIED_STREAMING=ON has no effect without SD_EXPERIMENTAL_OFFLOAD=ON")
 endif()
 
 # MCP compile definition
@@ -463,6 +484,13 @@ message(STATUS "Web UI:          ${SDCPP_WEBUI}")
 message(STATUS "WebSocket:       ${SDCPP_WEBSOCKET}")
 message(STATUS "LLM Assistant:   ${SDCPP_ASSISTANT}")
 message(STATUS "Exp. Offload:    ${SD_EXPERIMENTAL_OFFLOAD}")
+if(SD_EXPERIMENTAL_OFFLOAD)
+    if(SD_UNIFIED_STREAMING)
+        message(STATUS "  └─ variant:    unified-streaming (fork branch: feature/unified-streaming)")
+    else()
+        message(STATUS "  └─ variant:    vram-offloading-v2 (fork branch: feature/vram-offloading-v2)")
+    endif()
+endif()
 message(STATUS "MCP Server:      ${SDCPP_MCP}")
 message(STATUS "===================================")
 message(STATUS "")

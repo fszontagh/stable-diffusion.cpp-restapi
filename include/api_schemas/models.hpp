@@ -63,7 +63,8 @@ struct LoadOptions {
             .optional_field("chroma_t5_mask_pad", schema::FieldType::Integer, "T5 mask padding (Chroma)", 0)
             .optional_field("backend", schema::FieldType::String, "Main compute backend override (empty = sd.cpp picks)")
             .optional_field("params_backend", schema::FieldType::String, "Parameter storage backend override (empty = same as backend)")
-#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
+#if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
+            // ── feature/vram-offloading-v2 fields (legacy multi-mode API) ──
             .enum_field("offload_mode", "VRAM offload strategy", OFFLOAD_MODE_VALUES, "none")
             .enum_field("vram_estimation", "VRAM estimation method", VRAM_ESTIMATION_VALUES, "dryrun")
             .optional_field("offload_cond_stage", schema::FieldType::Boolean, "Offload conditioning (LLM/CLIP/T5) to CPU after the prompt is encoded. Default is true for most offload modes; the restapi flips it to false when offload_mode=layer_streaming to avoid per-gen mmap fault-in of the encoder weights.", false)
@@ -76,6 +77,9 @@ struct LoadOptions {
             .optional_field("streaming_prefetch_layers", schema::FieldType::Integer, "Layers to prefetch ahead", 1)
             .optional_field("streaming_keep_layers_behind", schema::FieldType::Integer, "Layers to keep after execution", 0)
             .optional_field("streaming_min_free_vram_mb", schema::FieldType::Integer, "Min free VRAM during streaming (MB)", 0)
+#elif defined(SDCPP_UNIFIED_STREAMING)
+            // ── feature/unified-streaming field (new minimal API) ──────────
+            .optional_field("stream_layers", schema::FieldType::Boolean, "Engage residency+async-prefetch streaming on top of max_vram. Requires max_vram > 0; no effect when max_vram == 0. sd.cpp's planner picks the residency split automatically and overlaps next-segment H2D with current-segment compute.", false)
 #endif
             ;
         return builder.build();
