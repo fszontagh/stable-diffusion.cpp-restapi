@@ -85,6 +85,7 @@ struct ModelLoadParams {
     std::optional<std::string> llm_vision;      // LLM vision model (optional)
     std::optional<std::string> taesd;           // Tiny AutoEncoder for previews
     std::optional<std::string> high_noise_diffusion_model;  // High-noise diffusion (MoE)
+    std::optional<std::string> uncond_diffusion_model;  // Unconditional diffusion model (leejet PR #1640+)
     std::optional<std::string> photo_maker;     // PhotoMaker model
     std::optional<std::string> audio_vae;       // Audio VAE (LTXAV / LTX 2.3 — for video models with sound)
     std::optional<std::string> embeddings_connectors;  // Embeddings connectors (LTXAV)
@@ -134,7 +135,7 @@ struct ModelLoadParams {
     int streaming_prefetch_layers = 1;          // Number of layers to prefetch ahead
     int streaming_keep_layers_behind = 0;       // Layers to keep after execution (for skip connections)
     size_t streaming_min_free_vram_mb = 0;      // Minimum VRAM to keep free during streaming (MB)
-#elif defined(SDCPP_UNIFIED_STREAMING)
+#else
     // ── feature/unified-streaming field (new minimal API) ──────────────────
     // Single bool that engages sd.cpp's residency-aware streaming planner on
     // top of max_vram. Has no effect when max_vram == 0 — the planner uses
@@ -165,6 +166,19 @@ struct ModelLoadParams {
     bool chroma_use_dit_mask = true;
     bool chroma_use_t5_mask = false;
     int chroma_t5_mask_pad = 1;
+
+    // VAE format override (leejet master, post 1ceb5bd). Values: "auto" (default,
+    // sd.cpp detects from the VAE weights), "flux", "sd3", "flux2". Maps to
+    // sd_vae_format_t on the ctx_params. Useful when a VAE file lacks the
+    // metadata sd.cpp uses for autodetection.
+    std::string vae_format = "auto";
+
+    // Circular RoPE / tileable position embeddings. Used for seamless texture
+    // generation — when on, the position embedding wraps so the output tiles
+    // perfectly on the chosen axis. Required for Ideogram4-style workflows
+    // (leejet PR #1627). Both bools are on sd_ctx_params_t.
+    bool circular_x = false;
+    bool circular_y = false;
 
     // Backend routing (sd.cpp post-2026-05-16). Empty = let sd.cpp pick the
     // default backend (matches the historical behavior of selecting the

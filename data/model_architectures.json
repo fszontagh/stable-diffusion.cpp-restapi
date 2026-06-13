@@ -654,6 +654,104 @@
         "fps": 24,
         "negative_prompt": "worst quality, low quality, blurry, distorted, artifacts"
       }
+    },
+    "Ernie-Image": {
+      "name": "ERNIE-Image",
+      "description": "Baidu ERNIE-Image (and Turbo). Runs on ≤ 4 GB VRAM. Uses the FLUX.2 VAE and Ministral-3-3B-Instruct as the LLM text encoder. Defaults target the Turbo variant; for the full model raise cfg to ~5.0 and steps to ~20.",
+      "aliases": ["Ernie Image", "Ernie-Image", "ERNIE-Image", "ernie_image", "ERNIE-Image-Turbo"],
+      "requiredComponents": {
+        "vae": "flux2_ae.safetensors (FLUX.2 VAE)",
+        "llm": "Ministral-3-3B-Instruct (GGUF or safetensors)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": false
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 8,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Lens": {
+      "name": "Lens",
+      "description": "Comfy-Org Lens (and Turbo). Uses the FLUX.2 VAE and GPT-OSS-20B as the LLM text encoder. Defaults target the full variant; for Turbo, drop cfg_scale to 1.0 and steps to 4.",
+      "aliases": ["Lens", "lens", "Lens Turbo"],
+      "requiredComponents": {
+        "vae": "flux2_ae.safetensors (FLUX.2 VAE)",
+        "llm": "GPT-OSS-20B (GGUF, ~20 GB on disk — needs significant RAM)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": false
+      },
+      "generationDefaults": {
+        "cfg_scale": 5.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "Ideogram-4": {
+      "name": "Ideogram 4",
+      "description": "Ideogram 4 image model. Unique among presets: requires BOTH a main diffusion model AND an `uncond_diffusion_model` (the unconditional transformer) for proper CFG. Uses the FLUX.2 VAE and Qwen3-VL-8B-Instruct. Supports tileable output via circular_x / circular_y. Convert fp8 weights to bf16 then optionally quantize to q8_0 per the docs.",
+      "aliases": ["Ideogram 4", "Ideogram4", "ideogram4", "Ideogram-4-fp8"],
+      "requiredComponents": {
+        "vae": "flux2_ae.safetensors (FLUX.2 VAE)",
+        "llm": "Qwen3-VL-8B-Instruct (GGUF)",
+        "uncond_diffusion_model": "ideogram4_uncond (matching quantization)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "offload_to_cpu": true,
+        "vae_decode_only": false
+      },
+      "generationDefaults": {
+        "cfg_scale": 5.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "PiD": {
+      "name": "PiD (NVIDIA Pixel Diffusion Decoder)",
+      "description": "NVIDIA Pixel Diffusion Decoder. Image-edit pipeline: provide a reference image, encode it with a matching VAE, and PiD decodes/upscales directly to RGB. Requires `vae_format` to match the backbone (flux / sd3 / flux2) because the standalone VAE files don't carry that metadata. Uses Gemma 2 2B as the LLM. The official weights are under NSCLv1 non-commercial license.",
+      "aliases": ["PiD", "Pid", "pid", "PixelDiT"],
+      "requiredComponents": {
+        "vae": "matches the PiD checkpoint backbone (Flux / SD3 / Flux.2 ae.safetensors)",
+        "llm": "Gemma 2 2B"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "vae_decode_only": false,
+        "vae_format": "flux",
+        "rng_type": "cpu"
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 4,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 2048,
+        "height": 2048
+      }
     }
   },
   "version": 2,

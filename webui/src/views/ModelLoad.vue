@@ -84,10 +84,14 @@ const loadParams = ref<LoadModelParams>({
     streaming_keep_layers_behind: 0,
     streaming_min_free_vram_mb: 0,
     // Unified-streaming variant: replaces the multi-mode offload_mode + streaming_*
-    // tuning with a single toggle. Only honored when the binary was built with
-    // -DSD_UNIFIED_STREAMING=ON (store.unifiedStreamingEnabled === true);
-    // otherwise this field is accepted by the parser but ignored at runtime.
-    stream_layers: false
+    // tuning with a single toggle. Honored on leejet master (>= post-1ceb5bd
+    // merge of the unified-streaming API) AND on fork builds compiled with
+    // -DSD_UNIFIED_STREAMING=ON. Legacy fork builds parse but ignore it.
+    stream_layers: false,
+    // leejet master post-1ceb5bd: VAE format override + tileable RoPE.
+    vae_format: 'auto',
+    circular_x: false,
+    circular_y: false
   }
 })
 
@@ -756,21 +760,67 @@ watch(() => loadParams.value.options?.stream_layers, (enabled) => {
               </small>
             </div>
           </div>
+
+          <!-- VAE Format Override (leejet post-1ceb5bd: sd_vae_format_t enum).
+               Lets the user force the VAE family when sd.cpp can't autodetect —
+               required for PiD per its docs (the standalone PiD VAE files don't
+               carry the metadata sd.cpp uses to distinguish Flux/SD3/Flux.2). -->
+          <div class="options-group">
+            <h4 class="options-group-title">VAE Format</h4>
+            <div class="form-group">
+              <select v-model="loadParams.options!.vae_format" class="form-select">
+                <option value="auto">Auto — detect from VAE weights (default)</option>
+                <option value="flux">Flux — Flux / Z-Image / Ideogram / Lens / Ernie latents</option>
+                <option value="sd3">SD3 — SD3.x latents</option>
+                <option value="flux2">Flux.2 — Flux.2 latents</option>
+              </select>
+              <small class="form-hint">
+                {{ getOptionDesc('vae_format')?.description || "Leave on Auto. Required for PiD; otherwise sd.cpp detects from the VAE file's metadata." }}
+              </small>
+            </div>
+          </div>
+
+          <!-- Tileable position embeddings (leejet PR #1627 — circular RoPE).
+               Required for Ideogram4 tileable-texture workflows. Two
+               independent axes so users can pick horizontal-only,
+               vertical-only, or fully-tileable output. -->
+          <div class="options-group">
+            <h4 class="options-group-title">Tileable Output (Circular RoPE)</h4>
+            <div class="options-grid">
+              <label class="form-checkbox">
+                <input v-model="loadParams.options!.circular_x" type="checkbox" />
+                <span>Circular X (horizontal seam)</span>
+                <RecHint :desc="getOptionDesc('circular_x')" />
+              </label>
+              <label class="form-checkbox">
+                <input v-model="loadParams.options!.circular_y" type="checkbox" />
+                <span>Circular Y (vertical seam)</span>
+                <RecHint :desc="getOptionDesc('circular_y')" />
+              </label>
+            </div>
+            <small class="form-hint">
+              Off for normal generation. Enable one or both for seamless / tileable output
+              (skyboxes, repeating textures, Ideogram4 panoramas). Tile both for fully-wrappable textures.
+            </small>
+          </div>
         </div>
       </details>
 
-      <!-- Offload Settings (only available with experimental offload build).
-           Two mutually-exclusive UIs render here depending on which fork branch
-           the backend was built against — the feature flag `unified_streaming`
-           on /health drives the choice. See store.unifiedStreamingEnabled. -->
-      <details v-if="store.experimentalOffloadEnabled" class="card section-card accordion">
+      <!-- VRAM Offloading. The unified stream_layers + max_vram API was merged
+           into leejet master after 1ceb5bd, so the accordion always renders.
+           Two mutually-exclusive inner UIs:
+             - Legacy multi-mode dropdown:  shows only on the legacy fork
+               compile (SDCPP_EXPERIMENTAL_OFFLOAD && !SDCPP_UNIFIED_STREAMING).
+             - Default stream_layers UI:    everything else (leejet master,
+               unified-streaming fork). -->
+      <details class="card section-card accordion">
         <summary class="accordion-header">VRAM Offloading</summary>
         <div class="accordion-content">
 
-          <!-- ── feature/unified-streaming UI ─────────────────────────────
-               Single stream_layers toggle on top of max_vram. The planner
-               handles residency split + async H2D prefetch automatically. -->
-          <template v-if="store.unifiedStreamingEnabled">
+          <!-- ── stream_layers UI (default — leejet master + unified fork) ──
+               Single toggle on top of max_vram. The planner handles
+               residency split + async H2D prefetch automatically. -->
+          <template v-if="!store.experimentalOffloadEnabled || store.unifiedStreamingEnabled">
             <div class="form-group">
               <label class="form-checkbox">
                 <input v-model="loadParams.options!.stream_layers" type="checkbox" />

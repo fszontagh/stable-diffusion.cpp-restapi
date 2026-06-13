@@ -204,7 +204,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         // Component model paths
         "vae", "clip_l", "clip_g", "clip_vision", "t5xxl", "controlnet",
         "llm", "llm_vision", "taesd",
-        "high_noise_diffusion_model", "photo_maker",
+        "high_noise_diffusion_model", "uncond_diffusion_model", "photo_maker",
         "audio_vae", "embeddings_connectors",
         // Nested options object
         "options",
@@ -248,6 +248,9 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
     if (j.contains("high_noise_diffusion_model") && !j["high_noise_diffusion_model"].is_null()) {
         params.high_noise_diffusion_model = j["high_noise_diffusion_model"].get<std::string>();
     }
+    if (j.contains("uncond_diffusion_model") && !j["uncond_diffusion_model"].is_null()) {
+        params.uncond_diffusion_model = j["uncond_diffusion_model"].get<std::string>();
+    }
     if (j.contains("photo_maker") && !j["photo_maker"].is_null()) {
         params.photo_maker = j["photo_maker"].get<std::string>();
     }
@@ -284,6 +287,12 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
             "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
             // Chroma-specific
             "chroma_use_dit_mask", "chroma_use_t5_mask", "chroma_t5_mask_pad",
+            // VAE format override (leejet PR for sd_vae_format_t enum)
+            "vae_format",
+            // Tileable / seamless texture position embeddings (leejet PR #1627
+            // — circular RoPE for ideogram4 + Flux). Independent X/Y axes so
+            // users can request horizontal-only or vertical-only tiling.
+            "circular_x", "circular_y",
             // Backend routing (sd.cpp post-2026-05-16)
             "backend", "params_backend",
             // Experimental offload (only honored when SDCPP_EXPERIMENTAL_OFFLOAD is on,
@@ -354,6 +363,11 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.chroma_use_t5_mask = opts.value("chroma_use_t5_mask", false);
         params.chroma_t5_mask_pad = opts.value("chroma_t5_mask_pad", 1);
 
+        // VAE format override + tileable position embeddings
+        params.vae_format = opts.value("vae_format", "auto");
+        params.circular_x = opts.value("circular_x", false);
+        params.circular_y = opts.value("circular_y", false);
+
         // Backend routing
         params.backend = opts.value("backend", "");
         params.params_backend = opts.value("params_backend", "");
@@ -386,7 +400,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.streaming_prefetch_layers = opts.value("streaming_prefetch_layers", 1);
         params.streaming_keep_layers_behind = opts.value("streaming_keep_layers_behind", 0);
         params.streaming_min_free_vram_mb = opts.value("streaming_min_free_vram_mb", 0);
-#elif defined(SDCPP_UNIFIED_STREAMING)
+#else
         // ── feature/unified-streaming path ───────────────────────────────
         // The new fork branch removed sd_offload_config_t entirely. Streaming
         // is engaged via a single stream_layers bool on top of the existing
@@ -731,6 +745,17 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         }
     }
 
+    // Validate Unconditional Diffusion Model if specified (leejet post-1ceb5bd)
+    std::optional<ModelInfo> uncond_diffusion_info;
+    if (params.uncond_diffusion_model) {
+        uncond_diffusion_info = get_model(*params.uncond_diffusion_model, ModelType::Diffusion);
+        if (!uncond_diffusion_info) {
+            std::string base_path = get_base_path(ModelType::Diffusion);
+            errors.push_back("Unconditional diffusion model not found: '" + *params.uncond_diffusion_model +
+                           "' (searched in: " + (base_path.empty() ? "<not configured>" : base_path) + ")");
+        }
+    }
+
     // Validate PhotoMaker if specified (look in checkpoints dir)
     std::optional<ModelInfo> photo_maker_info;
     if (params.photo_maker) {
@@ -899,6 +924,14 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         std::cout << "[ModelManager] High-Noise Diffusion: " << *params.high_noise_diffusion_model << std::endl;
     }
 
+    // Set Unconditional Diffusion Model if specified
+    std::string uncond_diffusion_path;
+    if (uncond_diffusion_info) {
+        uncond_diffusion_path = uncond_diffusion_info->full_path;
+        ctx_params.uncond_diffusion_model_path = uncond_diffusion_path.c_str();
+        std::cout << "[ModelManager] Uncond Diffusion: " << *params.uncond_diffusion_model << std::endl;
+    }
+
     // Set PhotoMaker if specified
     std::string photo_maker_path;
     if (photo_maker_info) {
@@ -989,6 +1022,22 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.chroma_use_t5_mask = params.chroma_use_t5_mask;
     ctx_params.chroma_t5_mask_pad = params.chroma_t5_mask_pad;
 
+    // VAE format override. Default "auto" → SD_VAE_FORMAT_AUTO (-1) so sd.cpp
+    // detects from the weights. Explicit values: "flux", "sd3", "flux2".
+    if (params.vae_format == "flux") {
+        ctx_params.vae_format = SD_VAE_FORMAT_FLUX;
+    } else if (params.vae_format == "sd3") {
+        ctx_params.vae_format = SD_VAE_FORMAT_SD3;
+    } else if (params.vae_format == "flux2") {
+        ctx_params.vae_format = SD_VAE_FORMAT_FLUX2;
+    } else {
+        ctx_params.vae_format = SD_VAE_FORMAT_AUTO;
+    }
+
+    // Tileable / seamless texture position embeddings (leejet PR #1627).
+    ctx_params.circular_x = params.circular_x;
+    ctx_params.circular_y = params.circular_y;
+
     // Backend routing. Pointers into sd_ctx_params_t must stay valid for the
     // duration of new_sd_ctx() — `params` outlives that call here, so passing
     // c_str() is safe. Empty strings → nullptr so sd.cpp falls back to its
@@ -1013,7 +1062,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.offload_config.streaming_prefetch_layers = params.streaming_prefetch_layers;
     ctx_params.offload_config.streaming_keep_layers_behind = params.streaming_keep_layers_behind;
     ctx_params.offload_config.streaming_min_free_vram = params.streaming_min_free_vram_mb * 1024 * 1024;  // Convert MB to bytes
-#elif defined(SDCPP_UNIFIED_STREAMING)
+#else
     // ── feature/unified-streaming path ───────────────────────────────────
     // Single bool toggles the new residency+async-prefetch path. Requires
     // max_vram > 0 to do anything — sd.cpp logs a notice and silently no-ops
@@ -1039,7 +1088,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
               << ", lora_mode=" << params.lora_apply_mode
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
               << ", offload_mode=" << params.offload_mode
-#elif defined(SDCPP_UNIFIED_STREAMING)
+#else
               << ", stream_layers=" << (params.stream_layers ? "true" : "false")
 #endif
               << std::endl;
@@ -1165,6 +1214,9 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["chroma_use_dit_mask"] = params.chroma_use_dit_mask;
     loaded_options_["chroma_use_t5_mask"] = params.chroma_use_t5_mask;
     loaded_options_["chroma_t5_mask_pad"] = params.chroma_t5_mask_pad;
+    loaded_options_["vae_format"] = params.vae_format;
+    loaded_options_["circular_x"] = params.circular_x;
+    loaded_options_["circular_y"] = params.circular_y;
 
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
     // ── feature/vram-offloading-v2 echoes back the full legacy offload set ──
@@ -1182,7 +1234,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["streaming_prefetch_layers"] = params.streaming_prefetch_layers;
     loaded_options_["streaming_keep_layers_behind"] = params.streaming_keep_layers_behind;
     loaded_options_["streaming_min_free_vram_mb"] = params.streaming_min_free_vram_mb;
-#elif defined(SDCPP_UNIFIED_STREAMING)
+#else
     // ── feature/unified-streaming echoes back the single new field ──────────
     loaded_options_["stream_layers"] = params.stream_layers;
 #endif

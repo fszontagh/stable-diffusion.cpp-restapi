@@ -21,6 +21,7 @@ struct LoadModelRequest {
             .optional_field("llm_vision", schema::FieldType::String, "LLM vision model name")
             .optional_field("taesd", schema::FieldType::String, "TAESD model for fast preview")
             .optional_field("high_noise_diffusion_model", schema::FieldType::String, "High-noise diffusion model (for dual-stage)")
+            .optional_field("uncond_diffusion_model", schema::FieldType::String, "Unconditional diffusion model (leejet master post-1ceb5bd)")
             .optional_field("photo_maker", schema::FieldType::String, "PhotoMaker model name")
             .optional_field("audio_vae", schema::FieldType::String, "Audio VAE (LTXAV / LTX 2.3 — for video models that produce sound)")
             .optional_field("embeddings_connectors", schema::FieldType::String, "Embeddings connectors (LTXAV / LTX 2.3)")
@@ -61,6 +62,9 @@ struct LoadOptions {
             .optional_field("chroma_use_dit_mask", schema::FieldType::Boolean, "Use DiT attention mask (Chroma)", false)
             .optional_field("chroma_use_t5_mask", schema::FieldType::Boolean, "Use T5 attention mask (Chroma)", false)
             .optional_field("chroma_t5_mask_pad", schema::FieldType::Integer, "T5 mask padding (Chroma)", 0)
+            .enum_field("vae_format", "VAE weight format override (auto = sd.cpp detects from the file)", {"auto", "flux", "sd3", "flux2"}, "auto")
+            .optional_field("circular_x", schema::FieldType::Boolean, "Circular RoPE on the X axis — produces seamless/tileable output across the horizontal seam. Required for Ideogram4-style tileable-texture workflows.", false)
+            .optional_field("circular_y", schema::FieldType::Boolean, "Circular RoPE on the Y axis — produces seamless/tileable output across the vertical seam.", false)
             .optional_field("backend", schema::FieldType::String, "Main compute backend override (empty = sd.cpp picks)")
             .optional_field("params_backend", schema::FieldType::String, "Parameter storage backend override (empty = same as backend)")
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
@@ -77,7 +81,7 @@ struct LoadOptions {
             .optional_field("streaming_prefetch_layers", schema::FieldType::Integer, "Layers to prefetch ahead", 1)
             .optional_field("streaming_keep_layers_behind", schema::FieldType::Integer, "Layers to keep after execution", 0)
             .optional_field("streaming_min_free_vram_mb", schema::FieldType::Integer, "Min free VRAM during streaming (MB)", 0)
-#elif defined(SDCPP_UNIFIED_STREAMING)
+#else
             // ── feature/unified-streaming field (new minimal API) ──────────
             .optional_field("stream_layers", schema::FieldType::Boolean, "Engage residency+async-prefetch streaming on top of max_vram. Requires max_vram > 0; no effect when max_vram == 0. sd.cpp's planner picks the residency split automatically and overlaps next-segment H2D with current-segment compute.", false)
 #endif

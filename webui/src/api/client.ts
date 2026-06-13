@@ -44,6 +44,10 @@ export interface LoadOptions {
   chroma_use_dit_mask?: boolean
   chroma_use_t5_mask?: boolean
   chroma_t5_mask_pad?: number
+  // leejet master post-1ceb5bd: VAE format override + tileable position embeddings
+  vae_format?: 'auto' | 'flux' | 'sd3' | 'flux2'
+  circular_x?: boolean
+  circular_y?: boolean
   offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive' | 'layer_streaming'
   vram_estimation?: 'dryrun' | 'formula'
   offload_cond_stage?: boolean
@@ -213,6 +217,10 @@ export interface LoadModelParams {
     chroma_use_dit_mask?: boolean
     chroma_use_t5_mask?: boolean
     chroma_t5_mask_pad?: number
+    // leejet master post-1ceb5bd: VAE format + tileable RoPE
+    vae_format?: 'auto' | 'flux' | 'sd3' | 'flux2'
+    circular_x?: boolean
+    circular_y?: boolean
     // Dynamic tensor offloading options
     offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive' | 'layer_streaming'
     vram_estimation?: 'dryrun' | 'formula'
@@ -396,6 +404,10 @@ export interface JobModelSettings {
     chroma_use_dit_mask?: boolean
     chroma_use_t5_mask?: boolean
     chroma_t5_mask_pad?: number
+    // leejet master post-1ceb5bd: VAE format + tileable RoPE
+    vae_format?: 'auto' | 'flux' | 'sd3' | 'flux2'
+    circular_x?: boolean
+    circular_y?: boolean
     // Dynamic VRAM offloading settings
     offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive' | 'layer_streaming'
     vram_estimation?: 'dryrun' | 'formula'

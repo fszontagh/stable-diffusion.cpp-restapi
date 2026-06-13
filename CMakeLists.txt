@@ -50,19 +50,29 @@ option(SDCPP_WEBUI "Build and include Web UI (requires Node.js/npm)" ON)
 option(SDCPP_WEBSOCKET "Build WebSocket server for real-time updates" ON)
 option(FORCE_WEBSOCKET "Force WebSocket even if WebUI is disabled" OFF)
 option(SDCPP_ASSISTANT "Build LLM Assistant feature" ON)
-option(SD_EXPERIMENTAL_OFFLOAD "Enable experimental dynamic tensor offloading (requires forked sd.cpp)" OFF)
-# Selects which fork branch the experimental build pulls. Only meaningful when
-# SD_EXPERIMENTAL_OFFLOAD=ON. Two fork variants exist with incompatible offload
-# APIs — see CMakeLists.txt FetchContent block + #ifdef SDCPP_UNIFIED_STREAMING
-# in model_manager.cpp for which code paths are gated by this.
-#   OFF (default): feature/vram-offloading-v2 — legacy sd_offload_config_t API,
-#                  per-component offload modes (none/cond_only/aggressive/
-#                  layer_streaming), full streaming knobs.
-#   ON:            feature/unified-streaming — new minimal API with a single
-#                  stream_layers bool on top of max_vram. Removes the entire
-#                  sd_offload_config_t struct and the sd_offload_to_cpu/
-#                  sd_reload_to_gpu helpers.
-option(SD_UNIFIED_STREAMING "Use the unified-streaming fork branch instead of vram-offloading-v2 (requires SD_EXPERIMENTAL_OFFLOAD=ON)" OFF)
+# ── Fork variant options (DISABLED — leejet has merged the unified-streaming
+#    API natively as of ~276025e, so the fork branches are no longer needed
+#    for the default workflow). The option declarations below are commented
+#    out so cmake-gui doesn't surface them, but the surrounding CMakeLists
+#    logic (FetchContent branch selection, patch step, compile defs) is
+#    intentionally LEFT INTACT — restoring fork builds is just uncommenting
+#    these two lines. Source-side #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) /
+#    #if defined(SDCPP_UNIFIED_STREAMING) gates are also intact for the
+#    same restoration story.
+#
+# option(SD_EXPERIMENTAL_OFFLOAD "Enable experimental dynamic tensor offloading (requires forked sd.cpp)" OFF)
+#   Selects which fork branch the experimental build pulls. Only meaningful when
+#   SD_EXPERIMENTAL_OFFLOAD=ON. Two fork variants exist with incompatible offload
+#   APIs — see CMakeLists.txt FetchContent block + #ifdef SDCPP_UNIFIED_STREAMING
+#   in model_manager.cpp for which code paths are gated by this.
+#     OFF (default): feature/vram-offloading-v2 — legacy sd_offload_config_t API,
+#                    per-component offload modes (none/cond_only/aggressive/
+#                    layer_streaming), full streaming knobs.
+#     ON:            feature/unified-streaming — new minimal API with a single
+#                    stream_layers bool on top of max_vram. Removes the entire
+#                    sd_offload_config_t struct and the sd_offload_to_cpu/
+#                    sd_reload_to_gpu helpers.
+# option(SD_UNIFIED_STREAMING "Use the unified-streaming fork branch instead of vram-offloading-v2 (requires SD_EXPERIMENTAL_OFFLOAD=ON)" OFF)
 # Local-build optimization: when ON, ask nvcc to compile only for the GPU
 # physically present in this machine (uses CMAKE_CUDA_ARCHITECTURES=native).
 # Cuts a clean CUDA build by ~40-60% because nvcc skips the ~6 other arches
@@ -210,8 +220,8 @@ else()
         # streaming implementation differ. See SD_UNIFIED_STREAMING option doc
         # for the full distinction.
         if(SD_UNIFIED_STREAMING)
-            set(SDCPP_FORK_BRANCH "feature/unified-streaming")
-            message(STATUS "Experimental offload: ENABLED (unified-streaming) - Using forked sd.cpp feature/unified-streaming branch")
+            set(SDCPP_FORK_BRANCH "perf/stable-streaming-budget")
+            message(STATUS "Experimental offload: ENABLED (unified-streaming) - Using forked sd.cpp perf/stable-streaming-budget branch")
         else()
             set(SDCPP_FORK_BRANCH "feature/vram-offloading-v2")
             message(STATUS "Experimental offload: ENABLED (vram-offloading-v2) - Using forked sd.cpp feature/vram-offloading-v2 branch")
@@ -230,20 +240,21 @@ else()
             GIT_SUBMODULES_RECURSE TRUE
         )
     else()
-        # Pinned to the upstream commit that the fork's feature/vram-offloading-v2
-        # branch most recently merged from, so the public API surface (samplers,
-        # ctx_params fields, gen_params fields) matches between OFFLOAD=ON/OFF.
-        # 1ceb5bd is leejet/master at the time of the last fork resync — includes
-        # Longcat-Image (#1053), LTXAV/LTX 2.3 (#1463, #1505), Gradient Estimation
-        # sampler (#1484), `--max-vram -1` auto-detect (#1498), and the breaking
-        # generate_video/new_upscaler_ctx signature changes.
+        # Pinned to leejet/master HEAD. After 276025e, upstream merged the
+        # unified-streaming API (`stream_layers` + `max_vram` on sd_ctx_params_t)
+        # plus 44 commits including Lens architecture (#1609 ideogram4 / #1627
+        # circular RoPE), vae_format enum, uncond_diffusion_model_path,
+        # free_sd_images C-API helper, and several runner refactors. The fork
+        # variants are now unnecessary for the default workflow — restapi
+        # source still gates legacy fork code behind SDCPP_EXPERIMENTAL_OFFLOAD
+        # and SDCPP_UNIFIED_STREAMING so re-enabling those options keeps working.
         # GIT_SHALLOW must be FALSE because GIT_TAG is a commit SHA — shallow
         # clone with a SHA fails (`fatal: reference is not a tree`). Full clone
         # adds ~25 MB to the build context but is reliable.
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        1ceb5bd9df7784bcdf67dd9ed8bf0198b542ebc9
+            GIT_TAG        276025e054555166ec419413c6748ca79986ee93
             GIT_SHALLOW    FALSE
             GIT_SUBMODULES ${SDCPP_SUBMODULES}
             GIT_SUBMODULES_RECURSE TRUE
@@ -542,13 +553,19 @@ message(STATUS "OpenCL backend:  ${SD_OPENCL}")
 message(STATUS "Web UI:          ${SDCPP_WEBUI}")
 message(STATUS "WebSocket:       ${SDCPP_WEBSOCKET}")
 message(STATUS "LLM Assistant:   ${SDCPP_ASSISTANT}")
-message(STATUS "Exp. Offload:    ${SD_EXPERIMENTAL_OFFLOAD}")
+# SD_EXPERIMENTAL_OFFLOAD's `option(...)` declaration is intentionally commented
+# out at the top of this file — leejet master now ships the unified-streaming
+# API natively, so the fork variants are unneeded for the default workflow.
+# When undefined the variable evaluates to empty, so we show OFF explicitly.
 if(SD_EXPERIMENTAL_OFFLOAD)
+    message(STATUS "Exp. Offload:    ON")
     if(SD_UNIFIED_STREAMING)
         message(STATUS "  └─ variant:    unified-streaming (fork branch: feature/unified-streaming)")
     else()
         message(STATUS "  └─ variant:    vram-offloading-v2 (fork branch: feature/vram-offloading-v2)")
     endif()
+else()
+    message(STATUS "Exp. Offload:    OFF (using leejet master — stream_layers + max_vram are native)")
 endif()
 message(STATUS "MCP Server:      ${SDCPP_MCP}")
 message(STATUS "===================================")

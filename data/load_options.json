@@ -334,6 +334,33 @@
       "default": 1,
       "recommended": "Default 1. Bump only if Chroma docs explicitly say so for your fine-tune."
     },
+    "vae_format": {
+      "label": "VAE Format Override",
+      "description": "Tells sd.cpp which VAE family the loaded VAE belongs to. `auto` (default) lets sd.cpp detect from the weights' metadata. Explicit values are required for the PiD architecture (where standalone VAE files don't carry the metadata sd.cpp needs to distinguish Flux / SD3 / Flux.2 latents) and useful when a third-party VAE strips that metadata.",
+      "type": "select",
+      "default": "auto",
+      "values": {
+        "auto": "Auto — detect from VAE weights (default)",
+        "flux": "Flux — Flux / Z-Image / Ideogram / Lens / Ernie latents",
+        "sd3": "SD3 — SD3.x latents",
+        "flux2": "Flux.2 — Flux.2 latents"
+      },
+      "recommended": "Leave on `auto`. Set explicitly only for PiD (per its doc) or when you have a stripped VAE file."
+    },
+    "circular_x": {
+      "label": "Circular X (tileable horizontally)",
+      "description": "Engage circular RoPE on the X axis so the output tiles seamlessly across the horizontal seam. Used for tileable-texture workflows (skyboxes, repeating patterns, Ideogram4 horizontal panoramas). Independent of `circular_y`.",
+      "type": "boolean",
+      "default": false,
+      "recommended": "Off for normal generation. Turn on when you want horizontally-seamless output."
+    },
+    "circular_y": {
+      "label": "Circular Y (tileable vertically)",
+      "description": "Engage circular RoPE on the Y axis so the output tiles seamlessly across the vertical seam. Independent of `circular_x` — combine for fully-tileable textures.",
+      "type": "boolean",
+      "default": false,
+      "recommended": "Off for normal generation. Turn on for vertically-seamless or fully-tileable output."
+    },
     "flow_shift": {
       "label": "Flow Shift (default)",
       "description": "Default flow-matching shift parameter for Flux / SD3 / Z-Image models. INFINITY (sent as nothing or omitted) = auto-detect based on model. This is the LOAD-time default; the per-generation request can override.",
