@@ -666,6 +666,13 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
         "slg_scale", "skip_layers", "slg_start", "slg_end",
         "custom_sigmas",
         "ref_images", "auto_resize_ref_image", "increase_ref_index",
+        // Accepted-but-ignored: backend writes ref_images_count into stored
+        // job params (sd_wrapper.cpp:803 to_json()) so the WebUI / queue view
+        // can detect that a job had ref images without storing the base64
+        // payload. Re-submitting a cloned job config can round-trip the field
+        // back here — accepting it as a no-op is friendlier than 400'ing.
+        // The actual count comes from ref_images.size() at line 1517.
+        "ref_images_count",
         "control_strength", "control_image_base64",
         "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
         "temporal_tiling", "extra_tiling_args",
@@ -866,6 +873,9 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
         "custom_sigmas",
         "init_image_base64", "mask_image_base64",
         "ref_images", "auto_resize_ref_image", "increase_ref_index",
+        // Same accepted-but-ignored round-trip field as /txt2img — see comment
+        // above the txt2img KNOWN block.
+        "ref_images_count",
         "control_strength", "control_image_base64",
         "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
         "temporal_tiling", "extra_tiling_args",
