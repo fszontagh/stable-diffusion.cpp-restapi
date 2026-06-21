@@ -3,13 +3,16 @@
     "SD1": {
       "name": "SD 1.x / SD 1.5",
       "description": "Standard Stable Diffusion 1.x models. VAE usually bundled, external VAE optional for better quality.",
-      "aliases": ["SD 1.5", "SD1.5", "SD 1.4", "SD1.4", "SD 1.x"],
+      "aliases": [
+        "SD 1.5",
+        "SD1.5",
+        "SD 1.4",
+        "SD1.4",
+        "SD 1.x"
+      ],
       "requiredComponents": {},
       "optionalComponents": {
         "vae": "Improves color accuracy"
-      },
-      "loadOptions": {
-        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 7.0,
@@ -23,13 +26,16 @@
     "SD2": {
       "name": "SD 2.x / SD 2.1",
       "description": "Stable Diffusion 2.x models with 768x768 native resolution. VAE usually bundled, external VAE optional.",
-      "aliases": ["SD 2.1", "SD2.1", "SD 2.0", "SD2.0", "SD 2.x"],
+      "aliases": [
+        "SD 2.1",
+        "SD2.1",
+        "SD 2.0",
+        "SD2.0",
+        "SD 2.x"
+      ],
       "requiredComponents": {},
       "optionalComponents": {
         "vae": "Improves color accuracy"
-      },
-      "loadOptions": {
-        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 7.0,
@@ -43,13 +49,14 @@
     "LCM": {
       "name": "LCM (SD1.5)",
       "description": "Latent Consistency Model distilled from SD1.5. Enables fast 2-8 step generation. Negative prompts have no effect.",
-      "aliases": ["LCM-SD1.5", "LCM SD1", "Latent Consistency Model"],
+      "aliases": [
+        "LCM-SD1.5",
+        "LCM SD1",
+        "Latent Consistency Model"
+      ],
       "requiredComponents": {},
       "optionalComponents": {
         "vae": "Improves color accuracy"
-      },
-      "loadOptions": {
-        "vae_decode_only": false
       },
       "generationDefaults": {
         "cfg_scale": 1.0,
@@ -63,12 +70,12 @@
     "SDXS-512": {
       "name": "SDXS-512",
       "description": "Ultra-fast one-step inference model with tiny U-Net. Real-time generation with single step. Based on SD1.x architecture with AutoEncoderTiny VAE.",
-      "aliases": ["SDXS", "sdxs-512-dreamshaper"],
+      "aliases": [
+        "SDXS",
+        "sdxs-512-dreamshaper"
+      ],
       "requiredComponents": {},
       "optionalComponents": {},
-      "loadOptions": {
-        "vae_decode_only": false
-      },
       "generationDefaults": {
         "cfg_scale": 1.0,
         "steps": 1,
@@ -81,14 +88,17 @@
     "SDXL": {
       "name": "SDXL",
       "description": "SDXL models. External VAE optional but recommended for better colors.",
-      "aliases": ["SDXL 1.0", "SDXL Turbo", "SDXL Lightning"],
+      "aliases": [
+        "SDXL 1.0",
+        "SDXL Turbo",
+        "SDXL Lightning"
+      ],
       "requiredComponents": {},
       "optionalComponents": {
         "vae": "Recommended for better color accuracy"
       },
       "loadOptions": {
         "flash_attn": true,
-        "vae_decode_only": false,
         "force_sdxl_vae_conv_scale": true
       },
       "generationDefaults": {
@@ -103,14 +113,17 @@
     "SSD-1B": {
       "name": "SSD-1B (Segmind)",
       "description": "Segmind Stable Diffusion 1B - distilled SDXL with reduced U-Net. 50% smaller and 60% faster than SDXL while maintaining quality.",
-      "aliases": ["SSD1B", "Segmind-SSD-1B", "Segmind"],
+      "aliases": [
+        "SSD1B",
+        "Segmind-SSD-1B",
+        "Segmind"
+      ],
       "requiredComponents": {},
       "optionalComponents": {
         "vae": "Recommended for better color accuracy"
       },
       "loadOptions": {
         "flash_attn": true,
-        "vae_decode_only": false,
         "force_sdxl_vae_conv_scale": true
       },
       "generationDefaults": {
@@ -125,14 +138,17 @@
     "Vega": {
       "name": "Vega (Segmind)",
       "description": "Segmind Vega - distilled SDXL model with 1B parameters. Optimized for speed while maintaining quality similar to SDXL.",
-      "aliases": ["Segmind-Vega", "SDXL-Vega", "segmind-vega"],
+      "aliases": [
+        "Segmind-Vega",
+        "SDXL-Vega",
+        "segmind-vega"
+      ],
       "requiredComponents": {},
       "optionalComponents": {
         "vae": "Recommended for better color accuracy"
       },
       "loadOptions": {
         "flash_attn": true,
-        "vae_decode_only": false,
         "force_sdxl_vae_conv_scale": true
       },
       "generationDefaults": {
@@ -147,14 +163,16 @@
     "LCM-SDXL": {
       "name": "LCM (SDXL)",
       "description": "Latent Consistency Model distilled from SDXL. Enables fast 2-8 step generation at 1024x1024. Negative prompts have no effect.",
-      "aliases": ["LCM SDXL", "lcm-sdxl"],
+      "aliases": [
+        "LCM SDXL",
+        "lcm-sdxl"
+      ],
       "requiredComponents": {},
       "optionalComponents": {
         "vae": "Recommended for better color accuracy"
       },
       "loadOptions": {
         "flash_attn": true,
-        "vae_decode_only": false,
         "force_sdxl_vae_conv_scale": true
       },
       "generationDefaults": {
@@ -169,7 +187,11 @@
     "SD3": {
       "name": "SD3 / SD3.5",
       "description": "Stable Diffusion 3. Requires CLIP-L, CLIP-G, and T5-XXL text encoders.",
-      "aliases": ["SD 3", "SD3.5", "SD 3.5"],
+      "aliases": [
+        "SD 3",
+        "SD3.5",
+        "SD 3.5"
+      ],
       "requiredComponents": {
         "clip_l": "CLIP-L text encoder",
         "clip_g": "CLIP-G text encoder",
@@ -177,9 +199,8 @@
       },
       "optionalComponents": {},
       "loadOptions": {
-        "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": false
+        "backend": "te=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 4.5,
@@ -193,7 +214,11 @@
     "Flux": {
       "name": "Flux",
       "description": "Black Forest Labs Flux models. Requires VAE (ae.safetensors or ae.gguf), CLIP-L, and T5-XXL.",
-      "aliases": ["Flux.1", "Flux Dev", "Flux Pro"],
+      "aliases": [
+        "Flux.1",
+        "Flux Dev",
+        "Flux Pro"
+      ],
       "requiredComponents": {
         "vae": "ae.safetensors or ae.gguf",
         "clip_l": "CLIP-L text encoder",
@@ -201,9 +226,8 @@
       },
       "optionalComponents": {},
       "loadOptions": {
-        "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": false
+        "backend": "te=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 1.0,
@@ -218,7 +242,10 @@
     "Flux Schnell": {
       "name": "Flux Schnell",
       "description": "Fast Flux variant optimized for speed. Same requirements as Flux, fewer steps needed.",
-      "aliases": ["Flux.1 Schnell", "Schnell"],
+      "aliases": [
+        "Flux.1 Schnell",
+        "Schnell"
+      ],
       "requiredComponents": {
         "vae": "ae.safetensors or ae.gguf",
         "clip_l": "CLIP-L text encoder",
@@ -226,9 +253,8 @@
       },
       "optionalComponents": {},
       "loadOptions": {
-        "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": false
+        "backend": "te=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 1.0,
@@ -243,7 +269,11 @@
     "Flux Kontext": {
       "name": "FLUX.1-Kontext-dev",
       "description": "Flux-based image editing model. Edit images with text prompts. Requires same components as Flux plus a reference image.",
-      "aliases": ["Kontext", "Flux.1-Kontext", "FLUX Kontext"],
+      "aliases": [
+        "Kontext",
+        "Flux.1-Kontext",
+        "FLUX Kontext"
+      ],
       "requiredComponents": {
         "vae": "ae.safetensors or ae.gguf",
         "clip_l": "CLIP-L text encoder",
@@ -251,9 +281,8 @@
       },
       "optionalComponents": {},
       "loadOptions": {
-        "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": false
+        "backend": "te=cpu"
       },
       "imageEditMode": "ref_images",
       "generationDefaults": {
@@ -268,7 +297,11 @@
     "Flux2 Dev": {
       "name": "Flux.2 Dev",
       "description": "Flux 2 development model with advanced LLM integration. Requires Flux2 VAE (flux2_ae.safetensors) and Mistral-Small-3.2-24B LLM. Supports image editing with reference images.",
-      "aliases": ["Flux.2-dev", "Flux2-dev", "Flux 2 Dev"],
+      "aliases": [
+        "Flux.2-dev",
+        "Flux2-dev",
+        "Flux 2 Dev"
+      ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (Flux2 VAE)",
         "llm": "Mistral-Small-3.2-24B-Instruct GGUF"
@@ -276,8 +309,7 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "imageEditMode": "ref_images",
       "generationDefaults": {
@@ -292,7 +324,11 @@
     "Flux2 Klein 4B": {
       "name": "Flux.2 Klein 4B",
       "description": "Fast 4B parameter Flux2 model. Requires Flux2 VAE and Qwen3 4B LLM. Optimized for speed with only 4 steps. Supports image editing.",
-      "aliases": ["Flux.2-klein-4B", "Flux2-klein-4b", "Klein 4B"],
+      "aliases": [
+        "Flux.2-klein-4B",
+        "Flux2-klein-4b",
+        "Klein 4B"
+      ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (Flux2 VAE)",
         "llm": "Qwen3 4B (GGUF or safetensors)"
@@ -300,8 +336,7 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "imageEditMode": "ref_images",
       "generationDefaults": {
@@ -316,7 +351,11 @@
     "Flux2 Klein Base 4B": {
       "name": "Flux.2 Klein Base 4B",
       "description": "Higher quality 4B parameter Flux2 model. Same requirements as Klein 4B but needs more steps and higher CFG for better results.",
-      "aliases": ["Flux.2-klein-base-4B", "Flux2-klein-base-4b", "Klein Base 4B"],
+      "aliases": [
+        "Flux.2-klein-base-4B",
+        "Flux2-klein-base-4b",
+        "Klein Base 4B"
+      ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (Flux2 VAE)",
         "llm": "Qwen3 4B (GGUF or safetensors)"
@@ -324,8 +363,7 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "imageEditMode": "ref_images",
       "generationDefaults": {
@@ -340,7 +378,11 @@
     "Flux2 Klein 9B": {
       "name": "Flux.2 Klein 9B",
       "description": "Fast 9B parameter Flux2 model with better quality than 4B. Requires Flux2 VAE and Qwen3 8B LLM. Optimized for speed with only 4 steps.",
-      "aliases": ["Flux.2-klein-9B", "Flux2-klein-9b", "Klein 9B"],
+      "aliases": [
+        "Flux.2-klein-9B",
+        "Flux2-klein-9b",
+        "Klein 9B"
+      ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (Flux2 VAE)",
         "llm": "Qwen3 8B (GGUF or safetensors)"
@@ -348,8 +390,7 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "imageEditMode": "ref_images",
       "generationDefaults": {
@@ -364,7 +405,11 @@
     "Flux2 Klein Base 9B": {
       "name": "Flux.2 Klein Base 9B",
       "description": "Higher quality 9B parameter Flux2 model. Same requirements as Klein 9B but needs more steps and higher CFG for better results.",
-      "aliases": ["Flux.2-klein-base-9B", "Flux2-klein-base-9b", "Klein Base 9B"],
+      "aliases": [
+        "Flux.2-klein-base-9B",
+        "Flux2-klein-base-9b",
+        "Klein Base 9B"
+      ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (Flux2 VAE)",
         "llm": "Qwen3 8B (GGUF or safetensors)"
@@ -372,8 +417,7 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "imageEditMode": "ref_images",
       "generationDefaults": {
@@ -388,7 +432,10 @@
     "Z-Image": {
       "name": "Z-Image Turbo",
       "description": "Requires VAE (ae.gguf) and LLM (Qwen3 4B recommended). Very fast generation with high quality. Uses VRAM offloading for 12GB GPUs.",
-      "aliases": ["ZImage", "Z Image"],
+      "aliases": [
+        "ZImage",
+        "Z Image"
+      ],
       "requiredComponents": {
         "vae": "ae.gguf (Flux VAE)",
         "llm": "Qwen3 4B or compatible LLM"
@@ -396,12 +443,7 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "vae_decode_only": false,
-        "vae_conv_direct": true,
-        "offload_mode": "cond_only",
-        "offload_cond_stage": true,
-        "reload_cond_stage": true,
-        "reload_diffusion": true
+        "vae_conv_direct": true
       },
       "imageEditMode": "ref_images",
       "generationDefaults": {
@@ -418,7 +460,11 @@
     "Qwen": {
       "name": "Qwen-Image",
       "description": "Qwen-based image generation. Requires VAE and LLM (Qwen2.5-VL 7B).",
-      "aliases": ["Qwen2-VL", "Qwen Image", "Qwen-VL"],
+      "aliases": [
+        "Qwen2-VL",
+        "Qwen Image",
+        "Qwen-VL"
+      ],
       "requiredComponents": {
         "vae": "qwen_image_vae.safetensors",
         "llm": "Qwen2.5-VL 7B"
@@ -426,9 +472,7 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false,
-        "flow_shift": 3.0
+        "params_backend": "*=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 2.5,
@@ -442,7 +486,11 @@
     "Qwen Image Edit": {
       "name": "Qwen-Image-Edit",
       "description": "Qwen-based image editing model. Edit images with text prompts. Requires Qwen VAE and Qwen2.5-VL 7B LLM.",
-      "aliases": ["Qwen-Image-Edit", "Qwen Edit", "Qwen-Edit"],
+      "aliases": [
+        "Qwen-Image-Edit",
+        "Qwen Edit",
+        "Qwen-Edit"
+      ],
       "requiredComponents": {
         "vae": "qwen_image_vae.safetensors",
         "llm": "Qwen2.5-VL 7B"
@@ -450,9 +498,7 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false,
-        "flow_shift": 3.0
+        "params_backend": "*=cpu"
       },
       "imageEditMode": "ref_images",
       "generationDefaults": {
@@ -467,7 +513,11 @@
     "Ovis": {
       "name": "Ovis-Image-7B",
       "description": "Ovis-Image model for text-to-image generation. Requires Flux VAE (ae.safetensors) and Ovis 2.5 LLM text encoder.",
-      "aliases": ["Ovis-Image", "Ovis Image", "Ovis-7B"],
+      "aliases": [
+        "Ovis-Image",
+        "Ovis Image",
+        "Ovis-7B"
+      ],
       "requiredComponents": {
         "vae": "ae.safetensors (Flux VAE)",
         "llm": "Ovis 2.5 text encoder"
@@ -475,8 +525,7 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 5.0,
@@ -497,9 +546,8 @@
       },
       "optionalComponents": {},
       "loadOptions": {
-        "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": false
+        "backend": "te=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 4.0,
@@ -513,15 +561,17 @@
     "Chroma-Radiance": {
       "name": "Chroma1-Radiance",
       "description": "Chroma variant that doesn't require VAE. Only needs T5-XXL text encoder.",
-      "aliases": ["Chroma Radiance", "ChromaRadiance"],
+      "aliases": [
+        "Chroma Radiance",
+        "ChromaRadiance"
+      ],
       "requiredComponents": {
         "t5xxl": "T5-XXL text encoder"
       },
       "optionalComponents": {},
       "loadOptions": {
-        "keep_clip_on_cpu": true,
         "flash_attn": true,
-        "vae_decode_only": false
+        "backend": "te=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 4.0,
@@ -535,7 +585,11 @@
     "Wan": {
       "name": "Wan T2V (Video)",
       "description": "Text-to-Video model. Requires VAE and T5-XXL (umt5 variant recommended).",
-      "aliases": ["Wan2.1", "Wan T2V", "WanVideo"],
+      "aliases": [
+        "Wan2.1",
+        "Wan T2V",
+        "WanVideo"
+      ],
       "requiredComponents": {
         "vae": "Video VAE",
         "t5xxl": "T5-XXL/umt5 text encoder"
@@ -543,9 +597,7 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false,
-        "flow_shift": 3.0
+        "params_backend": "*=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 6.0,
@@ -559,7 +611,10 @@
     "Anima": {
       "name": "Anima",
       "description": "CircleStone Labs Anima model. Requires Qwen Image VAE and Qwen3 0.6B Base LLM as text encoder.",
-      "aliases": ["Anima-preview", "anima-preview"],
+      "aliases": [
+        "Anima-preview",
+        "anima-preview"
+      ],
       "requiredComponents": {
         "vae": "qwen_image_vae.safetensors",
         "llm": "Qwen3-0.6B-Base (GGUF or safetensors)"
@@ -567,8 +622,7 @@
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 6.0,
@@ -581,14 +635,18 @@
     },
     "HiDream-O1": {
       "name": "HiDream O1",
-      "description": "HiDream O1 image model (Comfy-Org). Self-contained checkpoint — bundles diffusion, Qwen2 text/vision conditioner, and FakeVAE. Defaults below match the Dev (distilled) variant; for the Full variant raise cfg_scale to ~5.0 and steps to ~28.",
-      "aliases": ["HiDream O1", "HiDream-O1-Image", "hidream_o1", "hidream-o1"],
+      "description": "HiDream O1 image model (Comfy-Org). Self-contained checkpoint \u2014 bundles diffusion, Qwen2 text/vision conditioner, and FakeVAE. Defaults below match the Dev (distilled) variant; for the Full variant raise cfg_scale to ~5.0 and steps to ~28.",
+      "aliases": [
+        "HiDream O1",
+        "HiDream-O1-Image",
+        "hidream_o1",
+        "hidream-o1"
+      ],
       "requiredComponents": {},
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "diffusion_flash_attn": true,
-        "vae_decode_only": false
+        "diffusion_flash_attn": true
       },
       "generationDefaults": {
         "cfg_scale": 1.0,
@@ -602,7 +660,13 @@
     "Longcat-Image": {
       "name": "LongCat-Image",
       "description": "Meituan LongCat-Image (and -Edit). Uses the Flux VAE (ae.safetensors) and Qwen2.5-VL 7B as the multimodal text encoder. Supports character-level text rendering when the target text is wrapped in single, double, or Chinese quotes.",
-      "aliases": ["Longcat-Image", "LongCat-Image", "LongCat-Image-Edit", "longcat_image", "longcat-image"],
+      "aliases": [
+        "Longcat-Image",
+        "LongCat-Image",
+        "LongCat-Image-Edit",
+        "longcat_image",
+        "longcat-image"
+      ],
       "requiredComponents": {
         "vae": "ae.safetensors (Flux VAE)",
         "llm": "Qwen2.5-VL 7B (GGUF or safetensors)"
@@ -613,8 +677,7 @@
       "loadOptions": {
         "flash_attn": true,
         "diffusion_flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 5.0,
@@ -629,7 +692,13 @@
     "LTXAV": {
       "name": "LTX 2.3 (LTXAV)",
       "description": "Lightricks LTX 2.3 video model. Generates frames + optional audio (saved as audio.wav alongside the frames). Requires a separate audio VAE and an embeddings_connectors file in addition to the diffusion model, video VAE, and Gemma-3 12B LLM text encoder.",
-      "aliases": ["LTXAV", "LTX2", "LTX-2.3", "ltx2", "ltxav"],
+      "aliases": [
+        "LTXAV",
+        "LTX2",
+        "LTX-2.3",
+        "ltx2",
+        "ltxav"
+      ],
       "requiredComponents": {
         "vae": "ltx-2.3 video VAE (safetensors)",
         "audio_vae": "ltx-2.3 audio VAE (safetensors)",
@@ -640,8 +709,7 @@
       "loadOptions": {
         "flash_attn": true,
         "diffusion_flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 6.0,
@@ -657,8 +725,14 @@
     },
     "Ernie-Image": {
       "name": "ERNIE-Image",
-      "description": "Baidu ERNIE-Image (and Turbo). Runs on ≤ 4 GB VRAM. Uses the FLUX.2 VAE and Ministral-3-3B-Instruct as the LLM text encoder. Defaults target the Turbo variant; for the full model raise cfg to ~5.0 and steps to ~20.",
-      "aliases": ["Ernie Image", "Ernie-Image", "ERNIE-Image", "ernie_image", "ERNIE-Image-Turbo"],
+      "description": "Baidu ERNIE-Image (and Turbo). Runs on \u2264 4 GB VRAM. Uses the FLUX.2 VAE and Ministral-3-3B-Instruct as the LLM text encoder. Defaults target the Turbo variant; for the full model raise cfg to ~5.0 and steps to ~20.",
+      "aliases": [
+        "Ernie Image",
+        "Ernie-Image",
+        "ERNIE-Image",
+        "ernie_image",
+        "ERNIE-Image-Turbo"
+      ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (FLUX.2 VAE)",
         "llm": "Ministral-3-3B-Instruct (GGUF or safetensors)"
@@ -667,8 +741,7 @@
       "loadOptions": {
         "flash_attn": true,
         "diffusion_flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 1.0,
@@ -682,17 +755,20 @@
     "Lens": {
       "name": "Lens",
       "description": "Comfy-Org Lens (and Turbo). Uses the FLUX.2 VAE and GPT-OSS-20B as the LLM text encoder. Defaults target the full variant; for Turbo, drop cfg_scale to 1.0 and steps to 4.",
-      "aliases": ["Lens", "lens", "Lens Turbo"],
+      "aliases": [
+        "Lens",
+        "lens",
+        "Lens Turbo"
+      ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (FLUX.2 VAE)",
-        "llm": "GPT-OSS-20B (GGUF, ~20 GB on disk — needs significant RAM)"
+        "llm": "GPT-OSS-20B (GGUF, ~20 GB on disk \u2014 needs significant RAM)"
       },
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
         "diffusion_flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 5.0,
@@ -706,7 +782,12 @@
     "Ideogram-4": {
       "name": "Ideogram 4",
       "description": "Ideogram 4 image model. Unique among presets: requires BOTH a main diffusion model AND an `uncond_diffusion_model` (the unconditional transformer) for proper CFG. Uses the FLUX.2 VAE and Qwen3-VL-8B-Instruct. Supports tileable output via circular_x / circular_y. Convert fp8 weights to bf16 then optionally quantize to q8_0 per the docs.",
-      "aliases": ["Ideogram 4", "Ideogram4", "ideogram4", "Ideogram-4-fp8"],
+      "aliases": [
+        "Ideogram 4",
+        "Ideogram4",
+        "ideogram4",
+        "Ideogram-4-fp8"
+      ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (FLUX.2 VAE)",
         "llm": "Qwen3-VL-8B-Instruct (GGUF)",
@@ -716,8 +797,7 @@
       "loadOptions": {
         "flash_attn": true,
         "diffusion_flash_attn": true,
-        "offload_to_cpu": true,
-        "vae_decode_only": false
+        "params_backend": "*=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 5.0,
@@ -731,7 +811,12 @@
     "PiD": {
       "name": "PiD (NVIDIA Pixel Diffusion Decoder)",
       "description": "NVIDIA Pixel Diffusion Decoder. Image-edit pipeline: provide a reference image, encode it with a matching VAE, and PiD decodes/upscales directly to RGB. Requires `vae_format` to match the backbone (flux / sd3 / flux2) because the standalone VAE files don't carry that metadata. Uses Gemma 2 2B as the LLM. The official weights are under NSCLv1 non-commercial license.",
-      "aliases": ["PiD", "Pid", "pid", "PixelDiT"],
+      "aliases": [
+        "PiD",
+        "Pid",
+        "pid",
+        "PixelDiT"
+      ],
       "requiredComponents": {
         "vae": "matches the PiD checkpoint backbone (Flux / SD3 / Flux.2 ae.safetensors)",
         "llm": "Gemma 2 2B"
@@ -740,7 +825,6 @@
       "loadOptions": {
         "flash_attn": true,
         "diffusion_flash_attn": true,
-        "vae_decode_only": false,
         "vae_format": "flux",
         "rng_type": "cpu"
       },
@@ -756,7 +840,13 @@
     "Boogu-Image": {
       "name": "Boogu Image",
       "description": "Comfy-Org Boogu Image (base + Edit variants). Uses the Flux VAE (ae.safetensors) and Qwen3-VL 8B as the LLM text+vision encoder. The Edit variant also needs llm_vision (mmproj) for image-edit workflows.",
-      "aliases": ["Boogu Image", "Boogu-Image", "boogu_image", "boogu", "Boogu"],
+      "aliases": [
+        "Boogu Image",
+        "Boogu-Image",
+        "boogu_image",
+        "boogu",
+        "Boogu"
+      ],
       "requiredComponents": {
         "vae": "ae.safetensors (Flux VAE)",
         "llm": "Qwen3-VL-8B-Instruct (GGUF)"
@@ -767,7 +857,7 @@
       "loadOptions": {
         "flash_attn": true,
         "diffusion_flash_attn": true,
-        "offload_to_cpu": true
+        "params_backend": "*=cpu"
       },
       "generationDefaults": {
         "cfg_scale": 1.0,

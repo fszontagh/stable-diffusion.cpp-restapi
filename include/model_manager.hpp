@@ -93,24 +93,23 @@ struct ModelLoadParams {
 
     // Options
     int n_threads = -1;
-    bool keep_clip_on_cpu = true;
-    bool keep_vae_on_cpu = false;
-    bool keep_controlnet_on_cpu = false;        // Keep ControlNet on CPU for low VRAM
     bool flash_attn = true;
     bool diffusion_flash_attn = false;          // Flash attention specifically for the diffusion model
                                                  // (UNet/DiT/Flux). sd.cpp keeps this separate from
-                                                 // flash_attn (which is also for CLIP/T5/conditioner)
-                                                 // because CUDA support / numerical stability used to
-                                                 // diverge between the two. Default off — match
-                                                 // sd.cpp's struct default.
-    bool offload_to_cpu = false;
+                                                 // flash_attn (which is also for CLIP/T5/conditioner).
     bool enable_mmap = true;                    // Use memory-mapped file loading for models
-    bool vae_decode_only = true;
     bool vae_conv_direct = false;               // Use ggml_conv2d_direct in VAE
     bool diffusion_conv_direct = false;         // Use ggml_conv2d_direct in diffusion
     bool tae_preview_only = false;              // Only use TAESD for preview, not final
-    bool free_params_immediately = false;       // Keep model loaded in GPU (false = keep for server use)
-    float flow_shift = INFINITY;                // INFINITY = auto-detect based on model
+    // Per-component CPU placement and "always keep all weights in RAM" are no longer
+    // bool flags on sd_ctx_params_t. Upstream (leejet PR #1654) routes them through
+    // the `backend` / `params_backend` strings instead — e.g. "diffusion=cuda0,vae=cpu"
+    // for per-component, or params_backend="*=cpu" for the global flag that used to
+    // be offload_to_cpu. Same for vae_decode_only and free_params_immediately —
+    // their semantics moved into sd.cpp's planner and are no longer surfaced.
+    // flow_shift / vae_tiling are per-generation now, not load-time — see the
+    // request schemas + sd_wrapper for where they're wired into sd_sample_params_t /
+    // sd_tiling_params_t respectively.
     float max_vram = 0.0f;                      // GiB budget for graph-cut segmented param offload (0 = disabled).
                                                  // Lives on sd_ctx_params_t (not the offload struct) and is
                                                  // available on both OFFLOAD=ON and OFFLOAD=OFF builds. When
@@ -156,17 +155,17 @@ struct ModelLoadParams {
     // LoRA apply mode
     std::string lora_apply_mode = "auto";       // auto, immediately, at_runtime
 
-    // VAE tiling for large images
-    bool vae_tiling = false;
-    int vae_tile_size_x = 0;                    // 0 = auto
-    int vae_tile_size_y = 0;
-    float vae_tile_overlap = 0.5f;
+    // VAE tiling is per-generation (sd_tiling_params_t) — wired in the request schemas + sd_wrapper.
     bool force_sdxl_vae_conv_scale = false;
 
     // Chroma options
     bool chroma_use_dit_mask = true;
     bool chroma_use_t5_mask = false;
     int chroma_t5_mask_pad = 1;
+
+    // Qwen-Image specific: zero out the conditional T branch (upstream addition).
+    // Off by default — only Qwen-Image checkpoints look at this knob.
+    bool qwen_image_zero_cond_t = false;
 
     // VAE format override (leejet master, post 1ceb5bd). Values: "auto" (default,
     // sd.cpp detects from the VAE weights), "flux", "sd3", "flux2". Maps to

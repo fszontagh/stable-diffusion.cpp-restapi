@@ -104,6 +104,9 @@ const showAdvanced = ref(false)
 const slgScale = ref(0.0)
 const cacheMode = ref('')
 const easycacheThreshold = ref(0.2)
+// TaylorSeer (cache_mode='taylorseer')
+const taylorseerNDerivatives = ref(2)
+const taylorseerSkipInterval = ref(0)
 const spectrumW = ref(0.5)
 const spectrumM = ref(5)
 const spectrumLam = ref(0.5)
@@ -115,6 +118,41 @@ const vaeTiling = ref(false)
 const vaeTileSizeX = ref(0)
 const vaeTileSizeY = ref(0)
 const vaeTileOverlap = ref(0.5)
+const vaeTileRelSizeX = ref(0.0)
+const vaeTileRelSizeY = ref(0.0)
+
+// Advanced Guidance (sd_guidance_params_t passthrough)
+const imgCfgScale = ref(-1)         // -1 = inherit cfg_scale
+const extraSampleArgs = ref('')      // key=value pass-through
+
+// PuLID-Flux (sd_pulid_params_t)
+const pulidIdEmbeddingPath = ref('')
+const pulidIdWeight = ref(1.0)
+
+// sd.cpp native hi-res-fix (sd_hires_params_t)
+// Distinct from the post-gen ESRGAN upscale (state.upscale + upscaler model).
+const hiresEnabled = ref(false)
+const hiresUpscaler = ref('model')
+const hiresModelPath = ref('')
+const hiresScale = ref(2.0)
+const hiresTargetWidth = ref(0)
+const hiresTargetHeight = ref(0)
+const hiresSteps = ref(0)
+const hiresDenoisingStrength = ref(0.4)
+const hiresUpscaleTileSize = ref(0)
+
+// High-noise pass extras (txt2vid only). The shared `high_noise_*` knobs
+// (steps/cfg/sampler/distilled_guidance/slg_*) are not modeled in UI yet,
+// but parity is reached for the brand-new fields listed below.
+const highNoiseImgCfg = ref(-1)
+const highNoiseScheduler = ref('')
+const highNoiseEta = ref(0)
+const highNoiseShiftedTimestep = ref(0)
+const highNoiseFlowShift = ref(0)
+const highNoiseExtraSampleArgs = ref('')
+// custom_sigmas is a comma-separated list in the UI; we parse to number[]
+// at submit time.
+const highNoiseCustomSigmas = ref('')
 
 // Flag to suppress prompt restoration during queue reload
 let suppressPromptRestore = false
@@ -401,11 +439,35 @@ function getCurrentSettings() {
     slgScale: slgScale.value,
     cacheMode: cacheMode.value,
     easycacheThreshold: easycacheThreshold.value,
+    taylorseerNDerivatives: taylorseerNDerivatives.value,
+    taylorseerSkipInterval: taylorseerSkipInterval.value,
     spectrumW: spectrumW.value,
     vaeTiling: vaeTiling.value,
     vaeTileSizeX: vaeTileSizeX.value,
     vaeTileSizeY: vaeTileSizeY.value,
-    vaeTileOverlap: vaeTileOverlap.value
+    vaeTileOverlap: vaeTileOverlap.value,
+    vaeTileRelSizeX: vaeTileRelSizeX.value,
+    vaeTileRelSizeY: vaeTileRelSizeY.value,
+    imgCfgScale: imgCfgScale.value,
+    extraSampleArgs: extraSampleArgs.value,
+    pulidIdEmbeddingPath: pulidIdEmbeddingPath.value,
+    pulidIdWeight: pulidIdWeight.value,
+    hiresEnabled: hiresEnabled.value,
+    hiresUpscaler: hiresUpscaler.value,
+    hiresModelPath: hiresModelPath.value,
+    hiresScale: hiresScale.value,
+    hiresTargetWidth: hiresTargetWidth.value,
+    hiresTargetHeight: hiresTargetHeight.value,
+    hiresSteps: hiresSteps.value,
+    hiresDenoisingStrength: hiresDenoisingStrength.value,
+    hiresUpscaleTileSize: hiresUpscaleTileSize.value,
+    highNoiseImgCfg: highNoiseImgCfg.value,
+    highNoiseScheduler: highNoiseScheduler.value,
+    highNoiseEta: highNoiseEta.value,
+    highNoiseShiftedTimestep: highNoiseShiftedTimestep.value,
+    highNoiseFlowShift: highNoiseFlowShift.value,
+    highNoiseExtraSampleArgs: highNoiseExtraSampleArgs.value,
+    highNoiseCustomSigmas: highNoiseCustomSigmas.value
   }
 }
 
@@ -434,11 +496,35 @@ function applySettings(settings: Record<string, unknown>) {
     cacheMode.value = settings.easycache ? 'easycache' : ''
   }
   if (settings.easycacheThreshold !== undefined) easycacheThreshold.value = settings.easycacheThreshold as number
+  if (settings.taylorseerNDerivatives !== undefined) taylorseerNDerivatives.value = settings.taylorseerNDerivatives as number
+  if (settings.taylorseerSkipInterval !== undefined) taylorseerSkipInterval.value = settings.taylorseerSkipInterval as number
   if (settings.spectrumW !== undefined) spectrumW.value = settings.spectrumW as number
   if (settings.vaeTiling !== undefined) vaeTiling.value = settings.vaeTiling as boolean
   if (settings.vaeTileSizeX !== undefined) vaeTileSizeX.value = settings.vaeTileSizeX as number
   if (settings.vaeTileSizeY !== undefined) vaeTileSizeY.value = settings.vaeTileSizeY as number
   if (settings.vaeTileOverlap !== undefined) vaeTileOverlap.value = settings.vaeTileOverlap as number
+  if (settings.vaeTileRelSizeX !== undefined) vaeTileRelSizeX.value = settings.vaeTileRelSizeX as number
+  if (settings.vaeTileRelSizeY !== undefined) vaeTileRelSizeY.value = settings.vaeTileRelSizeY as number
+  if (settings.imgCfgScale !== undefined) imgCfgScale.value = settings.imgCfgScale as number
+  if (settings.extraSampleArgs !== undefined) extraSampleArgs.value = settings.extraSampleArgs as string
+  if (settings.pulidIdEmbeddingPath !== undefined) pulidIdEmbeddingPath.value = settings.pulidIdEmbeddingPath as string
+  if (settings.pulidIdWeight !== undefined) pulidIdWeight.value = settings.pulidIdWeight as number
+  if (settings.hiresEnabled !== undefined) hiresEnabled.value = settings.hiresEnabled as boolean
+  if (settings.hiresUpscaler !== undefined) hiresUpscaler.value = settings.hiresUpscaler as string
+  if (settings.hiresModelPath !== undefined) hiresModelPath.value = settings.hiresModelPath as string
+  if (settings.hiresScale !== undefined) hiresScale.value = settings.hiresScale as number
+  if (settings.hiresTargetWidth !== undefined) hiresTargetWidth.value = settings.hiresTargetWidth as number
+  if (settings.hiresTargetHeight !== undefined) hiresTargetHeight.value = settings.hiresTargetHeight as number
+  if (settings.hiresSteps !== undefined) hiresSteps.value = settings.hiresSteps as number
+  if (settings.hiresDenoisingStrength !== undefined) hiresDenoisingStrength.value = settings.hiresDenoisingStrength as number
+  if (settings.hiresUpscaleTileSize !== undefined) hiresUpscaleTileSize.value = settings.hiresUpscaleTileSize as number
+  if (settings.highNoiseImgCfg !== undefined) highNoiseImgCfg.value = settings.highNoiseImgCfg as number
+  if (settings.highNoiseScheduler !== undefined) highNoiseScheduler.value = settings.highNoiseScheduler as string
+  if (settings.highNoiseEta !== undefined) highNoiseEta.value = settings.highNoiseEta as number
+  if (settings.highNoiseShiftedTimestep !== undefined) highNoiseShiftedTimestep.value = settings.highNoiseShiftedTimestep as number
+  if (settings.highNoiseFlowShift !== undefined) highNoiseFlowShift.value = settings.highNoiseFlowShift as number
+  if (settings.highNoiseExtraSampleArgs !== undefined) highNoiseExtraSampleArgs.value = settings.highNoiseExtraSampleArgs as string
+  if (settings.highNoiseCustomSigmas !== undefined) highNoiseCustomSigmas.value = settings.highNoiseCustomSigmas as string
 }
 
 // Merge architecture defaults with user preferences (user prefs take precedence)
@@ -657,8 +743,17 @@ const debouncedSaveLoraSettings = useDebounceFn(() => {
 watch([
   width, height, steps, cfgScale, distilledGuidance, seed, sampler,
   scheduler, batchCount, clipSkip, strength, controlStrength, videoFrames,
-  fps, flowShift, slgScale, cacheMode, easycacheThreshold, spectrumW, vaeTiling,
-  vaeTileSizeX, vaeTileSizeY, vaeTileOverlap
+  fps, flowShift, slgScale, cacheMode, easycacheThreshold,
+  taylorseerNDerivatives, taylorseerSkipInterval, spectrumW, vaeTiling,
+  vaeTileSizeX, vaeTileSizeY, vaeTileOverlap, vaeTileRelSizeX, vaeTileRelSizeY,
+  imgCfgScale, extraSampleArgs,
+  pulidIdEmbeddingPath, pulidIdWeight,
+  hiresEnabled, hiresUpscaler, hiresModelPath, hiresScale,
+  hiresTargetWidth, hiresTargetHeight, hiresSteps,
+  hiresDenoisingStrength, hiresUpscaleTileSize,
+  highNoiseImgCfg, highNoiseScheduler, highNoiseEta,
+  highNoiseShiftedTimestep, highNoiseFlowShift,
+  highNoiseExtraSampleArgs, highNoiseCustomSigmas
 ], debouncedSaveSettings)
 
 // Watch for LoRA list and settings changes. Suppress while loading from
@@ -1236,10 +1331,37 @@ function loadJobParams(
       cacheMode.value = params.easycache ? 'easycache' : ''
     }
     if (params.easycache_threshold !== undefined) easycacheThreshold.value = params.easycache_threshold as number
+    if (params.taylorseer_n_derivatives !== undefined) taylorseerNDerivatives.value = params.taylorseer_n_derivatives as number
+    if (params.taylorseer_skip_interval !== undefined) taylorseerSkipInterval.value = params.taylorseer_skip_interval as number
     if (params.vae_tiling !== undefined) vaeTiling.value = params.vae_tiling as boolean
     if (params.vae_tile_size_x !== undefined) vaeTileSizeX.value = params.vae_tile_size_x as number
     if (params.vae_tile_size_y !== undefined) vaeTileSizeY.value = params.vae_tile_size_y as number
     if (params.vae_tile_overlap !== undefined) vaeTileOverlap.value = params.vae_tile_overlap as number
+    if (params.vae_tile_rel_size_x !== undefined) vaeTileRelSizeX.value = params.vae_tile_rel_size_x as number
+    if (params.vae_tile_rel_size_y !== undefined) vaeTileRelSizeY.value = params.vae_tile_rel_size_y as number
+    if (params.img_cfg_scale !== undefined) imgCfgScale.value = params.img_cfg_scale as number
+    if (params.extra_sample_args !== undefined) extraSampleArgs.value = params.extra_sample_args as string
+    if (params.pulid_id_embedding_path !== undefined) pulidIdEmbeddingPath.value = params.pulid_id_embedding_path as string
+    if (params.pulid_id_weight !== undefined) pulidIdWeight.value = params.pulid_id_weight as number
+    if (params.hires_enabled !== undefined) hiresEnabled.value = params.hires_enabled as boolean
+    if (params.hires_upscaler !== undefined) hiresUpscaler.value = params.hires_upscaler as string
+    if (params.hires_model_path !== undefined) hiresModelPath.value = params.hires_model_path as string
+    if (params.hires_scale !== undefined) hiresScale.value = params.hires_scale as number
+    if (params.hires_target_width !== undefined) hiresTargetWidth.value = params.hires_target_width as number
+    if (params.hires_target_height !== undefined) hiresTargetHeight.value = params.hires_target_height as number
+    if (params.hires_steps !== undefined) hiresSteps.value = params.hires_steps as number
+    if (params.hires_denoising_strength !== undefined) hiresDenoisingStrength.value = params.hires_denoising_strength as number
+    if (params.hires_upscale_tile_size !== undefined) hiresUpscaleTileSize.value = params.hires_upscale_tile_size as number
+    if (params.high_noise_img_cfg !== undefined) highNoiseImgCfg.value = params.high_noise_img_cfg as number
+    if (params.high_noise_scheduler !== undefined) highNoiseScheduler.value = params.high_noise_scheduler as string
+    if (params.high_noise_eta !== undefined) highNoiseEta.value = params.high_noise_eta as number
+    if (params.high_noise_shifted_timestep !== undefined) highNoiseShiftedTimestep.value = params.high_noise_shifted_timestep as number
+    if (params.high_noise_flow_shift !== undefined) highNoiseFlowShift.value = params.high_noise_flow_shift as number
+    if (params.high_noise_extra_sample_args !== undefined) highNoiseExtraSampleArgs.value = params.high_noise_extra_sample_args as string
+    if (Array.isArray(params.high_noise_custom_sigmas)) {
+      // params arrives as number[], UI keeps it as comma-separated string
+      highNoiseCustomSigmas.value = (params.high_noise_custom_sigmas as number[]).join(', ')
+    }
   }
 }
 
@@ -1332,8 +1454,14 @@ async function handleSubmit() {
     }
     if (cacheMode.value) {
       baseParams.cache_mode = cacheMode.value
-      if (cacheMode.value === 'easycache') {
+      // Similarity-threshold caches share the easycache_threshold knob.
+      if (cacheMode.value === 'easycache' ||
+          cacheMode.value === 'ucache' ||
+          cacheMode.value === 'dbcache') {
         baseParams.easycache_threshold = easycacheThreshold.value
+      } else if (cacheMode.value === 'taylorseer') {
+        baseParams.taylorseer_n_derivatives = taylorseerNDerivatives.value
+        baseParams.taylorseer_skip_interval = taylorseerSkipInterval.value
       } else if (cacheMode.value === 'spectrum') {
         baseParams.spectrum_w = spectrumW.value
         baseParams.spectrum_m = spectrumM.value
@@ -1343,12 +1471,48 @@ async function handleSubmit() {
         baseParams.spectrum_warmup_steps = spectrumWarmupSteps.value
         baseParams.spectrum_stop_percent = spectrumStopPercent.value
       }
+      // cache_dit needs no extra knobs.
     }
     if (vaeTiling.value) {
       baseParams.vae_tiling = true
       if (vaeTileSizeX.value > 0) baseParams.vae_tile_size_x = vaeTileSizeX.value
       if (vaeTileSizeY.value > 0) baseParams.vae_tile_size_y = vaeTileSizeY.value
       baseParams.vae_tile_overlap = vaeTileOverlap.value
+      // Relative tile size (fraction of image). 0 = use absolute tile_size_*.
+      if (vaeTileRelSizeX.value > 0) baseParams.vae_tile_rel_size_x = vaeTileRelSizeX.value
+      if (vaeTileRelSizeY.value > 0) baseParams.vae_tile_rel_size_y = vaeTileRelSizeY.value
+    }
+
+    // Advanced guidance (sd_guidance_params_t passthrough)
+    // -1 = inherit cfg_scale, so only send when the user explicitly overrode.
+    if (imgCfgScale.value !== -1) {
+      baseParams.img_cfg_scale = imgCfgScale.value
+    }
+    if (extraSampleArgs.value.trim()) {
+      baseParams.extra_sample_args = extraSampleArgs.value.trim()
+    }
+
+    // PuLID-Flux (sd_pulid_params_t). Only ship when path is set —
+    // sending an empty path would still hit the model's PuLID branch.
+    if (pulidIdEmbeddingPath.value.trim()) {
+      baseParams.pulid_id_embedding_path = pulidIdEmbeddingPath.value.trim()
+      baseParams.pulid_id_weight = pulidIdWeight.value
+    }
+
+    // sd.cpp native two-pass hi-res-fix (sd_hires_params_t). Distinct from
+    // the post-gen ESRGAN upscale flag (baseParams.upscale).
+    if (hiresEnabled.value) {
+      baseParams.hires_enabled = true
+      baseParams.hires_upscaler = hiresUpscaler.value
+      if (hiresUpscaler.value === 'model' && hiresModelPath.value.trim()) {
+        baseParams.hires_model_path = hiresModelPath.value.trim()
+      }
+      baseParams.hires_scale = hiresScale.value
+      if (hiresTargetWidth.value > 0) baseParams.hires_target_width = hiresTargetWidth.value
+      if (hiresTargetHeight.value > 0) baseParams.hires_target_height = hiresTargetHeight.value
+      if (hiresSteps.value > 0) baseParams.hires_steps = hiresSteps.value
+      baseParams.hires_denoising_strength = hiresDenoisingStrength.value
+      if (hiresUpscaleTileSize.value > 0) baseParams.hires_upscale_tile_size = hiresUpscaleTileSize.value
     }
 
     // Control image
@@ -1414,6 +1578,35 @@ async function handleSubmit() {
         video_frames: videoFrames.value,
         fps: fps.value,
         flow_shift: flowShift.value
+      }
+      // High-noise MoE pass extras. Only emit overrides; -1/0/"" mean inherit.
+      if (highNoiseImgCfg.value !== -1) {
+        params.high_noise_img_cfg = highNoiseImgCfg.value
+      }
+      if (highNoiseScheduler.value.trim()) {
+        params.high_noise_scheduler = highNoiseScheduler.value.trim()
+      }
+      if (highNoiseEta.value !== 0) {
+        params.high_noise_eta = highNoiseEta.value
+      }
+      if (highNoiseShiftedTimestep.value !== 0) {
+        params.high_noise_shifted_timestep = highNoiseShiftedTimestep.value
+      }
+      if (highNoiseFlowShift.value !== 0) {
+        params.high_noise_flow_shift = highNoiseFlowShift.value
+      }
+      if (highNoiseExtraSampleArgs.value.trim()) {
+        params.high_noise_extra_sample_args = highNoiseExtraSampleArgs.value.trim()
+      }
+      if (highNoiseCustomSigmas.value.trim()) {
+        // UI accepts a comma-separated list; backend expects number[].
+        const sigmas = highNoiseCustomSigmas.value
+          .split(',')
+          .map(s => parseFloat(s.trim()))
+          .filter(n => !isNaN(n))
+        if (sigmas.length > 0) {
+          params.high_noise_custom_sigmas = sigmas
+        }
       }
       result = await api.txt2vid(params)
     }
@@ -1794,14 +1987,34 @@ async function handleSubmit() {
               <select v-model="cacheMode" class="form-input">
                 <option value="">Disabled</option>
                 <option value="easycache">EasyCache</option>
+                <option value="ucache">UCache</option>
+                <option value="dbcache">DBCache</option>
+                <option value="taylorseer">TaylorSeer</option>
+                <option value="cache_dit">Cache-DiT</option>
                 <option value="spectrum">Spectrum</option>
               </select>
             </div>
 
-            <div v-if="cacheMode === 'easycache'" class="form-group mt-2">
-              <label class="form-label">EasyCache Threshold</label>
+            <!-- Similarity-threshold caches (EasyCache, UCache, DBCache) share the same knob. -->
+            <div v-if="cacheMode === 'easycache' || cacheMode === 'ucache' || cacheMode === 'dbcache'" class="form-group mt-2">
+              <label class="form-label">Cache Threshold</label>
               <input v-model.number="easycacheThreshold" type="number" class="form-input" step="0.05" min="0" max="1" />
+              <div class="form-hint">Reuse threshold for similarity-based caches.</div>
             </div>
+
+            <template v-if="cacheMode === 'taylorseer'">
+              <div class="form-row mt-2">
+                <div class="form-group">
+                  <label class="form-label">TaylorSeer Derivatives</label>
+                  <input v-model.number="taylorseerNDerivatives" type="number" class="form-input" min="1" max="6" step="1" />
+                  <div class="form-hint">Typically 2-4.</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Skip Interval (0 = adaptive)</label>
+                  <input v-model.number="taylorseerSkipInterval" type="number" class="form-input" min="0" max="20" step="1" />
+                </div>
+              </div>
+            </template>
 
             <template v-if="cacheMode === 'spectrum'">
               <div class="form-group mt-2">
@@ -1830,11 +2043,194 @@ async function handleSubmit() {
                   <input v-model.number="vaeTileSizeY" type="number" class="form-input" min="0" max="2048" step="64" />
                 </div>
               </div>
+              <!-- Relative tile sizes (fraction of image). 0 = use absolute tile_size_*. -->
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Tile Rel Size X (0 = use absolute)</label>
+                  <input v-model.number="vaeTileRelSizeX" type="number" class="form-input" min="0" max="1" step="0.05" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Tile Rel Size Y (0 = use absolute)</label>
+                  <input v-model.number="vaeTileRelSizeY" type="number" class="form-input" min="0" max="1" step="0.05" />
+                </div>
+              </div>
               <div class="form-group" data-setting="vae-tile-overlap" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-overlap' }">
                 <label class="form-label">Tile Overlap: {{ vaeTileOverlap.toFixed(2) }}</label>
                 <input v-model.number="vaeTileOverlap" type="range" class="form-range" min="0" max="1" step="0.05" />
               </div>
-              <div class="form-hint">VAE tiling reduces VRAM usage for high-resolution images/videos by processing in tiles.</div>
+              <div class="form-hint">
+                VAE tiling reduces VRAM usage for high-resolution images/videos by processing in tiles.
+                Use either absolute (Tile Size X/Y) or relative (Tile Rel Size X/Y) — relative takes precedence when &gt; 0.
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Advanced Guidance (sd_guidance_params_t passthrough) -->
+        <details class="card accordion">
+          <summary class="accordion-header">
+            Advanced Guidance
+          </summary>
+          <div class="accordion-content">
+            <div class="form-group">
+              <label class="form-label">Image CFG (-1 = inherit cfg_scale)</label>
+              <input v-model.number="imgCfgScale" type="number" class="form-input" step="0.5" min="-1" max="20" />
+              <div class="form-hint">Maps to sd_guidance_params_t.img_cfg.</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Extra Sample Args</label>
+              <input v-model="extraSampleArgs" type="text" class="form-input" placeholder="key1=val1,key2=val2" />
+              <div class="form-hint">Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs).</div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Hi-Res Fix (sd.cpp native sd_hires_params_t).
+             Distinct from the post-gen ESRGAN upscale flag below. -->
+        <details class="card accordion">
+          <summary class="accordion-header">
+            Hi-Res Fix (sd.cpp native)
+          </summary>
+          <div class="accordion-content">
+            <label class="form-checkbox">
+              <input v-model="hiresEnabled" type="checkbox" />
+              Enable hi-res-fix two-pass refine
+            </label>
+            <div class="form-hint">Distinct from the post-gen ESRGAN upscale checkbox.</div>
+
+            <template v-if="hiresEnabled">
+              <div class="form-group mt-2">
+                <label class="form-label">Upscaler</label>
+                <select v-model="hiresUpscaler" class="form-input">
+                  <optgroup label="Latent (in-VAE-space)">
+                    <option value="latent">latent</option>
+                    <option value="latent_nearest">latent_nearest</option>
+                    <option value="latent_nearest_exact">latent_nearest_exact</option>
+                    <option value="latent_antialiased">latent_antialiased</option>
+                    <option value="latent_bicubic">latent_bicubic</option>
+                    <option value="latent_bicubic_antialiased">latent_bicubic_antialiased</option>
+                  </optgroup>
+                  <optgroup label="Pixel-space">
+                    <option value="lanczos">lanczos</option>
+                    <option value="nearest">nearest</option>
+                  </optgroup>
+                  <optgroup label="Model-based">
+                    <option value="model">model (ESRGAN-style)</option>
+                  </optgroup>
+                  <optgroup label="Other">
+                    <option value="none">none</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              <div v-if="hiresUpscaler === 'model'" class="form-group mt-2">
+                <label class="form-label">Upscaler Model Path</label>
+                <input v-model="hiresModelPath" type="text" class="form-input" placeholder="e.g. RealESRGAN_x4plus.pth" />
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Scale</label>
+                  <input v-model.number="hiresScale" type="number" class="form-input" step="0.5" min="1" max="8" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Denoising Strength</label>
+                  <input v-model.number="hiresDenoisingStrength" type="number" class="form-input" step="0.05" min="0" max="1" />
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Target Width (0 = derive)</label>
+                  <input v-model.number="hiresTargetWidth" type="number" class="form-input" min="0" max="4096" step="8" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Target Height (0 = derive)</label>
+                  <input v-model.number="hiresTargetHeight" type="number" class="form-input" min="0" max="4096" step="8" />
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Steps (0 = inherit)</label>
+                  <input v-model.number="hiresSteps" type="number" class="form-input" min="0" max="150" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Upscale Tile Size (0 = auto)</label>
+                  <input v-model.number="hiresUpscaleTileSize" type="number" class="form-input" min="0" max="2048" step="64" />
+                </div>
+              </div>
+            </template>
+          </div>
+        </details>
+
+        <!-- PuLID-Flux (sd_pulid_params_t). Always shown — the backend safely
+             ignores these fields unless the model was loaded with pulid_weights. -->
+        <details class="card accordion">
+          <summary class="accordion-header">
+            PuLID-Flux
+          </summary>
+          <div class="accordion-content">
+            <div class="form-hint">Requires pulid_weights loaded on the model.</div>
+            <div class="form-group mt-2">
+              <label class="form-label">ID Embedding Path</label>
+              <input v-model="pulidIdEmbeddingPath" type="text" class="form-input" placeholder="Path to PuLID identity embedding" />
+            </div>
+            <div class="form-group mt-2">
+              <label class="form-label">ID Weight</label>
+              <input v-model.number="pulidIdWeight" type="number" class="form-input" step="0.05" min="0" max="2" />
+            </div>
+          </div>
+        </details>
+
+        <!-- High-Noise Pass (MoE models like Wan2.2). Txt2Vid only. -->
+        <details v-if="mode === 'txt2vid'" class="card accordion">
+          <summary class="accordion-header">
+            High-Noise Pass (MoE)
+          </summary>
+          <div class="accordion-content">
+            <div class="form-hint">
+              Only used by MoE video models (Wan2.2 and similar). Leave blank/0/-1 to inherit the main-pass setting.
+            </div>
+            <div class="form-row mt-2">
+              <div class="form-group">
+                <label class="form-label">Image CFG (-1 = inherit)</label>
+                <input v-model.number="highNoiseImgCfg" type="number" class="form-input" step="0.5" min="-1" max="20" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Scheduler (blank = inherit)</label>
+                <select v-model="highNoiseScheduler" class="form-input">
+                  <option value="">(inherit main)</option>
+                  <option v-for="s in schedulers" :key="s" :value="s">{{ s }}</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Eta</label>
+                <input v-model.number="highNoiseEta" type="number" class="form-input" step="0.05" min="0" max="1" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Shifted Timestep (0 = inherit)</label>
+                <input v-model.number="highNoiseShiftedTimestep" type="number" class="form-input" min="0" max="1000" step="50" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Flow Shift (0 = inherit main)</label>
+              <input v-model.number="highNoiseFlowShift" type="number" class="form-input" step="0.5" min="0" max="10" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Extra Sample Args</label>
+              <input v-model="highNoiseExtraSampleArgs" type="text" class="form-input" placeholder="key1=val1,key2=val2" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Custom Sigmas (comma-separated)</label>
+              <input v-model="highNoiseCustomSigmas" type="text" class="form-input" placeholder="e.g. 14.6, 8.3, 4.1, 1.8, 0.7" />
+              <div class="form-hint">Override the high-noise sigma schedule. Leave blank to use the scheduler.</div>
             </div>
           </div>
         </details>

@@ -43,43 +43,31 @@ function formatOptionLabel(key: string): string {
   // Convert snake_case to readable labels
   const labels: Record<string, string> = {
     n_threads: 'Threads',
-    keep_clip_on_cpu: 'CLIP on CPU',
-    keep_vae_on_cpu: 'VAE on CPU',
-    keep_controlnet_on_cpu: 'ControlNet on CPU',
     flash_attn: 'Flash Attention',
-    offload_to_cpu: 'Offload to CPU',
+    diffusion_flash_attn: 'Diffusion Flash Attention',
     enable_mmap: 'Memory Mapping',
-    vae_decode_only: 'VAE Decode Only',
     vae_conv_direct: 'VAE Conv Direct',
     diffusion_conv_direct: 'Diffusion Conv Direct',
     tae_preview_only: 'TAE Preview Only',
-    free_params_immediately: 'Free Params Immediately',
-    flow_shift: 'Flow Shift',
+    force_sdxl_vae_conv_scale: 'Force SDXL VAE Conv Scale',
+    max_vram: 'Max VRAM (GiB)',
     weight_type: 'Weight Type',
     tensor_type_rules: 'Tensor Type Rules',
     rng_type: 'RNG Type',
     sampler_rng_type: 'Sampler RNG',
     prediction: 'Prediction',
     lora_apply_mode: 'LoRA Apply Mode',
-    vae_tiling: 'VAE Tiling',
-    vae_tile_size_x: 'VAE Tile X',
-    vae_tile_size_y: 'VAE Tile Y',
-    vae_tile_overlap: 'VAE Tile Overlap',
     chroma_use_dit_mask: 'Chroma DiT Mask',
     chroma_use_t5_mask: 'Chroma T5 Mask',
     chroma_t5_mask_pad: 'Chroma T5 Mask Pad',
-    offload_mode: 'Dynamic VRAM Mode',
-    offload_cond_stage: 'Offload Cond Stage',
-    offload_diffusion: 'Offload Diffusion',
-    reload_cond_stage: 'Reload Cond Stage',
-    reload_diffusion: 'Reload Diffusion',
-    log_offload_events: 'Log Offload Events',
-    min_offload_size_mb: 'Min Offload Size (MB)',
-    target_free_vram_mb: 'Target Free VRAM (MB)',
-    // Layer streaming tuning (only meaningful when offload_mode='layer_streaming')
-    streaming_prefetch_layers: 'Prefetch Layers',
-    streaming_keep_layers_behind: 'Keep Layers Behind',
-    streaming_min_free_vram_mb: 'Streaming Min VRAM (MB)'
+    vae_format: 'VAE Format',
+    circular_x: 'Circular X (tileable)',
+    circular_y: 'Circular Y (tileable)',
+    backend: 'Backend',
+    params_backend: 'Params Backend',
+    rpc_servers: 'RPC Servers',
+    qwen_image_zero_cond_t: 'Qwen-Image Zero Cond t',
+    stream_layers: 'Stream Layers'
   }
   return labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
 }
@@ -93,8 +81,8 @@ function formatOptionValue(value: unknown): string {
 
 // Important settings to show prominently
 const importantSettings = [
-  'weight_type', 'flash_attn', 'keep_clip_on_cpu', 'keep_vae_on_cpu',
-  'vae_tiling', 'offload_mode', 'lora_apply_mode'
+  'weight_type', 'flash_attn', 'max_vram', 'stream_layers',
+  'backend', 'params_backend', 'lora_apply_mode'
 ]
 </script>
 

@@ -652,6 +652,77 @@ static void reject_unknown_keys(const std::string& where,
     }
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Per-generation struct fillers shared between txt2img / img2img / txt2vid.
+// The 3 Params types deliberately carry identical field names for these
+// sections so a single template applies to all three.
+// ──────────────────────────────────────────────────────────────────────────
+
+template <typename ParamsT>
+static void apply_cache_params(sd_cache_params_t& cache, const ParamsT& p) {
+    // Upstream sd_cache_mode_t: DISABLED / EASYCACHE / UCACHE / DBCACHE /
+    // TAYLORSEER / CACHE_DIT / SPECTRUM. cache_mode is a free-form string
+    // here (rather than enum_field) so non-aligned modes round-trip cleanly
+    // from older queue_state.json files. Unknown strings → no-op (mode stays
+    // DISABLED) which is the safe default.
+    if (p.cache_mode == "easycache") {
+        cache.mode = SD_CACHE_EASYCACHE;
+        cache.reuse_threshold = p.easycache_threshold;
+        cache.start_percent   = p.easycache_start;
+        cache.end_percent     = p.easycache_end;
+    } else if (p.cache_mode == "ucache") {
+        cache.mode = SD_CACHE_UCACHE;
+        cache.reuse_threshold = p.easycache_threshold;
+        cache.start_percent   = p.easycache_start;
+        cache.end_percent     = p.easycache_end;
+    } else if (p.cache_mode == "dbcache") {
+        cache.mode = SD_CACHE_DBCACHE;
+        cache.reuse_threshold = p.easycache_threshold;
+        cache.start_percent   = p.easycache_start;
+        cache.end_percent     = p.easycache_end;
+    } else if (p.cache_mode == "taylorseer") {
+        cache.mode = SD_CACHE_TAYLORSEER;
+        cache.taylorseer_n_derivatives = p.taylorseer_n_derivatives;
+        cache.taylorseer_skip_interval = p.taylorseer_skip_interval;
+        cache.start_percent = p.easycache_start;
+        cache.end_percent   = p.easycache_end;
+    } else if (p.cache_mode == "cache_dit") {
+        cache.mode = SD_CACHE_CACHE_DIT;
+        cache.start_percent = p.easycache_start;
+        cache.end_percent   = p.easycache_end;
+    } else if (p.cache_mode == "spectrum") {
+        cache.mode = SD_CACHE_SPECTRUM;
+        cache.spectrum_w            = p.spectrum_w;
+        cache.spectrum_m            = p.spectrum_m;
+        cache.spectrum_lam          = p.spectrum_lam;
+        cache.spectrum_window_size  = p.spectrum_window_size;
+        cache.spectrum_flex_window  = p.spectrum_flex_window;
+        cache.spectrum_warmup_steps = p.spectrum_warmup_steps;
+        cache.spectrum_stop_percent = p.spectrum_stop_percent;
+    }
+    // mode == "" or unknown → leave cache.mode at SD_CACHE_DISABLED.
+}
+
+template <typename ParamsT>
+static void apply_hires_params(sd_hires_params_t& hires, const ParamsT& p) {
+    if (!p.hires_enabled) return;
+    hires.enabled              = true;
+    hires.upscaler             = str_to_sd_hires_upscaler(p.hires_upscaler.c_str());
+    hires.model_path           = p.hires_model_path.empty() ? nullptr : p.hires_model_path.c_str();
+    hires.scale                = p.hires_scale;
+    hires.target_width         = p.hires_target_width;
+    hires.target_height        = p.hires_target_height;
+    hires.steps                = p.hires_steps;
+    hires.denoising_strength   = p.hires_denoising_strength;
+    hires.upscale_tile_size    = p.hires_upscale_tile_size;
+}
+
+template <typename ParamsT>
+static void apply_tiling_rel_size(sd_tiling_params_t& tiling, const ParamsT& p) {
+    tiling.rel_size_x = p.vae_tile_rel_size_x;
+    tiling.rel_size_y = p.vae_tile_rel_size_y;
+}
+
 Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     Txt2ImgParams p;
 
@@ -661,8 +732,9 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     static const std::unordered_set<std::string> KNOWN = {
         "prompt", "negative_prompt", "sampler", "scheduler",
         "width", "height", "steps", "batch_count", "clip_skip",
-        "cfg_scale", "seed",
+        "cfg_scale", "img_cfg_scale", "seed",
         "distilled_guidance", "eta", "shifted_timestep", "flow_shift",
+        "extra_sample_args",
         "slg_scale", "skip_layers", "slg_start", "slg_end",
         "custom_sigmas",
         "ref_images", "auto_resize_ref_image", "increase_ref_index",
@@ -675,13 +747,19 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
         "ref_images_count",
         "control_strength", "control_image_base64",
         "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
+        "vae_tile_rel_size_x", "vae_tile_rel_size_y",
         "temporal_tiling", "extra_tiling_args",
         "cache_mode", "easycache",
         "easycache_threshold", "easycache_start", "easycache_end",
+        "taylorseer_n_derivatives", "taylorseer_skip_interval",
         "spectrum_w", "spectrum_m", "spectrum_lam",
         "spectrum_window_size", "spectrum_flex_window",
         "spectrum_warmup_steps", "spectrum_stop_percent",
         "pm_id_images", "pm_id_embed_path", "pm_style_strength",
+        "pulid_id_embedding_path", "pulid_id_weight",
+        "hires_enabled", "hires_upscaler", "hires_model_path",
+        "hires_scale", "hires_target_width", "hires_target_height",
+        "hires_steps", "hires_denoising_strength", "hires_upscale_tile_size",
         "upscale", "upscale_auto_unload", "upscale_repeats",
     };
     reject_unknown_keys("/txt2img body", j, KNOWN);
@@ -701,6 +779,7 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
 
     // Float parameters
     p.cfg_scale = parse_float(j, "cfg_scale", 7.0f);
+    p.img_cfg_scale = parse_float(j, "img_cfg_scale", -1.0f);
 
     // Seed (int64)
     p.seed = parse_int64(j, "seed", -1);
@@ -710,6 +789,7 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     p.eta = parse_float(j, "eta", 0.0f);
     p.shifted_timestep = parse_int(j, "shifted_timestep", 0);
     p.flow_shift = parse_float(j, "flow_shift", 3.0f);
+    p.extra_sample_args = parse_string(j, "extra_sample_args", "");
 
     // Skip Layer Guidance (SLG)
     p.slg_scale = parse_float(j, "slg_scale", 0.0f);
@@ -741,6 +821,8 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     p.vae_tile_size_x = parse_int(j, "vae_tile_size_x", 0);
     p.vae_tile_size_y = parse_int(j, "vae_tile_size_y", 0);
     p.vae_tile_overlap = parse_float(j, "vae_tile_overlap", 0.5f);
+    p.vae_tile_rel_size_x = parse_float(j, "vae_tile_rel_size_x", 0.0f);
+    p.vae_tile_rel_size_y = parse_float(j, "vae_tile_rel_size_y", 0.0f);
     p.temporal_tiling = parse_bool(j, "temporal_tiling", false);
     p.extra_tiling_args = parse_string(j, "extra_tiling_args", "");
 
@@ -752,6 +834,8 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     p.easycache_threshold = parse_float(j, "easycache_threshold", 0.2f);
     p.easycache_start = parse_float(j, "easycache_start", 0.15f);
     p.easycache_end = parse_float(j, "easycache_end", 0.95f);
+    p.taylorseer_n_derivatives = parse_int(j, "taylorseer_n_derivatives", 2);
+    p.taylorseer_skip_interval = parse_int(j, "taylorseer_skip_interval", 0);
     p.spectrum_w = parse_float(j, "spectrum_w", 0.5f);
     p.spectrum_m = parse_int(j, "spectrum_m", 5);
     p.spectrum_lam = parse_float(j, "spectrum_lam", 0.5f);
@@ -765,7 +849,22 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     p.pm_id_embed_path = parse_string(j, "pm_id_embed_path", "");
     p.pm_style_strength = parse_float(j, "pm_style_strength", 20.0f);
 
-    // Upscale options
+    // PuLID-Flux per-gen
+    p.pulid_id_embedding_path = parse_string(j, "pulid_id_embedding_path", "");
+    p.pulid_id_weight = parse_float(j, "pulid_id_weight", 1.0f);
+
+    // Built-in hi-res-fix (sd_hires_params_t)
+    p.hires_enabled = parse_bool(j, "hires_enabled", false);
+    p.hires_upscaler = parse_string(j, "hires_upscaler", "model");
+    p.hires_model_path = parse_string(j, "hires_model_path", "");
+    p.hires_scale = parse_float(j, "hires_scale", 2.0f);
+    p.hires_target_width = parse_int(j, "hires_target_width", 0);
+    p.hires_target_height = parse_int(j, "hires_target_height", 0);
+    p.hires_steps = parse_int(j, "hires_steps", 0);
+    p.hires_denoising_strength = parse_float(j, "hires_denoising_strength", 0.4f);
+    p.hires_upscale_tile_size = parse_int(j, "hires_upscale_tile_size", 0);
+
+    // Post-gen ESRGAN upscale (restapi orchestration, distinct from hires above)
     p.upscale = parse_bool(j, "upscale", false);
     p.upscale_auto_unload = parse_bool(j, "upscale_auto_unload", true);
     p.upscale_repeats = parse_int(j, "upscale_repeats", 1);
@@ -869,6 +968,7 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
         "width", "height", "steps", "batch_count", "clip_skip",
         "cfg_scale", "img_cfg_scale", "strength", "seed",
         "distilled_guidance", "eta", "shifted_timestep", "flow_shift",
+        "extra_sample_args",
         "slg_scale", "skip_layers", "slg_start", "slg_end",
         "custom_sigmas",
         "init_image_base64", "mask_image_base64",
@@ -878,13 +978,19 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
         "ref_images_count",
         "control_strength", "control_image_base64",
         "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
+        "vae_tile_rel_size_x", "vae_tile_rel_size_y",
         "temporal_tiling", "extra_tiling_args",
         "cache_mode", "easycache",
         "easycache_threshold", "easycache_start", "easycache_end",
+        "taylorseer_n_derivatives", "taylorseer_skip_interval",
         "spectrum_w", "spectrum_m", "spectrum_lam",
         "spectrum_window_size", "spectrum_flex_window",
         "spectrum_warmup_steps", "spectrum_stop_percent",
         "pm_id_images", "pm_id_embed_path", "pm_style_strength",
+        "pulid_id_embedding_path", "pulid_id_weight",
+        "hires_enabled", "hires_upscaler", "hires_model_path",
+        "hires_scale", "hires_target_width", "hires_target_height",
+        "hires_steps", "hires_denoising_strength", "hires_upscale_tile_size",
         "upscale", "upscale_auto_unload", "upscale_repeats",
     };
     reject_unknown_keys("/img2img body", j, KNOWN);
@@ -915,6 +1021,7 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     p.eta = parse_float(j, "eta", 0.0f);
     p.shifted_timestep = parse_int(j, "shifted_timestep", 0);
     p.flow_shift = parse_float(j, "flow_shift", 3.0f);
+    p.extra_sample_args = parse_string(j, "extra_sample_args", "");
 
     // Skip Layer Guidance (SLG)
     p.slg_scale = parse_float(j, "slg_scale", 0.0f);
@@ -967,6 +1074,8 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     p.vae_tile_size_x = parse_int(j, "vae_tile_size_x", 0);
     p.vae_tile_size_y = parse_int(j, "vae_tile_size_y", 0);
     p.vae_tile_overlap = parse_float(j, "vae_tile_overlap", 0.5f);
+    p.vae_tile_rel_size_x = parse_float(j, "vae_tile_rel_size_x", 0.0f);
+    p.vae_tile_rel_size_y = parse_float(j, "vae_tile_rel_size_y", 0.0f);
     p.temporal_tiling = parse_bool(j, "temporal_tiling", false);
     p.extra_tiling_args = parse_string(j, "extra_tiling_args", "");
 
@@ -978,6 +1087,8 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     p.easycache_threshold = parse_float(j, "easycache_threshold", 0.2f);
     p.easycache_start = parse_float(j, "easycache_start", 0.15f);
     p.easycache_end = parse_float(j, "easycache_end", 0.95f);
+    p.taylorseer_n_derivatives = parse_int(j, "taylorseer_n_derivatives", 2);
+    p.taylorseer_skip_interval = parse_int(j, "taylorseer_skip_interval", 0);
     p.spectrum_w = parse_float(j, "spectrum_w", 0.5f);
     p.spectrum_m = parse_int(j, "spectrum_m", 5);
     p.spectrum_lam = parse_float(j, "spectrum_lam", 0.5f);
@@ -991,7 +1102,22 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     p.pm_id_embed_path = parse_string(j, "pm_id_embed_path", "");
     p.pm_style_strength = parse_float(j, "pm_style_strength", 20.0f);
 
-    // Upscale options
+    // PuLID-Flux per-gen
+    p.pulid_id_embedding_path = parse_string(j, "pulid_id_embedding_path", "");
+    p.pulid_id_weight = parse_float(j, "pulid_id_weight", 1.0f);
+
+    // Built-in hi-res-fix (sd_hires_params_t)
+    p.hires_enabled = parse_bool(j, "hires_enabled", false);
+    p.hires_upscaler = parse_string(j, "hires_upscaler", "model");
+    p.hires_model_path = parse_string(j, "hires_model_path", "");
+    p.hires_scale = parse_float(j, "hires_scale", 2.0f);
+    p.hires_target_width = parse_int(j, "hires_target_width", 0);
+    p.hires_target_height = parse_int(j, "hires_target_height", 0);
+    p.hires_steps = parse_int(j, "hires_steps", 0);
+    p.hires_denoising_strength = parse_float(j, "hires_denoising_strength", 0.4f);
+    p.hires_upscale_tile_size = parse_int(j, "hires_upscale_tile_size", 0);
+
+    // Post-gen ESRGAN upscale (restapi orchestration, distinct from hires above)
     p.upscale = parse_bool(j, "upscale", false);
     p.upscale_auto_unload = parse_bool(j, "upscale_auto_unload", true);
     p.upscale_repeats = parse_int(j, "upscale_repeats", 1);
@@ -1100,22 +1226,37 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     static const std::unordered_set<std::string> KNOWN = {
         "prompt", "negative_prompt", "sampler", "scheduler",
         "width", "height", "video_frames", "fps", "steps",
-        "cfg_scale", "distilled_guidance", "eta", "flow_shift", "seed",
+        "cfg_scale", "img_cfg_scale",
+        "distilled_guidance", "eta", "shifted_timestep", "flow_shift", "seed",
+        "extra_sample_args", "custom_sigmas",
         "clip_skip",
         "slg_scale", "skip_layers", "slg_start", "slg_end",
         "init_image_base64", "end_image_base64",
         "control_image_base64", "control_frames", "vace_strength",
         "strength",
-        // High-noise (MoE) variants
-        "high_noise_steps", "high_noise_cfg_scale",
-        "high_noise_distilled_guidance", "high_noise_sampler",
+        // High-noise (MoE) variants — full sample_params parity
+        "high_noise_steps", "high_noise_cfg_scale", "high_noise_img_cfg",
+        "high_noise_distilled_guidance", "high_noise_sampler", "high_noise_scheduler",
+        "high_noise_eta", "high_noise_shifted_timestep", "high_noise_flow_shift",
+        "high_noise_extra_sample_args", "high_noise_custom_sigmas",
         "high_noise_slg_scale", "high_noise_skip_layers",
         "high_noise_slg_start", "high_noise_slg_end",
         "moe_boundary",
-        // VAE tiling (was always parsed but missing from the known-keys allowlist —
-        // reject_unknown_keys would 400 any txt2vid request that set it).
+        // VAE tiling
         "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
+        "vae_tile_rel_size_x", "vae_tile_rel_size_y",
         "temporal_tiling", "extra_tiling_args",
+        // Cache acceleration (parity with image side)
+        "cache_mode", "easycache",
+        "easycache_threshold", "easycache_start", "easycache_end",
+        "taylorseer_n_derivatives", "taylorseer_skip_interval",
+        "spectrum_w", "spectrum_m", "spectrum_lam",
+        "spectrum_window_size", "spectrum_flex_window",
+        "spectrum_warmup_steps", "spectrum_stop_percent",
+        // Built-in hi-res-fix
+        "hires_enabled", "hires_upscaler", "hires_model_path",
+        "hires_scale", "hires_target_width", "hires_target_height",
+        "hires_steps", "hires_denoising_strength", "hires_upscale_tile_size",
     };
     reject_unknown_keys("/txt2vid body", j, KNOWN);
 
@@ -1135,6 +1276,7 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
 
     // Float parameters
     p.cfg_scale = parse_float(j, "cfg_scale", 6.0f);
+    p.img_cfg_scale = parse_float(j, "img_cfg_scale", -1.0f);
     p.flow_shift = parse_float(j, "flow_shift", 3.0f);
     p.strength = parse_float(j, "strength", 0.75f);
 
@@ -1144,6 +1286,9 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     // Advanced guidance parameters
     p.distilled_guidance = parse_float(j, "distilled_guidance", 3.5f);
     p.eta = parse_float(j, "eta", 0.0f);
+    p.shifted_timestep = parse_int(j, "shifted_timestep", 0);
+    p.extra_sample_args = parse_string(j, "extra_sample_args", "");
+    p.custom_sigmas = parse_float_array(j, "custom_sigmas");
 
     // Skip Layer Guidance (SLG)
     p.slg_scale = parse_float(j, "slg_scale", 0.0f);
@@ -1184,10 +1329,17 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     // Multiple control frames
     p.control_frames_base64 = parse_string_array(j, "control_frames");
 
-    // High-noise phase parameters (MoE models)
+    // High-noise phase parameters (MoE models) — full sample_params parity
     p.high_noise_steps = parse_int(j, "high_noise_steps", -1);
     p.high_noise_cfg_scale = parse_float(j, "high_noise_cfg_scale", 7.0f);
+    p.high_noise_img_cfg = parse_float(j, "high_noise_img_cfg", -1.0f);
     p.high_noise_sampler = parse_string(j, "high_noise_sampler", "");
+    p.high_noise_scheduler = parse_string(j, "high_noise_scheduler", "");
+    p.high_noise_eta = parse_float(j, "high_noise_eta", 0.0f);
+    p.high_noise_shifted_timestep = parse_int(j, "high_noise_shifted_timestep", 0);
+    p.high_noise_flow_shift = parse_float(j, "high_noise_flow_shift", 0.0f);
+    p.high_noise_extra_sample_args = parse_string(j, "high_noise_extra_sample_args", "");
+    p.high_noise_custom_sigmas = parse_float_array(j, "high_noise_custom_sigmas");
     p.high_noise_distilled_guidance = parse_float(j, "high_noise_distilled_guidance", 3.5f);
     p.high_noise_slg_scale = parse_float(j, "high_noise_slg_scale", 0.0f);
     p.high_noise_skip_layers = parse_int_array(j, "high_noise_skip_layers", {7, 8, 9});
@@ -1204,6 +1356,8 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     p.easycache_threshold = parse_float(j, "easycache_threshold", 0.2f);
     p.easycache_start = parse_float(j, "easycache_start", 0.15f);
     p.easycache_end = parse_float(j, "easycache_end", 0.95f);
+    p.taylorseer_n_derivatives = parse_int(j, "taylorseer_n_derivatives", 2);
+    p.taylorseer_skip_interval = parse_int(j, "taylorseer_skip_interval", 0);
     p.spectrum_w = parse_float(j, "spectrum_w", 0.5f);
     p.spectrum_m = parse_int(j, "spectrum_m", 5);
     p.spectrum_lam = parse_float(j, "spectrum_lam", 0.5f);
@@ -1217,8 +1371,21 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     p.vae_tile_size_x = parse_int(j, "vae_tile_size_x", 0);
     p.vae_tile_size_y = parse_int(j, "vae_tile_size_y", 0);
     p.vae_tile_overlap = parse_float(j, "vae_tile_overlap", 0.5f);
+    p.vae_tile_rel_size_x = parse_float(j, "vae_tile_rel_size_x", 0.0f);
+    p.vae_tile_rel_size_y = parse_float(j, "vae_tile_rel_size_y", 0.0f);
     p.temporal_tiling = parse_bool(j, "temporal_tiling", false);
     p.extra_tiling_args = parse_string(j, "extra_tiling_args", "");
+
+    // Built-in hi-res-fix (sd_hires_params_t)
+    p.hires_enabled = parse_bool(j, "hires_enabled", false);
+    p.hires_upscaler = parse_string(j, "hires_upscaler", "model");
+    p.hires_model_path = parse_string(j, "hires_model_path", "");
+    p.hires_scale = parse_float(j, "hires_scale", 2.0f);
+    p.hires_target_width = parse_int(j, "hires_target_width", 0);
+    p.hires_target_height = parse_int(j, "hires_target_height", 0);
+    p.hires_steps = parse_int(j, "hires_steps", 0);
+    p.hires_denoising_strength = parse_float(j, "hires_denoising_strength", 0.4f);
+    p.hires_upscale_tile_size = parse_int(j, "hires_upscale_tile_size", 0);
 
     return p;
 }
@@ -1485,12 +1652,16 @@ std::vector<std::string> SDWrapper::generate_txt2img(
     // Sample parameters
     gen_params.sample_params.sample_steps = params.steps;
     gen_params.sample_params.guidance.txt_cfg = params.cfg_scale;
+    gen_params.sample_params.guidance.img_cfg = (params.img_cfg_scale < 0) ? params.cfg_scale : params.img_cfg_scale;
     gen_params.sample_params.guidance.distilled_guidance = params.distilled_guidance;
     gen_params.sample_params.sample_method = str_to_sample_method(params.sampler.c_str());
     gen_params.sample_params.scheduler = str_to_scheduler(params.scheduler.c_str());
     gen_params.sample_params.eta = params.eta;
     gen_params.sample_params.shifted_timestep = params.shifted_timestep;
     gen_params.sample_params.flow_shift = params.flow_shift;
+    if (!params.extra_sample_args.empty()) {
+        gen_params.sample_params.extra_sample_args = params.extra_sample_args.c_str();
+    }
 
     // Custom sigmas
     if (!params.custom_sigmas.empty()) {
@@ -1553,22 +1724,11 @@ std::vector<std::string> SDWrapper::generate_txt2img(
         gen_params.control_image.data = nullptr;
     }
 
-    // Cache acceleration for DiT models
-    if (params.cache_mode == "easycache") {
-        gen_params.cache.mode = SD_CACHE_EASYCACHE;
-        gen_params.cache.reuse_threshold = params.easycache_threshold;
-        gen_params.cache.start_percent = params.easycache_start;
-        gen_params.cache.end_percent = params.easycache_end;
-    } else if (params.cache_mode == "spectrum") {
-        gen_params.cache.mode = SD_CACHE_SPECTRUM;
-        gen_params.cache.spectrum_w = params.spectrum_w;
-        gen_params.cache.spectrum_m = params.spectrum_m;
-        gen_params.cache.spectrum_lam = params.spectrum_lam;
-        gen_params.cache.spectrum_window_size = params.spectrum_window_size;
-        gen_params.cache.spectrum_flex_window = params.spectrum_flex_window;
-        gen_params.cache.spectrum_warmup_steps = params.spectrum_warmup_steps;
-        gen_params.cache.spectrum_stop_percent = params.spectrum_stop_percent;
-    }
+    // Cache acceleration for DiT models — all 6 upstream modes via helper
+    apply_cache_params(gen_params.cache, params);
+
+    // Built-in hi-res-fix (sd_hires_params_t) — distinct from post-gen ESRGAN
+    apply_hires_params(gen_params.hires, params);
 
     // VAE tiling support
     if (params.vae_tiling) {
@@ -1579,6 +1739,13 @@ std::vector<std::string> SDWrapper::generate_txt2img(
         gen_params.vae_tiling_params.temporal_tiling = params.temporal_tiling;
         gen_params.vae_tiling_params.extra_tiling_args =
             params.extra_tiling_args.empty() ? nullptr : params.extra_tiling_args.c_str();
+        apply_tiling_rel_size(gen_params.vae_tiling_params, params);
+    }
+
+    // PuLID-Flux identity injection (requires pulid_weights loaded)
+    if (!params.pulid_id_embedding_path.empty()) {
+        gen_params.pulid_params.id_embedding_path = params.pulid_id_embedding_path.c_str();
+        gen_params.pulid_params.id_weight         = params.pulid_id_weight;
     }
 
     // PhotoMaker support
@@ -1723,6 +1890,9 @@ std::vector<std::string> SDWrapper::generate_img2img(
     gen_params.sample_params.eta = params.eta;
     gen_params.sample_params.shifted_timestep = params.shifted_timestep;
     gen_params.sample_params.flow_shift = params.flow_shift;
+    if (!params.extra_sample_args.empty()) {
+        gen_params.sample_params.extra_sample_args = params.extra_sample_args.c_str();
+    }
 
     // Custom sigmas
     if (!params.custom_sigmas.empty()) {
@@ -1878,22 +2048,11 @@ std::vector<std::string> SDWrapper::generate_img2img(
         gen_params.control_image.data = nullptr;
     }
 
-    // Cache acceleration for DiT models
-    if (params.cache_mode == "easycache") {
-        gen_params.cache.mode = SD_CACHE_EASYCACHE;
-        gen_params.cache.reuse_threshold = params.easycache_threshold;
-        gen_params.cache.start_percent = params.easycache_start;
-        gen_params.cache.end_percent = params.easycache_end;
-    } else if (params.cache_mode == "spectrum") {
-        gen_params.cache.mode = SD_CACHE_SPECTRUM;
-        gen_params.cache.spectrum_w = params.spectrum_w;
-        gen_params.cache.spectrum_m = params.spectrum_m;
-        gen_params.cache.spectrum_lam = params.spectrum_lam;
-        gen_params.cache.spectrum_window_size = params.spectrum_window_size;
-        gen_params.cache.spectrum_flex_window = params.spectrum_flex_window;
-        gen_params.cache.spectrum_warmup_steps = params.spectrum_warmup_steps;
-        gen_params.cache.spectrum_stop_percent = params.spectrum_stop_percent;
-    }
+    // Cache acceleration for DiT models — all 6 upstream modes via helper
+    apply_cache_params(gen_params.cache, params);
+
+    // Built-in hi-res-fix (sd_hires_params_t) — distinct from post-gen ESRGAN
+    apply_hires_params(gen_params.hires, params);
 
     // VAE tiling support
     if (params.vae_tiling) {
@@ -1904,6 +2063,13 @@ std::vector<std::string> SDWrapper::generate_img2img(
         gen_params.vae_tiling_params.temporal_tiling = params.temporal_tiling;
         gen_params.vae_tiling_params.extra_tiling_args =
             params.extra_tiling_args.empty() ? nullptr : params.extra_tiling_args.c_str();
+        apply_tiling_rel_size(gen_params.vae_tiling_params, params);
+    }
+
+    // PuLID-Flux identity injection (requires pulid_weights loaded)
+    if (!params.pulid_id_embedding_path.empty()) {
+        gen_params.pulid_params.id_embedding_path = params.pulid_id_embedding_path.c_str();
+        gen_params.pulid_params.id_weight         = params.pulid_id_weight;
     }
 
     // PhotoMaker support
@@ -2008,7 +2174,10 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
     vid_params.width = params.width;
     vid_params.height = params.height;
     vid_params.video_frames = params.video_frames;
-    // Note: fps is stored for metadata but not passed to sd.cpp
+    // Upstream sd_vid_gen_params_t.fps used by encoders that produce a real
+    // video container; for raw frame output it's metadata. Was silently dropped
+    // before — now actually plumbed.
+    vid_params.fps = params.fps;
     vid_params.seed = params.seed;
     vid_params.clip_skip = params.clip_skip;
     vid_params.strength = params.strength;
@@ -2018,11 +2187,22 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
     // Sample parameters
     vid_params.sample_params.sample_steps = params.steps;
     vid_params.sample_params.guidance.txt_cfg = params.cfg_scale;
+    vid_params.sample_params.guidance.img_cfg = (params.img_cfg_scale < 0) ? params.cfg_scale : params.img_cfg_scale;
     vid_params.sample_params.guidance.distilled_guidance = params.distilled_guidance;
     vid_params.sample_params.sample_method = str_to_sample_method(params.sampler.c_str());
     vid_params.sample_params.scheduler = str_to_scheduler(params.scheduler.c_str());
     vid_params.sample_params.eta = params.eta;
+    vid_params.sample_params.shifted_timestep = params.shifted_timestep;
     vid_params.sample_params.flow_shift = params.flow_shift;
+    if (!params.extra_sample_args.empty()) {
+        vid_params.sample_params.extra_sample_args = params.extra_sample_args.c_str();
+    }
+
+    // Custom sigmas
+    if (!params.custom_sigmas.empty()) {
+        vid_params.sample_params.custom_sigmas = const_cast<float*>(params.custom_sigmas.data());
+        vid_params.sample_params.custom_sigmas_count = static_cast<int>(params.custom_sigmas.size());
+    }
 
     // Skip Layer Guidance (SLG)
     if (params.slg_scale > 0.0f) {
@@ -2033,21 +2213,39 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
         vid_params.sample_params.guidance.slg.layer_end = params.slg_end;
     }
 
-    // High-noise sample parameters (MoE models)
+    // High-noise sample parameters (MoE models) — full sd_sample_params_t parity
     if (params.high_noise_steps > 0) {
-        vid_params.high_noise_sample_params.sample_steps = params.high_noise_steps;
-        vid_params.high_noise_sample_params.guidance.txt_cfg = params.high_noise_cfg_scale;
-        vid_params.high_noise_sample_params.guidance.distilled_guidance = params.high_noise_distilled_guidance;
+        auto& hn = vid_params.high_noise_sample_params;
+        hn.sample_steps                = params.high_noise_steps;
+        hn.guidance.txt_cfg            = params.high_noise_cfg_scale;
+        hn.guidance.img_cfg            = (params.high_noise_img_cfg < 0) ? params.high_noise_cfg_scale : params.high_noise_img_cfg;
+        hn.guidance.distilled_guidance = params.high_noise_distilled_guidance;
         if (!params.high_noise_sampler.empty()) {
-            vid_params.high_noise_sample_params.sample_method = str_to_sample_method(params.high_noise_sampler.c_str());
+            hn.sample_method = str_to_sample_method(params.high_noise_sampler.c_str());
+        }
+        if (!params.high_noise_scheduler.empty()) {
+            hn.scheduler = str_to_scheduler(params.high_noise_scheduler.c_str());
+        }
+        hn.eta              = params.high_noise_eta;
+        hn.shifted_timestep = params.high_noise_shifted_timestep;
+        // flow_shift=0 means "inherit main pass" — leave hn.flow_shift at its init default.
+        if (params.high_noise_flow_shift != 0.0f) {
+            hn.flow_shift = params.high_noise_flow_shift;
+        }
+        if (!params.high_noise_extra_sample_args.empty()) {
+            hn.extra_sample_args = params.high_noise_extra_sample_args.c_str();
+        }
+        if (!params.high_noise_custom_sigmas.empty()) {
+            hn.custom_sigmas       = const_cast<float*>(params.high_noise_custom_sigmas.data());
+            hn.custom_sigmas_count = static_cast<int>(params.high_noise_custom_sigmas.size());
         }
         // High-noise SLG
         if (params.high_noise_slg_scale > 0.0f) {
-            vid_params.high_noise_sample_params.guidance.slg.scale = params.high_noise_slg_scale;
-            vid_params.high_noise_sample_params.guidance.slg.layers = const_cast<int*>(params.high_noise_skip_layers.data());
-            vid_params.high_noise_sample_params.guidance.slg.layer_count = static_cast<uint32_t>(params.high_noise_skip_layers.size());
-            vid_params.high_noise_sample_params.guidance.slg.layer_start = params.high_noise_slg_start;
-            vid_params.high_noise_sample_params.guidance.slg.layer_end = params.high_noise_slg_end;
+            hn.guidance.slg.scale       = params.high_noise_slg_scale;
+            hn.guidance.slg.layers      = const_cast<int*>(params.high_noise_skip_layers.data());
+            hn.guidance.slg.layer_count = static_cast<uint32_t>(params.high_noise_skip_layers.size());
+            hn.guidance.slg.layer_start = params.high_noise_slg_start;
+            hn.guidance.slg.layer_end   = params.high_noise_slg_end;
         }
     }
 
@@ -2107,22 +2305,11 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
         vid_params.control_frames_size = 0;
     }
 
-    // Cache acceleration for DiT models
-    if (params.cache_mode == "easycache") {
-        vid_params.cache.mode = SD_CACHE_EASYCACHE;
-        vid_params.cache.reuse_threshold = params.easycache_threshold;
-        vid_params.cache.start_percent = params.easycache_start;
-        vid_params.cache.end_percent = params.easycache_end;
-    } else if (params.cache_mode == "spectrum") {
-        vid_params.cache.mode = SD_CACHE_SPECTRUM;
-        vid_params.cache.spectrum_w = params.spectrum_w;
-        vid_params.cache.spectrum_m = params.spectrum_m;
-        vid_params.cache.spectrum_lam = params.spectrum_lam;
-        vid_params.cache.spectrum_window_size = params.spectrum_window_size;
-        vid_params.cache.spectrum_flex_window = params.spectrum_flex_window;
-        vid_params.cache.spectrum_warmup_steps = params.spectrum_warmup_steps;
-        vid_params.cache.spectrum_stop_percent = params.spectrum_stop_percent;
-    }
+    // Cache acceleration — all 6 upstream modes via shared helper
+    apply_cache_params(vid_params.cache, params);
+
+    // Built-in hi-res-fix
+    apply_hires_params(vid_params.hires, params);
 
     // VAE tiling for large videos. temporal_tiling on the video path is the
     // common case — LTX 2.3 et al. split along the time axis as well as XY.
@@ -2134,6 +2321,7 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
         vid_params.vae_tiling_params.temporal_tiling = params.temporal_tiling;
         vid_params.vae_tiling_params.extra_tiling_args =
             params.extra_tiling_args.empty() ? nullptr : params.extra_tiling_args.c_str();
+        apply_tiling_rel_size(vid_params.vae_tiling_params, params);
     }
 
     // Generate video frames.

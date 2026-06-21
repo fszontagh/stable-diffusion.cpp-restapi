@@ -52,6 +52,7 @@ struct Txt2ImgParams {
     int height = 512;
     int steps = 20;
     float cfg_scale = 7.0f;
+    float img_cfg_scale = -1.0f;        // -1 = use cfg_scale (upstream sd_guidance_params_t.img_cfg)
     int64_t seed = -1;
     std::string sampler = "euler_a";
     std::string scheduler = "discrete";
@@ -63,6 +64,7 @@ struct Txt2ImgParams {
     float eta = 0.0f;                   // For DDIM/TCD samplers
     int shifted_timestep = 0;           // For NitroFusion models (250-500)
     float flow_shift = 3.0f;            // Flow shift for Flux models
+    std::string extra_sample_args;      // Pass-through key=value list for sd.cpp's sample arg parser
 
     // Skip Layer Guidance (SLG) for DiT models
     float slg_scale = 0.0f;             // 0 = disabled, 2.5 for SD3.5 medium
@@ -90,15 +92,20 @@ struct Txt2ImgParams {
     int vae_tile_size_x = 0;            // 0 = auto
     int vae_tile_size_y = 0;
     float vae_tile_overlap = 0.5f;
+    float vae_tile_rel_size_x = 0.0f;   // 0 = use absolute tile_size_x; >0 = relative to image
+    float vae_tile_rel_size_y = 0.0f;
     bool temporal_tiling = false;       // LTX video: split the time axis into tiles too
     std::string extra_tiling_args = ""; // Pass-through key=value list for sd.cpp's tiling parser
 
-    // Cache acceleration for DiT models (optional)
-    std::string cache_mode = "";                    // "", "easycache", "spectrum"
-    float easycache_threshold = 0.2f;
-    float easycache_start = 0.15f;
-    float easycache_end = 0.95f;
-    float spectrum_w = 0.5f;
+    // Cache acceleration for DiT models. Upstream sd_cache_mode_t modes:
+    // "", "easycache", "ucache", "dbcache", "taylorseer", "cache_dit", "spectrum"
+    std::string cache_mode = "";
+    float easycache_threshold = 0.2f;   // EASYCACHE: also used as the shared reuse_threshold
+    float easycache_start = 0.15f;      // SHARED start_percent for modes that use it
+    float easycache_end = 0.95f;        // SHARED end_percent for modes that use it
+    int taylorseer_n_derivatives = 2;   // TAYLORSEER
+    int taylorseer_skip_interval = 0;   // TAYLORSEER
+    float spectrum_w = 0.5f;            // SPECTRUM
     int spectrum_m = 5;
     float spectrum_lam = 0.5f;
     int spectrum_window_size = 3;
@@ -110,6 +117,25 @@ struct Txt2ImgParams {
     std::vector<std::string> pm_id_images_base64;  // Array of base64-encoded ID images
     std::string pm_id_embed_path;                   // Path to ID embedding file
     float pm_style_strength = 20.0f;                // Style strength (default 20)
+
+    // PuLID-Flux identity injection per-generation (sd_pulid_params_t).
+    // Requires pulid_weights loaded on the model.
+    std::string pulid_id_embedding_path;
+    float pulid_id_weight = 1.0f;
+
+    // Built-in hi-res-fix (sd_hires_params_t). Distinct from the post-gen
+    // ESRGAN `upscale` flag below — this is sd.cpp's native two-pass refine.
+    bool hires_enabled = false;
+    std::string hires_upscaler = "model"; // sd_hires_upscaler_t: none, latent, latent_nearest,
+                                          // latent_nearest_exact, latent_antialiased, latent_bicubic,
+                                          // latent_bicubic_antialiased, lanczos, nearest, model
+    std::string hires_model_path;         // ESRGAN/upscaler path when hires_upscaler == "model"
+    float hires_scale = 2.0f;
+    int hires_target_width = 0;           // 0 = derive from scale
+    int hires_target_height = 0;
+    int hires_steps = 0;                  // 0 = inherit main steps
+    float hires_denoising_strength = 0.4f;
+    int hires_upscale_tile_size = 0;
 
     // Upscaling (optional - requires upscaler loaded)
     bool upscale = false;               // Enable upscaling after generation
@@ -150,6 +176,7 @@ struct Img2ImgParams {
     float eta = 0.0f;                   // For DDIM/TCD samplers
     int shifted_timestep = 0;           // For NitroFusion models (250-500)
     float flow_shift = 3.0f;            // Flow shift for Flux models
+    std::string extra_sample_args;      // Pass-through key=value list for sd.cpp's sample arg parser
 
     // Skip Layer Guidance (SLG) for DiT models
     float slg_scale = 0.0f;             // 0 = disabled, 2.5 for SD3.5 medium
@@ -182,14 +209,18 @@ struct Img2ImgParams {
     int vae_tile_size_x = 0;            // 0 = auto
     int vae_tile_size_y = 0;
     float vae_tile_overlap = 0.5f;
+    float vae_tile_rel_size_x = 0.0f;
+    float vae_tile_rel_size_y = 0.0f;
     bool temporal_tiling = false;       // LTX video: split the time axis into tiles too
     std::string extra_tiling_args = ""; // Pass-through key=value list for sd.cpp's tiling parser
 
-    // Cache acceleration for DiT models (optional)
-    std::string cache_mode = "";                    // "", "easycache", "spectrum"
+    // Cache acceleration — see Txt2ImgParams above for the full mode docs.
+    std::string cache_mode = "";
     float easycache_threshold = 0.2f;
     float easycache_start = 0.15f;
     float easycache_end = 0.95f;
+    int taylorseer_n_derivatives = 2;
+    int taylorseer_skip_interval = 0;
     float spectrum_w = 0.5f;
     int spectrum_m = 5;
     float spectrum_lam = 0.5f;
@@ -202,6 +233,21 @@ struct Img2ImgParams {
     std::vector<std::string> pm_id_images_base64;  // Array of base64-encoded ID images
     std::string pm_id_embed_path;                   // Path to ID embedding file
     float pm_style_strength = 20.0f;                // Style strength (default 20)
+
+    // PuLID-Flux per-gen
+    std::string pulid_id_embedding_path;
+    float pulid_id_weight = 1.0f;
+
+    // Built-in hi-res-fix (sd_hires_params_t)
+    bool hires_enabled = false;
+    std::string hires_upscaler = "model";
+    std::string hires_model_path;
+    float hires_scale = 2.0f;
+    int hires_target_width = 0;
+    int hires_target_height = 0;
+    int hires_steps = 0;
+    float hires_denoising_strength = 0.4f;
+    int hires_upscale_tile_size = 0;
 
     // Upscaling (optional - requires upscaler loaded)
     bool upscale = false;               // Enable upscaling after generation
@@ -243,6 +289,7 @@ struct Txt2VidParams {
     int fps = 16;                       // Video FPS
     int steps = 30;
     float cfg_scale = 6.0f;
+    float img_cfg_scale = -1.0f;        // -1 = use cfg_scale (upstream sd_guidance_params_t.img_cfg)
     int64_t seed = -1;
     std::string sampler = "euler";
     std::string scheduler = "discrete";
@@ -252,6 +299,9 @@ struct Txt2VidParams {
     // Advanced guidance parameters
     float distilled_guidance = 3.5f;    // For Flux/distilled models
     float eta = 0.0f;                   // For DDIM/TCD samplers
+    int shifted_timestep = 0;           // For NitroFusion models (250-500)
+    std::string extra_sample_args;      // Pass-through key=value list for sd.cpp's sample arg parser
+    std::vector<float> custom_sigmas;   // Custom sigma schedule (overrides scheduler)
 
     // Skip Layer Guidance (SLG) for DiT models
     float slg_scale = 0.0f;
@@ -278,11 +328,23 @@ struct Txt2VidParams {
     int control_image_channels = 3;
     std::vector<std::string> control_frames_base64;  // Multiple control frames
 
-    // High-noise phase parameters (MoE models like Wan2.2)
+    // High-noise phase parameters (MoE models like Wan2.2). Aligned with
+    // upstream's full sd_sample_params_t — the previous version only mirrored
+    // a subset (steps, cfg, sampler, distilled_guidance, SLG). The new fields
+    // give the high-noise pass independent control over scheduler/eta/sigmas/
+    // flow_shift/img_cfg/shifted_timestep/extra_sample_args, matching the
+    // main-pass surface.
     int high_noise_steps = -1;          // -1 = auto
     float high_noise_cfg_scale = 7.0f;
+    float high_noise_img_cfg = -1.0f;   // -1 = inherit
     std::string high_noise_sampler = "";  // Empty = use main sampler
+    std::string high_noise_scheduler = ""; // Empty = use main scheduler
     float high_noise_distilled_guidance = 3.5f;
+    float high_noise_eta = 0.0f;
+    int high_noise_shifted_timestep = 0;
+    float high_noise_flow_shift = 0.0f;  // 0 = inherit main flow_shift
+    std::string high_noise_extra_sample_args;
+    std::vector<float> high_noise_custom_sigmas;
     float high_noise_slg_scale = 0.0f;
     std::vector<int> high_noise_skip_layers = {7, 8, 9};
     float high_noise_slg_start = 0.01f;
@@ -295,14 +357,18 @@ struct Txt2VidParams {
     int vae_tile_size_x = 0;            // 0 = auto
     int vae_tile_size_y = 0;
     float vae_tile_overlap = 0.5f;
+    float vae_tile_rel_size_x = 0.0f;
+    float vae_tile_rel_size_y = 0.0f;
     bool temporal_tiling = false;       // LTX video: split the time axis into tiles too
     std::string extra_tiling_args = ""; // Pass-through key=value list for sd.cpp's tiling parser
 
-    // Cache acceleration for DiT models (optional)
-    std::string cache_mode = "";                    // "", "easycache", "spectrum"
+    // Cache acceleration — see Txt2ImgParams above for the full mode docs.
+    std::string cache_mode = "";
     float easycache_threshold = 0.2f;
     float easycache_start = 0.15f;
     float easycache_end = 0.95f;
+    int taylorseer_n_derivatives = 2;
+    int taylorseer_skip_interval = 0;
     float spectrum_w = 0.5f;
     int spectrum_m = 5;
     float spectrum_lam = 0.5f;
@@ -310,6 +376,17 @@ struct Txt2VidParams {
     float spectrum_flex_window = 0.5f;
     int spectrum_warmup_steps = 2;
     float spectrum_stop_percent = 0.8f;
+
+    // Built-in hi-res-fix (sd_hires_params_t) — same as image side
+    bool hires_enabled = false;
+    std::string hires_upscaler = "model";
+    std::string hires_model_path;
+    float hires_scale = 2.0f;
+    int hires_target_width = 0;
+    int hires_target_height = 0;
+    int hires_steps = 0;
+    float hires_denoising_strength = 0.4f;
+    int hires_upscale_tile_size = 0;
 
     static Txt2VidParams from_json(const nlohmann::json& j);
     nlohmann::json to_json() const;

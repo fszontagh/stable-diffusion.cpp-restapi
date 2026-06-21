@@ -256,23 +256,17 @@ json McpServer::handle_list_tools() {
         // Load options (flat — handler routes these into nested 'options')
         {"flash_attn", {{"type", "boolean"}, {"description", "Enable Flash Attention (default true)"}}},
         {"n_threads", {{"type", "integer"}, {"description", "CPU threads, -1 = auto (default -1)"}}},
-        {"keep_clip_on_cpu", {{"type", "boolean"}, {"description", "Keep CLIP on CPU RAM to save VRAM (default true)"}}},
-        {"keep_vae_on_cpu", {{"type", "boolean"}, {"description", "Keep VAE on CPU RAM to save VRAM (default false)"}}},
-        {"keep_controlnet_on_cpu", {{"type", "boolean"}, {"description", "Keep ControlNet on CPU (default false)"}}},
-        {"offload_to_cpu", {{"type", "boolean"}, {"description", "Offload parts of model to CPU when idle (default false)"}}},
         {"enable_mmap", {{"type", "boolean"}, {"description", "Memory-map weight files (default true)"}}},
-        {"vae_decode_only", {{"type", "boolean"}, {"description", "Drop VAE encoder to save memory (default false)"}}},
-        {"vae_tiling", {{"type", "boolean"}, {"description", "Enable VAE tiling for large images (default false)"}}},
-        {"vae_tile_size_x", {{"type", "integer"}, {"description", "VAE tile width, 0 = auto"}}},
-        {"vae_tile_size_y", {{"type", "integer"}, {"description", "VAE tile height, 0 = auto"}}},
-        {"vae_tile_overlap", {{"type", "number"}, {"description", "VAE tile overlap ratio (0.0-1.0)"}}},
         {"weight_type", {{"type", "string"}, {"description", "Force weight quantization: f32, f16, bf16, q8_0, q4_0, q4_k, q5_k, q6_k, nvfp4, ..."}}},
         {"tensor_type_rules", {{"type", "string"}, {"description", "Per-tensor weight regex rules, e.g. '^vae\\.=f16'"}}},
-        {"flow_shift", {{"type", "number"}, {"description", "Flow-matching shift (omit for auto)"}}},
         {"rng_type", {{"type", "string"}, {"enum", {"cuda", "cpu", "std_default"}}, {"description", "RNG type (default cuda)"}}},
         {"prediction", {{"type", "string"}, {"description", "Override prediction type: eps, v, edm_v, sd3_flow, flux_flow, flux2_flow"}}},
         {"lora_apply_mode", {{"type", "string"}, {"enum", {"auto", "immediately", "at_runtime", "runtime"}}, {"description", "LoRA application mode"}}},
-        {"free_params_immediately", {{"type", "boolean"}, {"description", "Drop weights after one generation (default false)"}}}
+        {"qwen_image_zero_cond_t", {{"type", "boolean"}, {"description", "Qwen-Image: zero the conditional T branch (Qwen-Image only)"}}},
+        {"backend", {{"type", "string"}, {"description", "Main compute backend. Use \"diffusion=cuda0,vae=cpu\" for per-component CPU placement (replaces keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu)."}}},
+        {"params_backend", {{"type", "string"}, {"description", "Parameter storage backend. Set to \"*=cpu\" for the global \"keep all weights in RAM\" mode (replaces offload_to_cpu)."}}},
+        {"max_vram", {{"type", "number"}, {"description", "GiB budget for graph-cut segmented param offload (0 = disabled)"}}},
+        {"stream_layers", {{"type", "boolean"}, {"description", "Engage residency+async-prefetch streaming on top of max_vram (no effect without max_vram > 0)"}}}
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
         ,
         // Experimental VRAM offloading (only when built with SD_EXPERIMENTAL_OFFLOAD=ON)

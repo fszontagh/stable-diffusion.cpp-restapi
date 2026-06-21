@@ -275,23 +275,26 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         static const std::unordered_set<std::string> KNOWN_OPTIONS = {
             // Performance / threading
             "n_threads", "flash_attn", "diffusion_flash_attn",
-            // Memory residency
-            "keep_clip_on_cpu", "keep_vae_on_cpu", "keep_controlnet_on_cpu",
-            "offload_to_cpu", "enable_mmap", "free_params_immediately",
-            "max_vram",
+            // Memory residency — upstream now expresses per-component and
+            // global CPU placement via the `backend` / `params_backend` strings
+            // below (e.g. "diffusion=cuda0,vae=cpu" or params_backend="*=cpu"),
+            // so the legacy bool flags (keep_clip_on_cpu, keep_vae_on_cpu,
+            // keep_controlnet_on_cpu, offload_to_cpu, free_params_immediately,
+            // vae_decode_only) are no longer accepted.
+            "enable_mmap", "max_vram",
             // VAE/diffusion compute
-            "vae_decode_only", "vae_conv_direct", "diffusion_conv_direct",
+            "vae_conv_direct", "diffusion_conv_direct",
             "tae_preview_only", "force_sdxl_vae_conv_scale",
-            // Sampling defaults
-            "flow_shift", "weight_type", "tensor_type_rules",
+            // Weight type / per-tensor rules — flow_shift is per-generation now.
+            "weight_type", "tensor_type_rules",
             // RNG
             "rng_type", "sampler_rng_type",
             // Model behavior
             "prediction", "lora_apply_mode",
-            // VAE tiling
-            "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
             // Chroma-specific
             "chroma_use_dit_mask", "chroma_use_t5_mask", "chroma_t5_mask_pad",
+            // Qwen-Image specific
+            "qwen_image_zero_cond_t",
             // VAE format override (leejet PR for sd_vae_format_t enum)
             "vae_format",
             // Tileable / seamless texture position embeddings (leejet PR #1627
@@ -318,20 +321,12 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         };
         reject_unknown_keys("/models/load options", opts, KNOWN_OPTIONS);
         params.n_threads = opts.value("n_threads", -1);
-        params.keep_clip_on_cpu = opts.value("keep_clip_on_cpu", true);
-        params.keep_vae_on_cpu = opts.value("keep_vae_on_cpu", false);
-        params.keep_controlnet_on_cpu = opts.value("keep_controlnet_on_cpu", false);
         params.flash_attn = opts.value("flash_attn", true);
         params.diffusion_flash_attn = opts.value("diffusion_flash_attn", false);
-        params.offload_to_cpu = opts.value("offload_to_cpu", false);
         params.enable_mmap = opts.value("enable_mmap", true);
-        params.vae_decode_only = opts.value("vae_decode_only", false);
         params.vae_conv_direct = opts.value("vae_conv_direct", false);
         params.diffusion_conv_direct = opts.value("diffusion_conv_direct", false);
         params.tae_preview_only = opts.value("tae_preview_only", false);
-        params.free_params_immediately = opts.value("free_params_immediately", false);
-        // INFINITY means auto-detect based on model type
-        params.flow_shift = opts.contains("flow_shift") ? opts.value("flow_shift", INFINITY) : INFINITY;
         // 0.0 = disabled (sd.cpp default).
         params.max_vram = opts.value("max_vram", 0.0f);
         params.weight_type = opts.value("weight_type", "");
@@ -356,17 +351,17 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         // demands it, matching the streaming planner's residency assumptions.
         params.lora_apply_mode = opts.value("lora_apply_mode", "auto");
 
-        // VAE tiling options
-        params.vae_tiling = opts.value("vae_tiling", false);
-        params.vae_tile_size_x = opts.value("vae_tile_size_x", 0);
-        params.vae_tile_size_y = opts.value("vae_tile_size_y", 0);
-        params.vae_tile_overlap = opts.value("vae_tile_overlap", 0.5f);
+        // VAE tiling is per-generation now (sd_tiling_params_t), not load-time.
+
         params.force_sdxl_vae_conv_scale = opts.value("force_sdxl_vae_conv_scale", false);
 
         // Chroma options
         params.chroma_use_dit_mask = opts.value("chroma_use_dit_mask", true);
         params.chroma_use_t5_mask = opts.value("chroma_use_t5_mask", false);
         params.chroma_t5_mask_pad = opts.value("chroma_t5_mask_pad", 1);
+
+        // Qwen-Image specific
+        params.qwen_image_zero_cond_t = opts.value("qwen_image_zero_cond_t", false);
 
         // VAE format override + tileable position embeddings
         params.vae_format = opts.value("vae_format", "auto");
@@ -1001,14 +996,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.vae_conv_direct = params.vae_conv_direct;
     ctx_params.diffusion_conv_direct = params.diffusion_conv_direct;
     ctx_params.tae_preview_only = params.tae_preview_only;
-    // Note: flow_shift lives on sd_sample_params_t (per-generation), not
-    // sd_ctx_params_t. The fork's old feature/vram-offloading branch
-    // duplicated it on the ctx params for early-bind reasons; v2 reverted
-    // that and follows upstream. flow_shift propagation in this codebase
-    // happens via sd_wrapper.cpp's gen_params.sample_params.flow_shift =
-    // params.flow_shift in each of generate_txt2img / generate_img2img /
-    // generate_txt2vid (still per-call, still load-time-tunable through
-    // ModelLoadParams.flow_shift which feeds the per-call default).
+    // flow_shift is per-generation (sd_sample_params_t.flow_shift), wired in
+    // sd_wrapper.cpp's generate_txt2img / generate_img2img / generate_txt2vid.
     ctx_params.force_sdxl_vae_conv_scale = params.force_sdxl_vae_conv_scale;
 
     // Set weight type if specified
@@ -1041,6 +1030,9 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.chroma_use_dit_mask = params.chroma_use_dit_mask;
     ctx_params.chroma_use_t5_mask = params.chroma_use_t5_mask;
     ctx_params.chroma_t5_mask_pad = params.chroma_t5_mask_pad;
+
+    // Qwen-Image: zero the conditional T branch when requested.
+    ctx_params.qwen_image_zero_cond_t = params.qwen_image_zero_cond_t;
 
     // VAE format override. Default "auto" → SD_VAE_FORMAT_AUTO (-1) so sd.cpp
     // detects from the weights. Explicit values: "flux", "sd3", "flux2".
@@ -1117,7 +1109,6 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
               << ", diffusion_conv_direct=" << ctx_params.diffusion_conv_direct
               << ", flash_attn=" << ctx_params.flash_attn
               << ", tae_preview_only=" << ctx_params.tae_preview_only
-              << ", flow_shift=" << (std::isinf(params.flow_shift) ? "auto" : std::to_string(params.flow_shift))
               << ", rng=" << params.rng_type
               << ", lora_mode=" << params.lora_apply_mode
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
@@ -1208,21 +1199,12 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     // Store the load options for later retrieval (for queue job reload)
     loaded_options_ = nlohmann::json::object();
     loaded_options_["n_threads"] = params.n_threads;
-    loaded_options_["keep_clip_on_cpu"] = params.keep_clip_on_cpu;
-    loaded_options_["keep_vae_on_cpu"] = params.keep_vae_on_cpu;
-    loaded_options_["keep_controlnet_on_cpu"] = params.keep_controlnet_on_cpu;
     loaded_options_["flash_attn"] = params.flash_attn;
     loaded_options_["diffusion_flash_attn"] = params.diffusion_flash_attn;
-    loaded_options_["offload_to_cpu"] = params.offload_to_cpu;
     loaded_options_["enable_mmap"] = params.enable_mmap;
-    loaded_options_["vae_decode_only"] = params.vae_decode_only;
     loaded_options_["vae_conv_direct"] = params.vae_conv_direct;
     loaded_options_["diffusion_conv_direct"] = params.diffusion_conv_direct;
     loaded_options_["tae_preview_only"] = params.tae_preview_only;
-    loaded_options_["free_params_immediately"] = params.free_params_immediately;
-    if (!std::isinf(params.flow_shift)) {
-        loaded_options_["flow_shift"] = params.flow_shift;
-    }
     // Always emit max_vram so 0 (= disabled) round-trips correctly to
     // the WebUI Edit form — otherwise a user who enabled it then unset
     // it back to 0 wouldn't see the flag clear in the restored state.
@@ -1241,13 +1223,10 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         loaded_options_["prediction"] = params.prediction;
     }
     loaded_options_["lora_apply_mode"] = params.lora_apply_mode;
-    loaded_options_["vae_tiling"] = params.vae_tiling;
-    loaded_options_["vae_tile_size_x"] = params.vae_tile_size_x;
-    loaded_options_["vae_tile_size_y"] = params.vae_tile_size_y;
-    loaded_options_["vae_tile_overlap"] = params.vae_tile_overlap;
     loaded_options_["chroma_use_dit_mask"] = params.chroma_use_dit_mask;
     loaded_options_["chroma_use_t5_mask"] = params.chroma_use_t5_mask;
     loaded_options_["chroma_t5_mask_pad"] = params.chroma_t5_mask_pad;
+    loaded_options_["qwen_image_zero_cond_t"] = params.qwen_image_zero_cond_t;
     loaded_options_["vae_format"] = params.vae_format;
     loaded_options_["circular_x"] = params.circular_x;
     loaded_options_["circular_y"] = params.circular_y;
@@ -1298,7 +1277,12 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         if (params.taesd)       persisted["taesd"]       = *params.taesd;
         if (params.high_noise_diffusion_model)
             persisted["high_noise_diffusion_model"] = *params.high_noise_diffusion_model;
-        if (params.photo_maker) persisted["photo_maker"] = *params.photo_maker;
+        if (params.uncond_diffusion_model)
+            persisted["uncond_diffusion_model"] = *params.uncond_diffusion_model;
+        if (params.photo_maker)            persisted["photo_maker"]            = *params.photo_maker;
+        if (params.pulid_weights)          persisted["pulid_weights"]          = *params.pulid_weights;
+        if (params.audio_vae)              persisted["audio_vae"]              = *params.audio_vae;
+        if (params.embeddings_connectors)  persisted["embeddings_connectors"]  = *params.embeddings_connectors;
         // loaded_options_ already has the full set of load options in the
         // shape ModelLoadParams::from_json expects under the "options" key.
         persisted["options"] = loaded_options_;
