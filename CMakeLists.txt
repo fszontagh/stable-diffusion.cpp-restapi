@@ -7,18 +7,24 @@ message(STATUS "sdcpp-restapi version: ${SDCPP_VERSION}")
 
 project(sdcpp-restapi VERSION ${SDCPP_VERSION} LANGUAGES CXX C)
 
-# Get git commit hash for build info
+# Git commit hash refresh.
+# Captured at BUILD time (not configure time) via cmake/UpdateGitVersion.cmake
+# so that `cmake --build` after new commits land embeds the current hash
+# in the binary's /health endpoint. The runtime symbol lives in
+# ${CMAKE_BINARY_DIR}/generated/version_runtime.cpp — a one-line .cpp that
+# the update script rewrites only when the hash changes, so spurious
+# recompiles don't happen on every ninja invocation.
+set(SDCPP_GIT_VERSION_FILE "${CMAKE_BINARY_DIR}/generated/version_runtime.cpp")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+# Seed the file at configure time so the target source exists; the
+# build-time custom target below will refresh its content on every build.
 execute_process(
-    COMMAND git rev-parse --short HEAD
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    OUTPUT_VARIABLE SDCPP_GIT_COMMIT
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET
+    COMMAND ${CMAKE_COMMAND}
+        -D OUTPUT_FILE=${SDCPP_GIT_VERSION_FILE}
+        -D SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/UpdateGitVersion.cmake
+    OUTPUT_QUIET
 )
-if(NOT SDCPP_GIT_COMMIT)
-    set(SDCPP_GIT_COMMIT "unknown")
-endif()
-message(STATUS "Git commit: ${SDCPP_GIT_COMMIT}")
 
 # C++20 standard
 set(CMAKE_CXX_STANDARD 20)
@@ -463,11 +469,29 @@ if(SD_CUDA)
     )
 endif()
 
-# Version information compile definitions (from VERSION file)
+# Version information compile definitions (from VERSION file).
+# SDCPP_GIT_COMMIT used to be passed here as a compile def but that captures
+# the value at configure time — see the SDCPP_GIT_VERSION_FILE block at the
+# top of this file for the build-time refresh wiring.
 target_compile_definitions(sdcpp-restapi PRIVATE
     SDCPP_VERSION="${SDCPP_VERSION}"
-    SDCPP_GIT_COMMIT="${SDCPP_GIT_COMMIT}"
 )
+
+# Pull the generated git-hash translation unit into the binary, and add a
+# build-time target that refreshes it on every ninja invocation. The script
+# only rewrites the file when the hash changes, so ninja only recompiles
+# version_runtime.cpp (one TU + relink) when a real commit lands.
+target_sources(sdcpp-restapi PRIVATE ${SDCPP_GIT_VERSION_FILE})
+add_custom_target(refresh_git_version ALL
+    COMMAND ${CMAKE_COMMAND}
+        -D OUTPUT_FILE=${SDCPP_GIT_VERSION_FILE}
+        -D SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/UpdateGitVersion.cmake
+    BYPRODUCTS ${SDCPP_GIT_VERSION_FILE}
+    COMMENT "Refreshing git commit hash"
+    VERBATIM
+)
+add_dependencies(sdcpp-restapi refresh_git_version)
 
 # Compiler warnings
 if(MSVC)
