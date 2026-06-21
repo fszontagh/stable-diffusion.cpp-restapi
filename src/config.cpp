@@ -74,19 +74,13 @@ void from_json(const nlohmann::json& j, PathsConfig& c) {
 void to_json(nlohmann::json& j, const SDDefaultsConfig& c) {
     j = nlohmann::json{
         {"n_threads", c.n_threads},
-        {"keep_clip_on_cpu", c.keep_clip_on_cpu},
-        {"keep_vae_on_cpu", c.keep_vae_on_cpu},
         {"flash_attn", c.flash_attn},
-        {"offload_to_cpu", c.offload_to_cpu}
     };
 }
 
 void from_json(const nlohmann::json& j, SDDefaultsConfig& c) {
     c.n_threads = j.value("n_threads", -1);
-    c.keep_clip_on_cpu = j.value("keep_clip_on_cpu", true);
-    c.keep_vae_on_cpu = j.value("keep_vae_on_cpu", false);
     c.flash_attn = j.value("flash_attn", true);
-    c.offload_to_cpu = j.value("offload_to_cpu", false);
 }
 
 // PreviewConfig JSON serialization

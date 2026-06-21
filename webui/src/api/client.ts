@@ -15,20 +15,14 @@ export interface OptionsResponse {
 
 export interface LoadOptions {
   n_threads?: number
-  keep_clip_on_cpu?: boolean
-  keep_vae_on_cpu?: boolean
-  keep_controlnet_on_cpu?: boolean
   flash_attn?: boolean
   /** Flash attention specifically for the diffusion model (UNet/DiT/Flux). */
   diffusion_flash_attn?: boolean
-  offload_to_cpu?: boolean
   enable_mmap?: boolean
-  vae_decode_only?: boolean
   vae_conv_direct?: boolean
   diffusion_conv_direct?: boolean
   tae_preview_only?: boolean
-  free_params_immediately?: boolean
-  flow_shift?: number
+  force_sdxl_vae_conv_scale?: boolean
   /** GiB budget for graph-cut segmented param offload. 0 = disabled. */
   max_vram?: number
   weight_type?: string
@@ -37,10 +31,6 @@ export interface LoadOptions {
   sampler_rng_type?: string
   prediction?: string
   lora_apply_mode?: string
-  vae_tiling?: boolean
-  vae_tile_size_x?: number
-  vae_tile_size_y?: number
-  vae_tile_overlap?: number
   chroma_use_dit_mask?: boolean
   chroma_use_t5_mask?: boolean
   chroma_t5_mask_pad?: number
@@ -48,26 +38,21 @@ export interface LoadOptions {
   vae_format?: 'auto' | 'flux' | 'sd3' | 'flux2'
   circular_x?: boolean
   circular_y?: boolean
-  offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive' | 'layer_streaming'
-  vram_estimation?: 'dryrun' | 'formula'
-  offload_cond_stage?: boolean
-  offload_diffusion?: boolean
-  reload_cond_stage?: boolean
-  reload_diffusion?: boolean
-  log_offload_events?: boolean
-  min_offload_size_mb?: number
-  target_free_vram_mb?: number
 
-  // Layer streaming options (only meaningful when offload_mode='layer_streaming').
-  // The mode flag is what gates streaming inside sd.cpp; these tune it.
-  streaming_prefetch_layers?: number
-  streaming_keep_layers_behind?: number
-  streaming_min_free_vram_mb?: number
+  // Compute backend override (replaces the old keep_clip_on_cpu /
+  // keep_vae_on_cpu / keep_controlnet_on_cpu booleans). e.g.
+  // "diffusion=cuda0,vae=cpu" pins the VAE to CPU while keeping diffusion on GPU.
+  backend?: string
+  // Parameter storage backend (replaces offload_to_cpu). Set to "*=cpu"
+  // to keep all weights in host RAM and stream into VRAM on demand.
+  params_backend?: string
+  // Comma-separated host:port pairs for distributed-backend (rpc) workers.
+  rpc_servers?: string
+  // Qwen-Image-specific: zero out the conditioning timestep.
+  qwen_image_zero_cond_t?: boolean
 
-  // Unified-streaming variant: engages residency+async-prefetch streaming on
-  // top of `max_vram`. Only honored when the binary was built with
-  // -DSD_UNIFIED_STREAMING=ON; otherwise it parses fine but the value is
-  // ignored at runtime. Has no effect when max_vram == 0.
+  // Residency-aware streaming planner (leejet master + unified-streaming fork).
+  // Pairs naturally with params_backend='*=cpu' and max_vram > 0.
   stream_layers?: boolean
 }
 
@@ -131,12 +116,10 @@ export interface HealthResponse {
     /**
      * True when the binary was built with -DSD_UNIFIED_STREAMING=ON against
      * the fork's `feature/unified-streaming` branch. Only meaningful when
-     * `experimental_offload` is also true.
-     *
-     * - false (default for OFFLOAD=OFF and OFFLOAD=ON+UNIFIED=OFF):
-     *   the legacy offload_mode/streaming_* vocabulary is the canonical UI.
-     * - true: the new `stream_layers` boolean is the canonical UI;
-     *   offload_mode and streaming_* options are ignored at runtime.
+     * `experimental_offload` is also true. The canonical streaming UI is
+     * the `stream_layers` boolean either way — the legacy multi-mode
+     * vocabulary (offload_mode, streaming_*) no longer exists upstream and
+     * has been dropped from the WebUI.
      */
     unified_streaming?: boolean
     mcp?: boolean
@@ -188,60 +171,7 @@ export interface LoadModelParams {
   taesd?: string
   high_noise_diffusion_model?: string
   photo_maker?: string
-  options?: {
-    n_threads?: number
-    keep_clip_on_cpu?: boolean
-    keep_vae_on_cpu?: boolean
-    keep_controlnet_on_cpu?: boolean
-    vae_conv_direct?: boolean
-    diffusion_conv_direct?: boolean
-    flash_attn?: boolean
-    diffusion_flash_attn?: boolean
-    offload_to_cpu?: boolean
-    enable_mmap?: boolean
-    vae_decode_only?: boolean
-    tae_preview_only?: boolean
-    free_params_immediately?: boolean
-    flow_shift?: number
-    max_vram?: number
-    weight_type?: string
-    tensor_type_rules?: string
-    rng_type?: string
-    sampler_rng_type?: string
-    prediction?: string
-    lora_apply_mode?: string
-    vae_tiling?: boolean
-    vae_tile_size_x?: number
-    vae_tile_size_y?: number
-    vae_tile_overlap?: number
-    chroma_use_dit_mask?: boolean
-    chroma_use_t5_mask?: boolean
-    chroma_t5_mask_pad?: number
-    // leejet master post-1ceb5bd: VAE format + tileable RoPE
-    vae_format?: 'auto' | 'flux' | 'sd3' | 'flux2'
-    circular_x?: boolean
-    circular_y?: boolean
-    // Dynamic tensor offloading options
-    offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive' | 'layer_streaming'
-    vram_estimation?: 'dryrun' | 'formula'
-    offload_cond_stage?: boolean
-    offload_diffusion?: boolean
-    reload_cond_stage?: boolean
-    reload_diffusion?: boolean
-    log_offload_events?: boolean
-    min_offload_size_mb?: number
-    target_free_vram_mb?: number
-
-    // Layer streaming options (only meaningful when offload_mode='layer_streaming').
-    streaming_prefetch_layers?: number
-    streaming_keep_layers_behind?: number
-    streaming_min_free_vram_mb?: number
-
-    // Unified-streaming variant: replaces the multi-mode offload_mode + streaming_*
-    // tuning with a single toggle on top of max_vram. Only honored when the binary
-    // was built with -DSD_UNIFIED_STREAMING=ON. See store.unifiedStreamingEnabled.
-    stream_layers?: boolean
-  }
+  options?: LoadOptions
 }
 
 export interface GenerationParams {
@@ -254,9 +184,13 @@ export interface GenerationParams {
   height?: number
   steps?: number
   cfg_scale?: number
+  /** Image CFG (sd_guidance_params_t.img_cfg). -1 = inherit cfg_scale. */
+  img_cfg_scale?: number
   distilled_guidance?: number
   eta?: number
   shifted_timestep?: number
+  /** Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs) */
+  extra_sample_args?: string
   seed?: number
   sampler?: string
   scheduler?: string
@@ -276,11 +210,20 @@ export interface GenerationParams {
   vae_tile_size_x?: number
   vae_tile_size_y?: number
   vae_tile_overlap?: number
-  cache_mode?: string              // "easycache", "spectrum", or empty
+  /** VAE tile width as fraction of image (0 = use absolute tile_size_x) */
+  vae_tile_rel_size_x?: number
+  /** VAE tile height as fraction of image (0 = use absolute tile_size_y) */
+  vae_tile_rel_size_y?: number
+  /** Cache acceleration mode: easycache, ucache, dbcache, taylorseer, cache_dit, spectrum (empty = disabled) */
+  cache_mode?: string
   easycache?: boolean              // deprecated, use cache_mode
   easycache_threshold?: number
   easycache_start?: number
   easycache_end?: number
+  /** TaylorSeer: derivative order (typically 2-4) */
+  taylorseer_n_derivatives?: number
+  /** TaylorSeer: predict-every-N-steps interval (0 = adaptive) */
+  taylorseer_skip_interval?: number
   spectrum_w?: number
   spectrum_m?: number
   spectrum_lam?: number
@@ -291,6 +234,27 @@ export interface GenerationParams {
   pm_id_images?: string[]
   pm_id_embed_path?: string
   pm_style_strength?: number
+  /** PuLID-Flux identity embedding path. Requires pulid_weights loaded on the model. */
+  pulid_id_embedding_path?: string
+  /** PuLID-Flux identity weight */
+  pulid_id_weight?: number
+  // Built-in hi-res-fix (sd_hires_params_t) — distinct from the post-gen ESRGAN
+  // upscale flag below. Enables sd.cpp's native two-pass refine.
+  hires_enabled?: boolean
+  /** Hires upscaler: none, latent, latent_nearest, latent_nearest_exact, latent_antialiased,
+   *  latent_bicubic, latent_bicubic_antialiased, lanczos, nearest, model */
+  hires_upscaler?: string
+  /** Upscaler model path (when hires_upscaler='model') */
+  hires_model_path?: string
+  hires_scale?: number
+  /** Hires target width (0 = derive from scale) */
+  hires_target_width?: number
+  /** Hires target height (0 = derive from scale) */
+  hires_target_height?: number
+  /** Hires sampling steps (0 = inherit main steps) */
+  hires_steps?: number
+  hires_denoising_strength?: number
+  hires_upscale_tile_size?: number
   upscale?: boolean
   upscale_repeats?: number
   upscale_auto_unload?: boolean
@@ -304,7 +268,6 @@ export interface GenerationParams {
 export interface Img2ImgParams extends GenerationParams {
   init_image_base64: string
   strength?: number
-  img_cfg_scale?: number
   mask_image_base64?: string
 }
 
@@ -316,9 +279,21 @@ export interface Txt2VidParams extends GenerationParams {
   end_image_base64?: string
   strength?: number
   control_frames?: string[]
+  // High-noise pass (MoE models like Wan2.2) — full sd_sample_params_t parity
   high_noise_steps?: number
   high_noise_cfg_scale?: number
+  /** Image CFG for high-noise phase (-1 = inherit high_noise_cfg_scale) */
+  high_noise_img_cfg?: number
   high_noise_sampler?: string
+  /** Scheduler for high-noise phase (empty = inherit main) */
+  high_noise_scheduler?: string
+  high_noise_eta?: number
+  high_noise_shifted_timestep?: number
+  /** Flow shift for high-noise phase (0 = inherit main flow_shift) */
+  high_noise_flow_shift?: number
+  /** Pass-through key=value sample args for high-noise phase */
+  high_noise_extra_sample_args?: string
+  high_noise_custom_sigmas?: number[]
   high_noise_distilled_guidance?: number
   high_noise_slg_scale?: number
   high_noise_skip_layers?: number[]
@@ -375,49 +350,7 @@ export interface JobModelSettings {
     llm: string | null
     llm_vision: string | null
   }
-  load_options?: {
-    n_threads?: number
-    keep_clip_on_cpu?: boolean
-    keep_vae_on_cpu?: boolean
-    keep_controlnet_on_cpu?: boolean
-    flash_attn?: boolean
-    diffusion_flash_attn?: boolean
-    offload_to_cpu?: boolean
-    enable_mmap?: boolean
-    vae_decode_only?: boolean
-    vae_conv_direct?: boolean
-    diffusion_conv_direct?: boolean
-    tae_preview_only?: boolean
-    free_params_immediately?: boolean
-    flow_shift?: number
-    max_vram?: number
-    weight_type?: string
-    tensor_type_rules?: string
-    rng_type?: string
-    sampler_rng_type?: string
-    prediction?: string
-    lora_apply_mode?: string
-    vae_tiling?: boolean
-    vae_tile_size_x?: number
-    vae_tile_size_y?: number
-    vae_tile_overlap?: number
-    chroma_use_dit_mask?: boolean
-    chroma_use_t5_mask?: boolean
-    chroma_t5_mask_pad?: number
-    // leejet master post-1ceb5bd: VAE format + tileable RoPE
-    vae_format?: 'auto' | 'flux' | 'sd3' | 'flux2'
-    circular_x?: boolean
-    circular_y?: boolean
-    // Dynamic VRAM offloading settings
-    offload_mode?: 'none' | 'cond_only' | 'cond_diffusion' | 'aggressive' | 'layer_streaming'
-    vram_estimation?: 'dryrun' | 'formula'
-    offload_cond_stage?: boolean
-    offload_diffusion?: boolean
-    reload_cond_stage?: boolean
-    reload_diffusion?: boolean
-    log_offload_events?: boolean
-    min_offload_size_mb?: number
-  }
+  load_options?: LoadOptions
   upscaler_loaded: boolean
   upscaler_name: string | null
 }

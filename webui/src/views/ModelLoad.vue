@@ -62,32 +62,19 @@ const loadParams = ref<LoadModelParams>({
   taesd: '',
   options: {
     n_threads: -1,
-    keep_clip_on_cpu: true,
-    keep_vae_on_cpu: false,
-    keep_controlnet_on_cpu: false,
     flash_attn: true,
     diffusion_flash_attn: false,
-    offload_to_cpu: false,
     enable_mmap: true,
-    vae_decode_only: false,
     tae_preview_only: false,
-    offload_mode: 'none',
-    vram_estimation: 'dryrun',
-    offload_cond_stage: true,
-    offload_diffusion: false,
-    reload_cond_stage: true,
-    reload_diffusion: true,
-    target_free_vram_mb: 0,
-    // Layer streaming tuning (only meaningful when offload_mode='layer_streaming').
-    // The mode itself is what enables streaming inside sd.cpp.
-    streaming_prefetch_layers: 1,
-    streaming_keep_layers_behind: 0,
-    streaming_min_free_vram_mb: 0,
-    // Unified-streaming variant: replaces the multi-mode offload_mode + streaming_*
-    // tuning with a single toggle. Honored on leejet master (>= post-1ceb5bd
-    // merge of the unified-streaming API) AND on fork builds compiled with
-    // -DSD_UNIFIED_STREAMING=ON. Legacy fork builds parse but ignore it.
+    force_sdxl_vae_conv_scale: false,
+    max_vram: 0,
+    // Residency-aware streaming (unified in leejet master post-1ceb5bd).
     stream_layers: false,
+    // Compute / params backend overrides (replace keep_*/offload_to_cpu).
+    backend: '',
+    params_backend: '',
+    rpc_servers: '',
+    qwen_image_zero_cond_t: false,
     // leejet master post-1ceb5bd: VAE format override + tileable RoPE.
     vae_format: 'auto',
     circular_x: false,
@@ -291,11 +278,11 @@ onMounted(async () => {
       // Pre-populate load options from currently loaded model.
       // Spread store.loadOptions wholesale so every field the backend exposes
       // is restored — without this, fields not explicitly listed (e.g.
-      // vae_conv_direct, diffusion_conv_direct, vae_tiling, lora_apply_mode,
-      // rng_type, chroma_*, prediction, free_params_immediately, log_offload_events,
-      // min_offload_size_mb, ...) get silently dropped on edit. The pre-existing
-      // loadParams.options layer underneath provides defaults for any field the
-      // backend didn't return (undefined keys are not enumerated by spread).
+      // vae_conv_direct, diffusion_conv_direct, lora_apply_mode, rng_type,
+      // chroma_*, prediction, backend, params_backend, ...) get silently
+      // dropped on edit. The pre-existing loadParams.options layer underneath
+      // provides defaults for any field the backend didn't return (undefined
+      // keys are not enumerated by spread).
       if (store.loadOptions) {
         loadParams.value.options = {
           ...loadParams.value.options,
@@ -336,7 +323,7 @@ onMounted(async () => {
       isAutoDetected.value = true
       // Only apply raw architecture defaults if we did NOT restore prior user
       // options — otherwise the detected arch's loadOptions would clobber
-      // values like offload_mode='layer_streaming' the user already chose.
+      // values like stream_layers / params_backend the user already chose.
       if (!restoredFromPriorLoad) {
         applyArchitectureOptions(detected)
       }
@@ -363,12 +350,16 @@ watch(selectedArchitecture, () => {
   }
 })
 
-// (Removed: the previous stream_layers→offload_to_cpu watcher.
-// leejet PR #1654 deleted offload_params_to_cpu from sd_ctx_params_t,
-// routing CPU placement through backend specs instead. The stream_layers
-// flag still works, but the per-component "keep on CPU" coupling is now
-// expressed via the `backend` string — e.g. "diffusion=cuda0,vae=cpu" —
-// not a separate boolean. Nothing to auto-tick at the UI layer anymore.)
+// Convenience: when the user enables stream_layers, default params_backend
+// to "*=cpu" if it's empty. This mirrors sd-cli's --offload-to-cpu helper,
+// which prepends "*=cpu" to params_backend. We never *clear* params_backend
+// when stream_layers flips off — the user may have set a custom value
+// independently (e.g. "vae=cpu") that we shouldn't stomp.
+watch(() => loadParams.value.options?.stream_layers, (enabled) => {
+  if (enabled && loadParams.value.options && !loadParams.value.options.params_backend) {
+    loadParams.value.options.params_backend = '*=cpu'
+  }
+})
 
 </script>
 
@@ -670,11 +661,10 @@ watch(selectedArchitecture, () => {
                leejet PR #1654 routed CPU placement through backend specs and
                deleted the per-component bool flags (keep_clip_on_cpu,
                keep_vae_on_cpu, keep_controlnet_on_cpu, offload_to_cpu,
-               vae_decode_only, free_params_immediately). ModelLoadParams still
-               accepts those fields for back-compat but stops wiring them to
-               ctx_params, so the WebUI no longer surfaces them — explicit
-               placement now goes through `backend` / `params_backend` strings
-               like "diffusion=cuda0,vae=cpu". Max VRAM survives unchanged. -->
+               vae_decode_only, free_params_immediately). Placement now goes
+               through `backend` / `params_backend` strings — see the
+               "Backend Placement" group below. Max VRAM is the GiB budget
+               for the graph-cut planner. -->
           <div class="options-group">
             <h4 class="options-group-title">Memory Management</h4>
             <div class="form-group" :title="getOptionDesc('max_vram')?.description">
@@ -688,28 +678,169 @@ watch(selectedArchitecture, () => {
                 placeholder="0 = disabled"
               />
               <RecHint :desc="getOptionDesc('max_vram')" />
-              <small class="form-hint">For per-component CPU placement (formerly keep_*/offload_to_cpu checkboxes), use the <code>backend</code> field in Advanced — e.g. <code>diffusion=cuda0,vae=cpu</code>.</small>
+              <small class="form-hint">For per-component CPU placement, use the <code>backend</code> field below — e.g. <code>diffusion=cuda0,vae=cpu</code>.</small>
             </div>
           </div>
 
-          <!-- VAE Settings -->
+          <!-- Backend Placement (replaces keep_clip_on_cpu / keep_vae_on_cpu /
+               keep_controlnet_on_cpu / offload_to_cpu). -->
           <div class="options-group">
-            <h4 class="options-group-title">VAE Settings</h4>
+            <h4 class="options-group-title">Backend Placement</h4>
+            <div class="form-group" :title="getOptionDesc('backend')?.description">
+              <label class="form-label">Backend</label>
+              <input
+                v-model="loadParams.options!.backend"
+                type="text"
+                class="form-input"
+                placeholder="e.g. diffusion=cuda0,vae=cpu"
+              />
+              <RecHint :desc="getOptionDesc('backend')" />
+              <small class="form-hint">
+                Compute backend override. For per-component CPU placement use e.g.
+                <code>diffusion=cuda0,vae=cpu</code> (replaces the old
+                keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu checkboxes).
+              </small>
+            </div>
+            <div class="form-group" :title="getOptionDesc('params_backend')?.description">
+              <label class="form-label">Params Backend</label>
+              <input
+                v-model="loadParams.options!.params_backend"
+                type="text"
+                class="form-input"
+                placeholder="e.g. *=cpu"
+              />
+              <RecHint :desc="getOptionDesc('params_backend')" />
+              <small class="form-hint">
+                Parameter storage backend. Set to <code>*=cpu</code> for global
+                "keep all weights in RAM" mode (replaces <code>offload_to_cpu</code>).
+              </small>
+            </div>
+            <div class="form-group" :title="getOptionDesc('rpc_servers')?.description">
+              <label class="form-label">RPC Servers</label>
+              <input
+                v-model="loadParams.options!.rpc_servers"
+                type="text"
+                class="form-input"
+                placeholder="host1:50052,host2:50052"
+              />
+              <RecHint :desc="getOptionDesc('rpc_servers')" />
+              <small class="form-hint">
+                Comma-separated <code>host:port</code> pairs for the distributed
+                (RPC) backend. Leave empty for local-only execution.
+              </small>
+            </div>
+          </div>
+
+          <!-- VAE / Conv Settings -->
+          <div class="options-group">
+            <h4 class="options-group-title">VAE / Conv Settings</h4>
             <div class="options-grid">
-              <label class="form-checkbox" :title="getOptionDesc('vae_tiling')?.description">
-                <input v-model="loadParams.options!.vae_tiling" type="checkbox" />
-                <span>VAE Tiling</span>
-                <RecHint :desc="getOptionDesc('vae_tiling')" />
-              </label>
               <label class="form-checkbox" :title="getOptionDesc('vae_conv_direct')?.description">
                 <input v-model="loadParams.options!.vae_conv_direct" type="checkbox" />
                 <span>VAE Direct Convolution</span>
                 <RecHint :desc="getOptionDesc('vae_conv_direct')" />
               </label>
+              <label class="form-checkbox" :title="getOptionDesc('diffusion_conv_direct')?.description">
+                <input v-model="loadParams.options!.diffusion_conv_direct" type="checkbox" />
+                <span>Diffusion Direct Convolution</span>
+                <RecHint :desc="getOptionDesc('diffusion_conv_direct')" />
+              </label>
+              <label class="form-checkbox" :title="getOptionDesc('force_sdxl_vae_conv_scale')?.description">
+                <input v-model="loadParams.options!.force_sdxl_vae_conv_scale" type="checkbox" />
+                <span>Force SDXL VAE Conv Scale</span>
+                <RecHint :desc="getOptionDesc('force_sdxl_vae_conv_scale')" />
+              </label>
               <label v-if="loadParams.taesd" class="form-checkbox" :title="getOptionDesc('tae_preview_only')?.description">
                 <input v-model="loadParams.options!.tae_preview_only" type="checkbox" />
                 <span>TAE Preview Only</span>
                 <RecHint :desc="getOptionDesc('tae_preview_only')" />
+              </label>
+            </div>
+          </div>
+
+          <!-- Sampling / RNG / Prediction -->
+          <div class="options-group">
+            <h4 class="options-group-title">Sampling &amp; RNG</h4>
+            <div class="form-group" :title="getOptionDesc('rng_type')?.description">
+              <label class="form-label">RNG Type</label>
+              <select v-model="loadParams.options!.rng_type" class="form-select">
+                <option value="">Default</option>
+                <option value="std_default">std_default</option>
+                <option value="cuda">cuda</option>
+              </select>
+              <RecHint :desc="getOptionDesc('rng_type')" />
+            </div>
+            <div class="form-group" :title="getOptionDesc('sampler_rng_type')?.description">
+              <label class="form-label">Sampler RNG Type</label>
+              <select v-model="loadParams.options!.sampler_rng_type" class="form-select">
+                <option value="">Default</option>
+                <option value="std_default">std_default</option>
+                <option value="cuda">cuda</option>
+              </select>
+              <RecHint :desc="getOptionDesc('sampler_rng_type')" />
+            </div>
+            <div class="form-group" :title="getOptionDesc('prediction')?.description">
+              <label class="form-label">Prediction</label>
+              <select v-model="loadParams.options!.prediction" class="form-select">
+                <option value="">Auto</option>
+                <option value="eps">eps</option>
+                <option value="v">v</option>
+                <option value="edm_v">edm_v</option>
+                <option value="flow">flow</option>
+              </select>
+              <RecHint :desc="getOptionDesc('prediction')" />
+            </div>
+            <div class="form-group" :title="getOptionDesc('lora_apply_mode')?.description">
+              <label class="form-label">LoRA Apply Mode</label>
+              <select v-model="loadParams.options!.lora_apply_mode" class="form-select">
+                <option value="">Auto</option>
+                <option value="default">default</option>
+                <option value="merge">merge</option>
+                <option value="apply">apply</option>
+              </select>
+              <RecHint :desc="getOptionDesc('lora_apply_mode')" />
+            </div>
+            <div class="form-group" :title="getOptionDesc('tensor_type_rules')?.description">
+              <label class="form-label">Tensor Type Rules</label>
+              <input
+                v-model="loadParams.options!.tensor_type_rules"
+                type="text"
+                class="form-input"
+                placeholder="e.g. *.weight=f16"
+              />
+              <RecHint :desc="getOptionDesc('tensor_type_rules')" />
+            </div>
+          </div>
+
+          <!-- Chroma-specific mask tuning -->
+          <div class="options-group">
+            <h4 class="options-group-title">Chroma Masks</h4>
+            <div class="options-grid">
+              <label class="form-checkbox" :title="getOptionDesc('chroma_use_dit_mask')?.description">
+                <input v-model="loadParams.options!.chroma_use_dit_mask" type="checkbox" />
+                <span>Chroma: use DiT mask</span>
+                <RecHint :desc="getOptionDesc('chroma_use_dit_mask')" />
+              </label>
+              <label class="form-checkbox" :title="getOptionDesc('chroma_use_t5_mask')?.description">
+                <input v-model="loadParams.options!.chroma_use_t5_mask" type="checkbox" />
+                <span>Chroma: use T5 mask</span>
+                <RecHint :desc="getOptionDesc('chroma_use_t5_mask')" />
+              </label>
+            </div>
+            <div class="form-group inline-group" :title="getOptionDesc('chroma_t5_mask_pad')?.description">
+              <label class="form-label">Chroma T5 Mask Pad</label>
+              <input v-model.number="loadParams.options!.chroma_t5_mask_pad" type="number" class="form-input small" min="0" />
+            </div>
+          </div>
+
+          <!-- Qwen-Image specific -->
+          <div class="options-group">
+            <h4 class="options-group-title">Qwen-Image</h4>
+            <div class="options-grid">
+              <label class="form-checkbox" :title="getOptionDesc('qwen_image_zero_cond_t')?.description">
+                <input v-model="loadParams.options!.qwen_image_zero_cond_t" type="checkbox" />
+                <span>Qwen-Image: zero conditioning timestep</span>
+                <RecHint :desc="getOptionDesc('qwen_image_zero_cond_t')" />
               </label>
             </div>
           </div>
@@ -778,152 +909,31 @@ watch(selectedArchitecture, () => {
         </div>
       </details>
 
-      <!-- VRAM Offloading. The unified stream_layers + max_vram API was merged
-           into leejet master after 1ceb5bd, so the accordion always renders.
-           Two mutually-exclusive inner UIs:
-             - Legacy multi-mode dropdown:  shows only on the legacy fork
-               compile (SDCPP_EXPERIMENTAL_OFFLOAD && !SDCPP_UNIFIED_STREAMING).
-             - Default stream_layers UI:    everything else (leejet master,
-               unified-streaming fork). -->
+      <!-- Layer Streaming. Unified `stream_layers` + `max_vram` API is the
+           only streaming UI now — the legacy multi-mode offload_mode +
+           streaming_* tuning was dropped upstream. Works natively on leejet
+           master and the fork's unified-streaming branch. -->
       <details class="card section-card accordion">
-        <summary class="accordion-header">VRAM Offloading</summary>
+        <summary class="accordion-header">Layer Streaming</summary>
         <div class="accordion-content">
-
-          <!-- ── stream_layers UI (default — leejet master + unified fork) ──
-               Single toggle on top of max_vram. The planner handles
-               residency split + async H2D prefetch automatically. -->
-          <template v-if="!store.experimentalOffloadEnabled || store.unifiedStreamingEnabled">
-            <div class="form-group">
-              <label class="form-checkbox">
-                <input v-model="loadParams.options!.stream_layers" type="checkbox" />
-                <span>Stream layers (residency + async prefetch)</span>
-              </label>
-              <small class="form-hint">
-                Engages sd.cpp's residency-aware streaming planner on top of the <code>max_vram</code>
-                budget. The planner decides which transformer segments stay resident vs streamed,
-                and overlaps next-segment H2D copy with current-segment compute. Requires
-                <strong>max_vram &gt; 0</strong> to do anything; otherwise this flag is silently a no-op.
-                Auto-enables <strong>Offload to CPU</strong> (Performance section) since
-                streaming pulls segments from host-resident weights — sd.cpp would do the same
-                implicit coupling at load time, this just keeps the form state honest.
-              </small>
-            </div>
-            <div v-if="loadParams.options!.stream_layers && !loadParams.options!.max_vram" class="form-hint" style="color: var(--color-warning, #c80);">
-              ⚠ stream_layers is enabled but max_vram is 0 — set max_vram in Performance section above
-              (typically ~80% of free VRAM) for streaming to engage.
-            </div>
-          </template>
-
-          <!-- ── feature/vram-offloading-v2 UI (legacy multi-mode) ──────── -->
-          <template v-else>
-            <div class="form-group">
-              <label class="form-label">Offload Mode</label>
-              <select v-model="loadParams.options!.offload_mode" class="form-select">
-                <option value="none">Disabled (keep all on GPU)</option>
-                <option value="cond_only">After Conditioning (offload LLM/CLIP)</option>
-                <option value="cond_diffusion">After Cond + Diffusion</option>
-                <option value="aggressive">Aggressive (offload each component)</option>
-                <option value="layer_streaming">Layer Streaming (for models larger than VRAM)</option>
-              </select>
-              <small class="form-hint">
-                {{ getOptionDesc('offload_mode')?.description || 'Temporarily move model components to CPU during generation to free VRAM for VAE decode.' }}
-              </small>
-            </div>
-
-            <div v-if="loadParams.options!.offload_mode !== 'none'" class="offload-options">
-              <div class="form-group">
-                <label class="form-label">VRAM Estimation Method</label>
-                <select v-model="loadParams.options!.vram_estimation" class="form-select">
-                  <option value="dryrun">Dry-run (Accurate, default)</option>
-                  <option value="formula">Formula (Faster, approximate)</option>
-                </select>
-                <small class="form-hint">
-                  {{ getOptionDesc('vram_estimation')?.description || 'How to estimate VRAM needed before VAE decode.' }}
-                </small>
-              </div>
-
-              <div class="options-grid">
-                <label class="form-checkbox">
-                  <input v-model="loadParams.options!.offload_cond_stage" type="checkbox" />
-                  <span>Offload LLM/CLIP after conditioning</span>
-                </label>
-                <label
-                  v-if="loadParams.options!.offload_mode === 'aggressive' || loadParams.options!.offload_mode === 'cond_diffusion'"
-                  class="form-checkbox"
-                >
-                  <input v-model="loadParams.options!.offload_diffusion" type="checkbox" />
-                  <span>Offload diffusion model after sampling</span>
-                </label>
-                <label class="form-checkbox">
-                  <input v-model="loadParams.options!.reload_cond_stage" type="checkbox" />
-                  <span>Reload LLM/CLIP after generation</span>
-                </label>
-                <label class="form-checkbox">
-                  <input v-model="loadParams.options!.reload_diffusion" type="checkbox" />
-                  <span>Reload diffusion model after generation</span>
-                </label>
-              </div>
-
-              <!-- Advanced VRAM settings -->
-              <div class="form-group mt-3">
-                <label class="form-label">Target Free VRAM (MB)</label>
-                <input
-                  v-model.number="loadParams.options!.target_free_vram_mb"
-                  type="number"
-                  class="form-input"
-                  min="0"
-                  step="256"
-                  placeholder="0 = always offload"
-                />
-                <small class="form-hint">Target free VRAM before VAE decode. 0 = always offload when mode is set.</small>
-              </div>
-            </div>
-
-            <!-- Layer Streaming Options (for layer_streaming mode) -->
-            <div v-if="loadParams.options!.offload_mode === 'layer_streaming'" class="layer-streaming-options">
-              <h4 class="options-group-title">Layer Streaming Configuration</h4>
-              <p class="form-hint mb-3">
-                Layer streaming enables running models larger than your VRAM by streaming layers one-by-one.
-              </p>
-
-              <div class="form-group">
-                <label class="form-label">Prefetch Layers</label>
-                <input
-                  v-model.number="loadParams.options!.streaming_prefetch_layers"
-                  type="number"
-                  class="form-input"
-                  min="0"
-                  max="4"
-                />
-                <small class="form-hint">Number of layers to prefetch ahead (default: 1). Higher = more VRAM, potentially faster.</small>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Keep Layers Behind</label>
-                <input
-                  v-model.number="loadParams.options!.streaming_keep_layers_behind"
-                  type="number"
-                  class="form-input"
-                  min="0"
-                  max="4"
-                />
-                <small class="form-hint">Layers to keep after execution for skip connections. Increase if you see artifacts.</small>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Min Free VRAM (MB)</label>
-                <input
-                  v-model.number="loadParams.options!.streaming_min_free_vram_mb"
-                  type="number"
-                  class="form-input"
-                  min="0"
-                  step="256"
-                />
-                <small class="form-hint">Minimum VRAM to keep free during streaming. 0 = no limit.</small>
-              </div>
-            </div>
-          </template>
-
+          <div class="form-group">
+            <label class="form-checkbox">
+              <input v-model="loadParams.options!.stream_layers" type="checkbox" />
+              <span>Stream layers (residency + async prefetch)</span>
+            </label>
+            <small class="form-hint">
+              Engages sd.cpp's residency-aware streaming planner. The planner decides which
+              transformer segments stay resident vs streamed, and overlaps next-segment H2D copy
+              with current-segment compute. Pairs naturally with
+              <code>params_backend='*=cpu'</code> and <code>max_vram &gt; 0</code>.
+              When you tick this and <code>params_backend</code> is empty, the form auto-fills
+              <code>*=cpu</code> (mirrors sd-cli's <code>--offload-to-cpu</code> shortcut).
+            </small>
+          </div>
+          <div v-if="loadParams.options!.stream_layers && !loadParams.options!.max_vram" class="form-hint" style="color: var(--color-warning, #c80);">
+            ⚠ stream_layers is enabled but max_vram is 0 — set max_vram in the
+            Memory Management group (typically ~80% of free VRAM) for streaming to engage.
+          </div>
         </div>
       </details>
 

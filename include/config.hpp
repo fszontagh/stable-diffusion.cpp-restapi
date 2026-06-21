@@ -51,11 +51,13 @@ struct PathsConfig {
  * Stable diffusion default settings
  */
 struct SDDefaultsConfig {
+    // Server-wide defaults for sd.cpp load params. Currently only n_threads +
+    // flash_attn are honored — per-component CPU placement (formerly
+    // keep_clip_on_cpu / keep_vae_on_cpu) and the global offload_to_cpu flag
+    // were removed upstream; users now route placement through the per-load
+    // `backend` / `params_backend` strings (e.g. "diffusion=cuda0,vae=cpu").
     int n_threads = -1;             // -1 = auto-detect
-    bool keep_clip_on_cpu = true;
-    bool keep_vae_on_cpu = false;
     bool flash_attn = true;
-    bool offload_to_cpu = false;
 };
 
 /**
