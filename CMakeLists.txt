@@ -240,21 +240,33 @@ else()
             GIT_SUBMODULES_RECURSE TRUE
         )
     else()
-        # Pinned to leejet/master HEAD. After 276025e, upstream merged the
-        # unified-streaming API (`stream_layers` + `max_vram` on sd_ctx_params_t)
-        # plus 44 commits including Lens architecture (#1609 ideogram4 / #1627
-        # circular RoPE), vae_format enum, uncond_diffusion_model_path,
-        # free_sd_images C-API helper, and several runner refactors. The fork
-        # variants are now unnecessary for the default workflow — restapi
-        # source still gates legacy fork code behind SDCPP_EXPERIMENTAL_OFFLOAD
-        # and SDCPP_UNIFIED_STREAMING so re-enabling those options keeps working.
+        # Pinned to leejet/master HEAD (b12098f, 20 commits past 276025e).
+        # Notable surface changes in this bump:
+        #   - PR #1654 routes CPU placement through backend specs, deleting
+        #     the per-component bool flags (vae_decode_only,
+        #     free_params_immediately, offload_params_to_cpu, keep_clip_on_cpu,
+        #     keep_control_net_on_cpu, keep_vae_on_cpu). ModelLoadParams keeps
+        #     the legacy field names for back-compat but stops wiring them to
+        #     ctx_params — clients sending these get accepted-and-ignored.
+        #   - PR #1660 (bb90bfa) changes ctx_params.max_vram from float to
+        #     `const char*` so backend-specific budgets ("cuda:8") can share
+        #     the same field. Restapi stores it as float in ModelLoadParams
+        #     and formats to string at the ctx-wiring step.
+        #   - PR #1595 adds PuLID-Flux identity injection (pulid_weights_path
+        #     + sd_pulid_params_t).
+        #   - PR #1629 adds RPC distributed-backend support (rpc_servers).
+        #   - PR #1124 adds sd_cancel_generation() — wired through where the
+        #     queue manager already supports job cancellation.
+        #   - PR #1688 adds Boogu Image architecture.
+        # Fork variants remain restorable; restapi source still gates legacy
+        # fork code behind SDCPP_EXPERIMENTAL_OFFLOAD / SDCPP_UNIFIED_STREAMING.
         # GIT_SHALLOW must be FALSE because GIT_TAG is a commit SHA — shallow
         # clone with a SHA fails (`fatal: reference is not a tree`). Full clone
         # adds ~25 MB to the build context but is reliable.
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        276025e054555166ec419413c6748ca79986ee93
+            GIT_TAG        b12098f5d09fc83da36e65c784f7bdb16a5a5ebf
             GIT_SHALLOW    FALSE
             GIT_SUBMODULES ${SDCPP_SUBMODULES}
             GIT_SUBMODULES_RECURSE TRUE

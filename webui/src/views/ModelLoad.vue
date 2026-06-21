@@ -363,18 +363,12 @@ watch(selectedArchitecture, () => {
   }
 })
 
-// Mirror sd.cpp's bd44d2d auto-coupling at the UX layer: when the user enables
-// stream_layers, also tick offload_to_cpu (streaming needs host-resident
-// weights to pull segments from). One-way: turning stream_layers off does
-// NOT un-tick offload_to_cpu — the user may want offload_to_cpu on its own.
-// sd.cpp does the same coupling at load time, so the actual generation would
-// work either way; this just keeps the form state honest about what's about
-// to be sent.
-watch(() => loadParams.value.options?.stream_layers, (enabled) => {
-  if (enabled && loadParams.value.options) {
-    loadParams.value.options.offload_to_cpu = true
-  }
-})
+// (Removed: the previous stream_layers→offload_to_cpu watcher.
+// leejet PR #1654 deleted offload_params_to_cpu from sd_ctx_params_t,
+// routing CPU placement through backend specs instead. The stream_layers
+// flag still works, but the per-component "keep on CPU" coupling is now
+// expressed via the `backend` string — e.g. "diffusion=cuda0,vae=cpu" —
+// not a separate boolean. Nothing to auto-tick at the UI layer anymore.)
 
 </script>
 
@@ -672,35 +666,17 @@ watch(() => loadParams.value.options?.stream_layers, (enabled) => {
             </div>
           </div>
 
-          <!-- Memory Management -->
+          <!-- Memory Management.
+               leejet PR #1654 routed CPU placement through backend specs and
+               deleted the per-component bool flags (keep_clip_on_cpu,
+               keep_vae_on_cpu, keep_controlnet_on_cpu, offload_to_cpu,
+               vae_decode_only, free_params_immediately). ModelLoadParams still
+               accepts those fields for back-compat but stops wiring them to
+               ctx_params, so the WebUI no longer surfaces them — explicit
+               placement now goes through `backend` / `params_backend` strings
+               like "diffusion=cuda0,vae=cpu". Max VRAM survives unchanged. -->
           <div class="options-group">
             <h4 class="options-group-title">Memory Management</h4>
-            <div class="options-grid">
-              <label class="form-checkbox" :title="getOptionDesc('keep_clip_on_cpu')?.description">
-                <input v-model="loadParams.options!.keep_clip_on_cpu" type="checkbox" />
-                <span>Keep CLIP on CPU</span>
-                <RecHint :desc="getOptionDesc('keep_clip_on_cpu')" />
-              </label>
-              <label class="form-checkbox" :title="getOptionDesc('keep_vae_on_cpu')?.description">
-                <input v-model="loadParams.options!.keep_vae_on_cpu" type="checkbox" />
-                <span>Keep VAE on CPU</span>
-                <RecHint :desc="getOptionDesc('keep_vae_on_cpu')" />
-              </label>
-              <label class="form-checkbox" :title="getOptionDesc('keep_controlnet_on_cpu')?.description">
-                <input v-model="loadParams.options!.keep_controlnet_on_cpu" type="checkbox" />
-                <span>Keep ControlNet on CPU</span>
-                <RecHint :desc="getOptionDesc('keep_controlnet_on_cpu')" />
-              </label>
-              <label class="form-checkbox" :title="getOptionDesc('offload_to_cpu')?.description">
-                <input v-model="loadParams.options!.offload_to_cpu" type="checkbox" />
-                <span>Offload to CPU</span>
-                <RecHint :desc="getOptionDesc('offload_to_cpu')" />
-              </label>
-            </div>
-            <!-- Max VRAM (graph-cut segmented param offload).
-                 Lives on sd_ctx_params_t in upstream sd.cpp, so it's
-                 always available — independent of the experimental
-                 offload build option. 0 = disabled. -->
             <div class="form-group" :title="getOptionDesc('max_vram')?.description">
               <label class="form-label">Max VRAM (GiB) — graph-cut offload</label>
               <input
@@ -712,6 +688,7 @@ watch(() => loadParams.value.options?.stream_layers, (enabled) => {
                 placeholder="0 = disabled"
               />
               <RecHint :desc="getOptionDesc('max_vram')" />
+              <small class="form-hint">For per-component CPU placement (formerly keep_*/offload_to_cpu checkboxes), use the <code>backend</code> field in Advanced — e.g. <code>diffusion=cuda0,vae=cpu</code>.</small>
             </div>
           </div>
 
@@ -719,11 +696,6 @@ watch(() => loadParams.value.options?.stream_layers, (enabled) => {
           <div class="options-group">
             <h4 class="options-group-title">VAE Settings</h4>
             <div class="options-grid">
-              <label class="form-checkbox" :title="getOptionDesc('vae_decode_only')?.description">
-                <input v-model="loadParams.options!.vae_decode_only" type="checkbox" />
-                <span>VAE Decode Only</span>
-                <RecHint :desc="getOptionDesc('vae_decode_only')" />
-              </label>
               <label class="form-checkbox" :title="getOptionDesc('vae_tiling')?.description">
                 <input v-model="loadParams.options!.vae_tiling" type="checkbox" />
                 <span>VAE Tiling</span>

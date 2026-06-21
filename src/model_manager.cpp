@@ -4,6 +4,7 @@
 #include "memory_utils.hpp"
 
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -205,6 +206,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         "vae", "clip_l", "clip_g", "clip_vision", "t5xxl", "controlnet",
         "llm", "llm_vision", "taesd",
         "high_noise_diffusion_model", "uncond_diffusion_model", "photo_maker",
+        "pulid_weights",
         "audio_vae", "embeddings_connectors",
         // Nested options object
         "options",
@@ -251,6 +253,9 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
     if (j.contains("uncond_diffusion_model") && !j["uncond_diffusion_model"].is_null()) {
         params.uncond_diffusion_model = j["uncond_diffusion_model"].get<std::string>();
     }
+    if (j.contains("pulid_weights") && !j["pulid_weights"].is_null()) {
+        params.pulid_weights = j["pulid_weights"].get<std::string>();
+    }
     if (j.contains("photo_maker") && !j["photo_maker"].is_null()) {
         params.photo_maker = j["photo_maker"].get<std::string>();
     }
@@ -293,8 +298,8 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
             // — circular RoPE for ideogram4 + Flux). Independent X/Y axes so
             // users can request horizontal-only or vertical-only tiling.
             "circular_x", "circular_y",
-            // Backend routing (sd.cpp post-2026-05-16)
-            "backend", "params_backend",
+            // Backend routing (sd.cpp post-2026-05-16; rpc_servers added in leejet PR #1629)
+            "backend", "params_backend", "rpc_servers",
             // Experimental offload (only honored when SDCPP_EXPERIMENTAL_OFFLOAD is on,
             // but accepted in the schema regardless so OFFLOAD=OFF builds don't 400
             // on configs authored against an OFFLOAD=ON build). Both fork variants'
@@ -371,6 +376,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         // Backend routing
         params.backend = opts.value("backend", "");
         params.params_backend = opts.value("params_backend", "");
+        params.rpc_servers = opts.value("rpc_servers", "");
 
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
         // ── feature/vram-offloading-v2 path ──────────────────────────────
@@ -767,6 +773,19 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         }
     }
 
+    // Validate PuLID weights if specified (leejet PR #1595). The weight file
+    // is logically a checkpoint-class artifact, so we look it up in the same
+    // directory PhotoMaker uses.
+    std::optional<ModelInfo> pulid_weights_info;
+    if (params.pulid_weights) {
+        pulid_weights_info = get_model(*params.pulid_weights, ModelType::Checkpoint);
+        if (!pulid_weights_info) {
+            std::string base_path = get_base_path(ModelType::Checkpoint);
+            errors.push_back("PuLID weights not found: '" + *params.pulid_weights +
+                           "' (searched in: " + (base_path.empty() ? "<not configured>" : base_path) + ")");
+        }
+    }
+
     // ===== PHASE 1.5: GPU-format compatibility check =====
     // Refuse loads of NVFP4/FP8-quantized files on GPUs that don't support
     // those formats natively — sd.cpp would silently dequantize to fp16 at
@@ -940,6 +959,14 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         std::cout << "[ModelManager] PhotoMaker: " << *params.photo_maker << std::endl;
     }
 
+    // Set PuLID-Flux weights if specified (leejet PR #1595).
+    std::string pulid_weights_path;
+    if (pulid_weights_info) {
+        pulid_weights_path = pulid_weights_info->full_path;
+        ctx_params.pulid_weights_path = pulid_weights_path.c_str();
+        std::cout << "[ModelManager] PuLID weights: " << *params.pulid_weights << std::endl;
+    }
+
     // LTXAV audio VAE + embeddings connectors. Audio VAE lives in the same
     // directory as regular VAEs; embeddings connectors live alongside text
     // encoders (T5 directory). Resolution is best-effort here — sd.cpp will
@@ -968,19 +995,12 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
 
     // Set options
     ctx_params.n_threads = params.n_threads > 0 ? params.n_threads : sd_get_num_physical_cores();
-    ctx_params.keep_clip_on_cpu = params.keep_clip_on_cpu;
-    ctx_params.keep_vae_on_cpu = params.keep_vae_on_cpu;
-    ctx_params.keep_control_net_on_cpu = params.keep_controlnet_on_cpu;
-    ctx_params.flash_attn = params.flash_attn;  // Flash attention for CLIP/T5/conditioner
-    ctx_params.diffusion_flash_attn = params.diffusion_flash_attn;  // ditto for the diffusion model
-    ctx_params.offload_params_to_cpu = params.offload_to_cpu;
+    ctx_params.flash_attn = params.flash_attn;
+    ctx_params.diffusion_flash_attn = params.diffusion_flash_attn;
     ctx_params.enable_mmap = params.enable_mmap;
-    ctx_params.vae_decode_only = params.vae_decode_only;
     ctx_params.vae_conv_direct = params.vae_conv_direct;
     ctx_params.diffusion_conv_direct = params.diffusion_conv_direct;
     ctx_params.tae_preview_only = params.tae_preview_only;
-    ctx_params.free_params_immediately = params.free_params_immediately;
-    ctx_params.max_vram = params.max_vram;  // 0 = disabled (graph-cut segmented offload)
     // Note: flow_shift lives on sd_sample_params_t (per-generation), not
     // sd_ctx_params_t. The fork's old feature/vram-offloading branch
     // duplicated it on the ctx params for early-bind reasons; v2 reverted
@@ -1044,6 +1064,26 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     // built-in selection logic.
     ctx_params.backend = params.backend.empty() ? nullptr : params.backend.c_str();
     ctx_params.params_backend = params.params_backend.empty() ? nullptr : params.params_backend.c_str();
+    // RPC distributed-backend node list (leejet PR #1629). Comma-separated
+    // "host:port" pairs in sd.cpp's own format. Empty → nullptr → local.
+    ctx_params.rpc_servers = params.rpc_servers.empty() ? nullptr : params.rpc_servers.c_str();
+
+    // max_vram became a string in leejet PR #1660 (bb90bfa) so it can carry
+    // backend-specific budgets like "cuda:8,cpu:0" alongside the legacy float
+    // semantics. Restapi keeps the input contract as float (preserves
+    // ModelLoadParams.max_vram and the WebUI numeric input) and formats it
+    // here. The local string must outlive new_sd_ctx() — keep it function-
+    // scoped, not block-scoped. Special values: 0.0 → nullptr (disabled,
+    // matches the previous behavior); negative → "-N" auto-detect sentinel.
+    std::string max_vram_str;
+    if (params.max_vram != 0.0f) {
+        std::ostringstream oss;
+        oss << params.max_vram;
+        max_vram_str = oss.str();
+        ctx_params.max_vram = max_vram_str.c_str();
+    } else {
+        ctx_params.max_vram = nullptr;
+    }
 
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
     // ── feature/vram-offloading-v2 path ──────────────────────────────────
@@ -1073,15 +1113,9 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     std::cout << "[ModelManager] Loading model: " << params.model_name << std::endl;
     std::cout << "[ModelManager] Using " << ctx_params.n_threads << " threads" << std::endl;
     std::cout << "[ModelManager] Options: "
-              << "keep_clip_on_cpu=" << ctx_params.keep_clip_on_cpu
-              << ", keep_vae_on_cpu=" << ctx_params.keep_vae_on_cpu
-              << ", keep_controlnet_on_cpu=" << ctx_params.keep_control_net_on_cpu
-              << ", vae_decode_only=" << ctx_params.vae_decode_only
-              << ", vae_conv_direct=" << ctx_params.vae_conv_direct
+              << "vae_conv_direct=" << ctx_params.vae_conv_direct
               << ", diffusion_conv_direct=" << ctx_params.diffusion_conv_direct
               << ", flash_attn=" << ctx_params.flash_attn
-              << ", offload_to_cpu=" << ctx_params.offload_params_to_cpu
-              << ", free_params_immediately=" << ctx_params.free_params_immediately
               << ", tae_preview_only=" << ctx_params.tae_preview_only
               << ", flow_shift=" << (std::isinf(params.flow_shift) ? "auto" : std::to_string(params.flow_shift))
               << ", rng=" << params.rng_type
@@ -1568,7 +1602,6 @@ bool ModelManager::load_upscaler(const std::string& model_name, int n_threads, i
     // backend by name. Empty/null = let sd.cpp pick (matches old behavior).
     upscaler_context_ = new_upscaler_ctx(
         model_info->full_path.c_str(),
-        false,      // offload_params_to_cpu
         false,      // direct
         threads,
         tile_size,

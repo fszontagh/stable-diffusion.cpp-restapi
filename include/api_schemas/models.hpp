@@ -23,6 +23,7 @@ struct LoadModelRequest {
             .optional_field("high_noise_diffusion_model", schema::FieldType::String, "High-noise diffusion model (for dual-stage)")
             .optional_field("uncond_diffusion_model", schema::FieldType::String, "Unconditional diffusion model (leejet master post-1ceb5bd)")
             .optional_field("photo_maker", schema::FieldType::String, "PhotoMaker model name")
+            .optional_field("pulid_weights", schema::FieldType::String, "PuLID-Flux identity-injection weights (leejet PR #1595). Looked up under the checkpoints directory.")
             .optional_field("audio_vae", schema::FieldType::String, "Audio VAE (LTXAV / LTX 2.3 — for video models that produce sound)")
             .optional_field("embeddings_connectors", schema::FieldType::String, "Embeddings connectors (LTXAV / LTX 2.3)")
             .ref_field("options", "LoadOptions", "Model loading options");
@@ -67,6 +68,7 @@ struct LoadOptions {
             .optional_field("circular_y", schema::FieldType::Boolean, "Circular RoPE on the Y axis — produces seamless/tileable output across the vertical seam.", false)
             .optional_field("backend", schema::FieldType::String, "Main compute backend override (empty = sd.cpp picks)")
             .optional_field("params_backend", schema::FieldType::String, "Parameter storage backend override (empty = same as backend)")
+            .optional_field("rpc_servers", schema::FieldType::String, "RPC distributed-backend node list, comma-separated host:port pairs (leejet PR #1629). Empty = no RPC.")
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
             // ── feature/vram-offloading-v2 fields (legacy multi-mode API) ──
             .enum_field("offload_mode", "VRAM offload strategy", OFFLOAD_MODE_VALUES, "none")
