@@ -87,6 +87,7 @@ struct ModelLoadParams {
     std::optional<std::string> high_noise_diffusion_model;  // High-noise diffusion (MoE)
     std::optional<std::string> uncond_diffusion_model;  // Unconditional diffusion model (leejet PR #1640+)
     std::optional<std::string> photo_maker;     // PhotoMaker model
+    std::optional<std::string> pulid_weights;   // PuLID-Flux identity injection weights (leejet PR #1595)
     std::optional<std::string> audio_vae;       // Audio VAE (LTXAV / LTX 2.3 — for video models with sound)
     std::optional<std::string> embeddings_connectors;  // Embeddings connectors (LTXAV)
 
@@ -185,6 +186,9 @@ struct ModelLoadParams {
     // first available accelerator at build time).
     std::string backend = "";                   // Main compute backend ("cuda", "vulkan", "rocm", "metal", "opencl", "")
     std::string params_backend = "";            // Override for parameter storage backend (typically empty)
+    std::string rpc_servers = "";               // RPC distributed-backend node list (leejet PR #1629).
+                                                 // Format is sd.cpp's own — comma-separated "host:port" pairs.
+                                                 // Empty = no RPC, ctx_params.rpc_servers stays nullptr.
 
     static ModelLoadParams from_json(const nlohmann::json& j);
 };

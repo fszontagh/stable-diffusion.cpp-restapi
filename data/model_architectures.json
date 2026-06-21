@@ -752,6 +752,31 @@
         "width": 2048,
         "height": 2048
       }
+    },
+    "Boogu-Image": {
+      "name": "Boogu Image",
+      "description": "Comfy-Org Boogu Image (base + Edit variants). Uses the Flux VAE (ae.safetensors) and Qwen3-VL 8B as the LLM text+vision encoder. The Edit variant also needs llm_vision (mmproj) for image-edit workflows.",
+      "aliases": ["Boogu Image", "Boogu-Image", "boogu_image", "boogu", "Boogu"],
+      "requiredComponents": {
+        "vae": "ae.safetensors (Flux VAE)",
+        "llm": "Qwen3-VL-8B-Instruct (GGUF)"
+      },
+      "optionalComponents": {
+        "llm_vision": "mmproj-Qwen3VL-8B-Instruct (GGUF, only for Boogu Image Edit)"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "offload_to_cpu": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 8,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      }
     }
   },
   "version": 2,
