@@ -65,6 +65,8 @@ const loadParams = ref<LoadModelParams>({
     flash_attn: true,
     diffusion_flash_attn: false,
     enable_mmap: true,
+    vae_conv_direct: false,
+    diffusion_conv_direct: false,
     tae_preview_only: false,
     force_sdxl_vae_conv_scale: false,
     max_vram: 0,
@@ -74,6 +76,19 @@ const loadParams = ref<LoadModelParams>({
     backend: '',
     params_backend: '',
     rpc_servers: '',
+    // Weight type + per-tensor rules (empty = auto-detect from file metadata).
+    weight_type: '',
+    tensor_type_rules: '',
+    // RNG / prediction / LoRA-apply — defaults match the restapi struct defaults
+    // so the <select> shows the correct option highlighted on first render.
+    rng_type: 'cuda',
+    sampler_rng_type: '',
+    prediction: '',
+    lora_apply_mode: 'auto',
+    // Chroma-only knobs (ignored for other architectures).
+    chroma_use_dit_mask: true,
+    chroma_use_t5_mask: false,
+    chroma_t5_mask_pad: 1,
     qwen_image_zero_cond_t: false,
     // leejet master post-1ceb5bd: VAE format override + tileable RoPE.
     vae_format: 'auto',
