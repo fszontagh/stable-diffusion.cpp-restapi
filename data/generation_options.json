@@ -394,10 +394,10 @@
     },
     "upscale_repeats": {
       "label": "Upscale Repeats",
-      "description": "Number of upscale passes (each with the upscaler's native factor — 4× ESRGAN × 2 passes = 16×).",
+      "description": "Number of post-generation auto-upscale passes (each with the upscaler's native factor — 4× ESRGAN × 2 passes = 16×). DISTINCT from the `/upscale` endpoint's own `repeats` field, which controls passes inside a single upscale job. `upscale_repeats` only chains additional /upscale calls after txt2img / img2img finish.",
       "type": "number",
       "default": 1,
-      "applies_to": ["txt2img", "img2img", "upscale"],
+      "applies_to": ["txt2img", "img2img"],
       "recommended": "1. Two passes amplify artifacts, but produces large outputs from small inputs."
     },
     "upscale_auto_unload": {
@@ -594,11 +594,19 @@
     },
     "job_id": {
       "label": "Source Job ID",
-      "description": "Convenience: use the output of an existing completed job as the source for upscaling, instead of providing `image_base64`. Resolved server-side.",
+      "description": "Convenience: use the output of an existing completed job as the source for upscaling, instead of providing `image_base64`. handle_upscale loads `outputs[image_index]` from disk, base64-encodes it, and substitutes `image_base64` before the worker runs — so to the worker the two paths are indistinguishable.",
       "type": "string",
       "default": "",
       "applies_to": ["upscale"],
       "recommended": "Use this when chaining 'generate, then upscale' from a queued job."
+    },
+    "image_index": {
+      "label": "Source Image Index",
+      "description": "Which output of the source job to upscale. Used with `job_id` when the source job produced multiple images (e.g. batch_count > 1). Ignored when `job_id` is absent. 0-based: 0 = first output.",
+      "type": "number",
+      "default": 0,
+      "applies_to": ["upscale"],
+      "recommended": "Leave at 0 unless the source job had batch_count > 1 and you want a specific image."
     }
   },
   "categories": {
@@ -644,7 +652,7 @@
     },
     "upscale_endpoint": {
       "label": "/upscale Endpoint",
-      "options": ["image_base64", "job_id", "upscale_factor", "tile_size", "repeats"]
+      "options": ["image_base64", "job_id", "image_index", "upscale_factor", "tile_size", "repeats"]
     },
     "expansion": {
       "label": "Prompt Expansion",

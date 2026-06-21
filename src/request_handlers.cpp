@@ -1617,6 +1617,72 @@ void RequestHandlers::handle_upscale(const httplib::Request& req, httplib::Respo
         }
         body.erase("title");
 
+        // Convenience: resolve `job_id` (+ optional `image_index`, defaults 0)
+        // into the `image_base64` payload that UpscaleParams::from_json + the
+        // worker expect. Previously this resolution was promised by inline
+        // comments but never implemented — the body queued with job_id only,
+        // and the worker failed at "No image provided for upscaling" because
+        // the parser saw no image_base64. Mirrors the MCP path's resolution
+        // in tool_executor.cpp (analyze_image), including the "/output/" strip
+        // and absolute/relative-path normalization.
+        if (body.contains("job_id") && body["job_id"].is_string()) {
+            std::string src_job_id = body["job_id"].get<std::string>();
+            int image_index = 0;
+            if (body.contains("image_index") && body["image_index"].is_number_integer()) {
+                image_index = body["image_index"].get<int>();
+            }
+
+            auto src_job = queue_manager_.get_job(src_job_id);
+            if (!src_job) {
+                send_error(res, "Source job not found: " + src_job_id, 404);
+                return;
+            }
+            if (src_job->outputs.empty()) {
+                send_error(res, "Source job has no output images", 400);
+                return;
+            }
+            if (image_index < 0 ||
+                static_cast<size_t>(image_index) >= src_job->outputs.size()) {
+                send_error(res, "Invalid image_index. Source job has " +
+                                std::to_string(src_job->outputs.size()) + " output(s).", 400);
+                return;
+            }
+
+            // Outputs are stored as relative paths like "<group>/<job>/image.png".
+            // Strip any leading "/output/" prefix (legacy serialization) and
+            // resolve against output_dir_. Absolute paths pass through.
+            std::string output_path = src_job->outputs[image_index];
+            fs::path full_path;
+            if (fs::path(output_path).is_absolute()) {
+                full_path = output_path;
+            } else {
+                if (output_path.rfind("/output/", 0) == 0) {
+                    output_path = output_path.substr(8);
+                }
+                full_path = fs::path(output_dir_) / output_path;
+            }
+            if (!fs::exists(full_path)) {
+                send_error(res, "Source image file not found on disk: " + full_path.string(), 404);
+                return;
+            }
+
+            // Read the raw file bytes and base64-encode them. UpscaleParams::
+            // from_json's decode_base64_image path expects encoded file bytes
+            // (matches what direct image_base64 callers send), not decoded
+            // pixel data — so we just slurp + encode, no stbi round-trip.
+            std::ifstream f(full_path, std::ios::binary);
+            if (!f) {
+                send_error(res, "Cannot open source image: " + full_path.string(), 500);
+                return;
+            }
+            std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)),
+                                       std::istreambuf_iterator<char>());
+
+            body["image_base64"] = utils::base64_encode(bytes);
+            body.erase("job_id");
+            body.erase("image_index");
+        }
+
         // Validate body shape at the boundary so unknown fields fail fast
         // as 400 (instead of being silently dropped on the way to the
         // worker). Discard the parsed result — we store the raw body on
