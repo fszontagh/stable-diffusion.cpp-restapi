@@ -1311,10 +1311,14 @@ UpscaleParams UpscaleParams::from_json(const nlohmann::json& j) {
 
     static const std::unordered_set<std::string> KNOWN = {
         "upscale_factor", "tile_size", "repeats", "image_base64",
-        // Convenience: callers can pass a job_id instead of base64;
-        // submit_generation_jobs / handle_upscale resolve it before
-        // calling this parser, but it's a recognized request field.
-        "job_id",
+        // Convenience: handle_upscale resolves job_id + image_index into
+        // image_base64 BEFORE this parser sees the body, then erases both
+        // keys. We still list them in KNOWN so the path is honest: direct
+        // callers (e.g. an MCP-style client) that send job_id/image_index
+        // get accepted instead of 400'd, AND the worker's second-pass
+        // re-parse (queue_manager.cpp's UpscaleParams::from_json call on
+        // the stored body) won't trip if anything ever leaves the keys in.
+        "job_id", "image_index",
     };
     reject_unknown_keys("/upscale body", j, KNOWN);
 
