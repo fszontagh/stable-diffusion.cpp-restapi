@@ -77,6 +77,7 @@ struct LoadOptions {
             // ── feature/unified-streaming field (new minimal API) ──────────
             .optional_field("stream_layers", schema::FieldType::Boolean, "Engage residency+async-prefetch streaming on top of max_vram. Requires max_vram > 0; no effect when max_vram == 0. sd.cpp's planner picks the residency split automatically and overlaps next-segment H2D with current-segment compute.", false)
 #endif
+            .optional_field("eager_load", schema::FieldType::Boolean, "Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs naturally with stream_layers on a CPU params backend — the first generation no longer pays for lazy fault-in. Restapi defaults to true (long-lived server: first request after load should be fast); upstream sd-cli defaults to false (one-shot tool).", true)
             ;
         return builder.build();
     }

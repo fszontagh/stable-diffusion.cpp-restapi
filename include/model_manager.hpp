@@ -145,6 +145,19 @@ struct ModelLoadParams {
     bool stream_layers = false;
 #endif
 
+    // Eager-load params into the params backend at model-load time instead of
+    // lazily on first use (leejet PR #1687). Pairs naturally with stream_layers
+    // on a CPU params backend — the first generation no longer pays for
+    // lazy fault-in. No effect when the params backend matches the compute
+    // backend (then load is always eager anyway).
+    //
+    // Default is `true` in the restapi — upstream sd_ctx_params_t.eager_load
+    // defaults to false because the CLI is a one-shot tool where lazy load
+    // is acceptable; the restapi is a long-lived server where the first
+    // request after a load should be fast, so we flip the default. Users
+    // can still pass eager_load=false to opt out.
+    bool eager_load = true;
+
     // RNG options
     std::string rng_type = "cuda";              // std_default, cuda, cpu
     std::string sampler_rng_type = "";          // Empty = use rng_type

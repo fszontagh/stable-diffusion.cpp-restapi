@@ -246,23 +246,26 @@ else()
             GIT_SUBMODULES_RECURSE TRUE
         )
     else()
-        # Pinned to leejet/master HEAD (b12098f, 20 commits past 276025e).
-        # Notable surface changes in this bump:
+        # Pinned to leejet/master HEAD (854bebf — bumped from b12098f).
+        # New surface in this bump:
+        #   - PR #1687 (perf): adds bool `eager_load` to sd_ctx_params_t.
+        #     Pre-loads all params into the params backend at model-load time
+        #     instead of lazily on first use. Pairs naturally with
+        #     stream_layers on a CPU backend — the first generation no longer
+        #     pays for lazy fault-in. Wired in ModelLoadParams + LoadOptions
+        #     schema + WebUI.
+        #   - PR #1693 (CLI only): --prompt-file / --negative-prompt-file
+        #     flags. The restapi doesn't shell out to sd-cli, so no surface
+        #     change here — noted for completeness.
+        # Earlier notable changes (from the b12098f bump still apply):
         #   - PR #1654 routes CPU placement through backend specs, deleting
-        #     the per-component bool flags (vae_decode_only,
-        #     free_params_immediately, offload_params_to_cpu, keep_clip_on_cpu,
-        #     keep_control_net_on_cpu, keep_vae_on_cpu). ModelLoadParams keeps
-        #     the legacy field names for back-compat but stops wiring them to
-        #     ctx_params — clients sending these get accepted-and-ignored.
-        #   - PR #1660 (bb90bfa) changes ctx_params.max_vram from float to
-        #     `const char*` so backend-specific budgets ("cuda:8") can share
-        #     the same field. Restapi stores it as float in ModelLoadParams
-        #     and formats to string at the ctx-wiring step.
-        #   - PR #1595 adds PuLID-Flux identity injection (pulid_weights_path
-        #     + sd_pulid_params_t).
-        #   - PR #1629 adds RPC distributed-backend support (rpc_servers).
-        #   - PR #1124 adds sd_cancel_generation() — wired through where the
-        #     queue manager already supports job cancellation.
+        #     the per-component bool flags. Restapi exposes the new
+        #     `backend` / `params_backend` strings directly — see the
+        #     BackendAssignmentEditor in the WebUI.
+        #   - PR #1660 changes ctx_params.max_vram from float to const char*.
+        #   - PR #1595 adds PuLID-Flux identity injection.
+        #   - PR #1629 adds RPC distributed-backend support.
+        #   - PR #1124 adds sd_cancel_generation().
         #   - PR #1688 adds Boogu Image architecture.
         # Fork variants remain restorable; restapi source still gates legacy
         # fork code behind SDCPP_EXPERIMENTAL_OFFLOAD / SDCPP_UNIFIED_STREAMING.
@@ -272,7 +275,7 @@ else()
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        b12098f5d09fc83da36e65c784f7bdb16a5a5ebf
+            GIT_TAG        854bebfe02a7fb07b06b2ad151d27af51b690679
             GIT_SHALLOW    FALSE
             GIT_SUBMODULES ${SDCPP_SUBMODULES}
             GIT_SUBMODULES_RECURSE TRUE

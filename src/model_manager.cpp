@@ -318,6 +318,8 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
             "streaming_keep_layers_behind", "streaming_min_free_vram_mb",
             // feature/unified-streaming fields:
             "stream_layers",
+            // leejet PR #1687 — eager-load params at model-load time
+            "eager_load",
         };
         reject_unknown_keys("/models/load options", opts, KNOWN_OPTIONS);
         params.n_threads = opts.value("n_threads", -1);
@@ -409,6 +411,9 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         // async H2D prefetch for the next segment while computing the current.
         params.stream_layers = opts.value("stream_layers", false);
 #endif
+        // Default true — see ModelLoadParams.eager_load comment for why
+        // the restapi flips the upstream default.
+        params.eager_load = opts.value("eager_load", true);
     }
 
     return params;
@@ -1101,6 +1106,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     // if max_vram is 0.
     ctx_params.stream_layers = params.stream_layers;
 #endif
+    ctx_params.eager_load = params.eager_load;
 
     std::cout << "[ModelManager] Loading model: " << params.model_name << std::endl;
     std::cout << "[ModelManager] Using " << ctx_params.n_threads << " threads" << std::endl;
@@ -1251,6 +1257,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     // ── feature/unified-streaming echoes back the single new field ──────────
     loaded_options_["stream_layers"] = params.stream_layers;
 #endif
+    loaded_options_["eager_load"] = params.eager_load;
 
     // Set atomic flag for lock-free checks
     model_loaded_ = true;
