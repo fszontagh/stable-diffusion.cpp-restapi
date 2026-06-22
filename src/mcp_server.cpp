@@ -266,7 +266,8 @@ json McpServer::handle_list_tools() {
         {"backend", {{"type", "string"}, {"description", "Main compute backend. Use \"diffusion=cuda0,vae=cpu\" for per-component CPU placement (replaces keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu)."}}},
         {"params_backend", {{"type", "string"}, {"description", "Parameter storage backend. Set to \"*=cpu\" for the global \"keep all weights in RAM\" mode (replaces offload_to_cpu)."}}},
         {"max_vram", {{"type", "number"}, {"description", "GiB budget for graph-cut segmented param offload (0 = disabled)"}}},
-        {"stream_layers", {{"type", "boolean"}, {"description", "Engage residency+async-prefetch streaming on top of max_vram (no effect without max_vram > 0)"}}}
+        {"stream_layers", {{"type", "boolean"}, {"description", "Engage residency+async-prefetch streaming on top of max_vram (no effect without max_vram > 0)"}}},
+        {"eager_load", {{"type", "boolean"}, {"description", "Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs with stream_layers on a CPU params backend."}}}
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
         ,
         // Experimental VRAM offloading (only when built with SD_EXPERIMENTAL_OFFLOAD=ON)

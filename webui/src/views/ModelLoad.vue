@@ -73,6 +73,9 @@ const loadParams = ref<LoadModelParams>({
     max_vram: 0,
     // Residency-aware streaming (unified in leejet master post-1ceb5bd).
     stream_layers: false,
+    // Eager-load params at model-load time (leejet PR #1687). Default true
+    // in the restapi — long-lived server, first generation should be fast.
+    eager_load: true,
     // Compute / params backend overrides (replace keep_*/offload_to_cpu).
     backend: '',
     params_backend: '',
@@ -973,6 +976,23 @@ function onKeepAllInRam(e: Event) {
           <div v-if="loadParams.options!.stream_layers && !loadParams.options!.max_vram" class="form-hint" style="color: var(--color-warning, #c80);">
             ⚠ stream_layers is enabled but max_vram is 0 — set max_vram in the
             Memory Management group (typically ~80% of free VRAM) for streaming to engage.
+          </div>
+          <!-- Eager-load (leejet PR #1687). Lives in this group because the
+               whole point is to pre-warm the params backend for streaming runs —
+               the first generation skips lazy fault-in. Default on. -->
+          <div class="form-group">
+            <label class="form-checkbox">
+              <input v-model="loadParams.options!.eager_load" type="checkbox" />
+              <span>Eager-load params at model-load time</span>
+            </label>
+            <small class="form-hint">
+              Pre-loads all weights into the params backend during
+              <code>/models/load</code> instead of lazily on first generation
+              (sd.cpp PR #1687). The restapi is a long-lived server, so the
+              first request after load should be fast — that's why this is on
+              by default. Untick if you'd rather move that load cost to the
+              first generation.
+            </small>
           </div>
         </div>
       </details>

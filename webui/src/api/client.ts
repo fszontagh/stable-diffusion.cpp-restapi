@@ -54,6 +54,9 @@ export interface LoadOptions {
   // Residency-aware streaming planner (leejet master + unified-streaming fork).
   // Pairs naturally with params_backend='*=cpu' and max_vram > 0.
   stream_layers?: boolean
+  // Pre-load all params into the params backend at model-load time instead of
+  // lazily on first use (leejet PR #1687). Restapi defaults to true.
+  eager_load?: boolean
 }
 
 export interface MemoryInfo {
