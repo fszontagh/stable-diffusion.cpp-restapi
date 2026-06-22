@@ -5,6 +5,7 @@ import { useAppStore } from '../stores/app'
 import { api, type LoadModelParams, type ModelInfo, type ArchitecturePreset, type OptionDescription } from '../api/client'
 import { useArchitectures, extractWeightType, suggestComponents, type ComponentSuggestion } from '../composables/useArchitectures'
 import RecHint from '../components/RecHint.vue'
+import BackendAssignmentEditor from '../components/BackendAssignmentEditor.vue'
 
 const props = defineProps<{
   modelName: string
@@ -376,6 +377,21 @@ watch(() => loadParams.value.options?.stream_layers, (enabled) => {
   }
 })
 
+// Convenience toggle for the most common params_backend pattern. Ticked →
+// the entire string becomes "*=cpu" (global "keep all weights in RAM").
+// Unticked → if the current value is exactly "*=cpu" we clear it; if it's
+// some custom value the user typed themselves (e.g. "vae=cpu,diffusion=cuda0")
+// we leave it alone — the toggle only owns the "=cpu" preset case.
+function onKeepAllInRam(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked
+  if (!loadParams.value.options) return
+  if (checked) {
+    loadParams.value.options.params_backend = '*=cpu'
+  } else if (loadParams.value.options.params_backend === '*=cpu') {
+    loadParams.value.options.params_backend = ''
+  }
+}
+
 </script>
 
 <template>
@@ -698,36 +714,45 @@ watch(() => loadParams.value.options?.stream_layers, (enabled) => {
           </div>
 
           <!-- Backend Placement (replaces keep_clip_on_cpu / keep_vae_on_cpu /
-               keep_controlnet_on_cpu / offload_to_cpu). -->
+               keep_controlnet_on_cpu / offload_to_cpu). Structured row editor —
+               each row is a `component=device` assignment, serialized to
+               the comma-separated string sd.cpp's backend parser expects. -->
           <div class="options-group">
             <h4 class="options-group-title">Backend Placement</h4>
             <div class="form-group" :title="getOptionDesc('backend')?.description">
-              <label class="form-label">Backend</label>
-              <input
+              <label class="form-label">Compute Backend</label>
+              <BackendAssignmentEditor
                 v-model="loadParams.options!.backend"
-                type="text"
-                class="form-input"
                 placeholder="e.g. diffusion=cuda0,vae=cpu"
               />
               <RecHint :desc="getOptionDesc('backend')" />
               <small class="form-hint">
-                Compute backend override. For per-component CPU placement use e.g.
-                <code>diffusion=cuda0,vae=cpu</code> (replaces the old
-                keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu checkboxes).
+                Compute backend override per component. Use <code>te=cpu</code>
+                to keep text encoders on CPU, <code>vae=cpu</code> for the VAE,
+                etc. Empty = sd.cpp picks the default backend.
               </small>
             </div>
             <div class="form-group" :title="getOptionDesc('params_backend')?.description">
               <label class="form-label">Params Backend</label>
-              <input
+              <label class="form-checkbox keep-in-ram-toggle">
+                <input
+                  type="checkbox"
+                  :checked="loadParams.options!.params_backend === '*=cpu'"
+                  @change="onKeepAllInRam"
+                />
+                <span>Keep all weights in RAM (<code>*=cpu</code>)</span>
+              </label>
+              <BackendAssignmentEditor
                 v-model="loadParams.options!.params_backend"
-                type="text"
-                class="form-input"
                 placeholder="e.g. *=cpu"
+                :default-global="true"
               />
               <RecHint :desc="getOptionDesc('params_backend')" />
               <small class="form-hint">
-                Parameter storage backend. Set to <code>*=cpu</code> for global
-                "keep all weights in RAM" mode (replaces <code>offload_to_cpu</code>).
+                Parameter storage placement. The "keep all weights in RAM"
+                toggle above is the common case (replaces the old
+                <code>offload_to_cpu</code>); the row editor lets you mix
+                per-component placement for advanced setups.
               </small>
             </div>
             <div class="form-group" :title="getOptionDesc('rpc_servers')?.description">
