@@ -356,6 +356,7 @@ json McpServer::tool_generate(const json& args) {
         if (args.contains("image_base64") && !args.contains("init_image_base64")) {
             job_args["init_image_base64"] = args["image_base64"];
         }
+        job_args.erase("type");
         try {
             std::string job_id = queue_manager_.add_job(GenerationType::Upscale, job_args);
             json result = {{"job_id", job_id}, {"status", "pending"}, {"message", "Upscale job queued"}};
@@ -392,8 +393,10 @@ json McpServer::tool_generate(const json& args) {
         return make_tool_result("Unknown generation type: " + type + ". Use: txt2img, img2img, video, upscale", true);
     }
 
+    json job_args = args;
+    job_args.erase("type");
     try {
-        std::string job_id = queue_manager_.add_job(gen_type, args);
+        std::string job_id = queue_manager_.add_job(gen_type, job_args);
         json result = {{"job_id", job_id}, {"status", "pending"}, {"message", message}};
         return make_tool_result(result.dump());
     } catch (const std::exception& e) {
