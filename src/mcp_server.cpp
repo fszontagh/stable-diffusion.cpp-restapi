@@ -3,11 +3,16 @@
 #include "queue_manager.hpp"
 #include "memory_utils.hpp"
 #include "auth_manager.hpp"
+#include "utils.hpp"
 
 #include <iostream>
 #include <fstream>
 #include <optional>
 #include <set>
+#include <vector>
+#include <iterator>
+#include <cctype>
+#include <cstdint>
 
 namespace sdcpp {
 
@@ -317,6 +322,20 @@ json McpServer::handle_list_tools() {
         }}
     });
 
+    // 4. image — fetch generated image bytes for a completed job
+    tools.push_back({
+        {"name", "image"},
+        {"description", "Fetch the actual generated image(s) for a completed job as inline image content (not just a URL). Use this after 'generate' + 'job status' to let the model see the result. Returns image content blocks the model can view. Video (.mp4) outputs cannot be returned inline — use the URL from 'job status' instead."},
+        {"inputSchema", {
+            {"type", "object"},
+            {"required", json::array({"job_id"})},
+            {"properties", {
+                {"job_id", {{"type", "string"}, {"description", "Job UUID of a completed generation job"}}},
+                {"index", {{"type", "integer"}, {"description", "Zero-based index of a single output to fetch. Omit to fetch all outputs (capped at 4)."}}}
+            }}
+        }}
+    });
+
     return {{"tools", tools}};
 }
 
@@ -333,6 +352,7 @@ json McpServer::handle_call_tool(const json& params) {
     if (name == "generate") return tool_generate(args);
     if (name == "model") return tool_model(args);
     if (name == "job") return tool_job(args);
+    if (name == "image") return tool_image(args);
 
     return make_tool_result("Unknown tool: " + name, true);
 }
@@ -402,6 +422,102 @@ json McpServer::tool_generate(const json& args) {
     } catch (const std::exception& e) {
         return make_tool_result("Failed to queue job: " + std::string(e.what()), true);
     }
+}
+
+json McpServer::tool_image(const json& args) {
+    if (!args.contains("job_id") || !args["job_id"].is_string()) {
+        return make_tool_result("Missing required parameter: job_id", true);
+    }
+    std::string job_id = args["job_id"].get<std::string>();
+
+    auto job = queue_manager_.get_job(job_id);
+    if (!job.has_value()) {
+        return make_tool_result("Job not found: " + job_id, true);
+    }
+    if (job->outputs.empty()) {
+        return make_tool_result("Job has no outputs yet (status: " +
+            queue_status_to_string(job->status) + "). Wait for completion.", true);
+    }
+
+    // Resolve which outputs to fetch: a single one if 'index' given, else all.
+    std::vector<std::string> selected;
+    if (args.contains("index") && args["index"].is_number_integer()) {
+        long idx = args["index"].get<long>();
+        if (idx < 0 || static_cast<size_t>(idx) >= job->outputs.size()) {
+            return make_tool_result("index out of range: job has " +
+                std::to_string(job->outputs.size()) + " output(s)", true);
+        }
+        selected.push_back(job->outputs[static_cast<size_t>(idx)]);
+    } else {
+        selected = job->outputs;
+    }
+
+    // Cap inline payload to avoid blowing up the context with many large images.
+    constexpr size_t kMaxImages = 4;
+    bool truncated = selected.size() > kMaxImages;
+    if (truncated) selected.resize(kMaxImages);
+
+    // Map file extension to MIME type. Only raster image types are returnable
+    // as MCP image content; video (.mp4) and unknown types are skipped.
+    auto mime_for = [](const std::string& path) -> std::string {
+        auto dot = path.find_last_of('.');
+        if (dot == std::string::npos) return "";
+        std::string ext = path.substr(dot + 1);
+        for (auto& c : ext) c = static_cast<char>(::tolower(c));
+        if (ext == "png") return "image/png";
+        if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
+        if (ext == "webp") return "image/webp";
+        if (ext == "gif") return "image/gif";
+        return "";
+    };
+
+    json content = json::array();
+    std::vector<std::string> skipped;
+    for (const auto& out : selected) {
+        std::string mime = mime_for(out);
+        if (mime.empty()) {
+            skipped.push_back(out + " (unsupported type for inline content)");
+            continue;
+        }
+        std::string full_path = queue_manager_.output_dir() + "/" + out;
+        std::ifstream f(full_path, std::ios::binary);
+        if (!f) {
+            skipped.push_back(out + " (file not found on disk)");
+            continue;
+        }
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)),
+                                   std::istreambuf_iterator<char>());
+        content.push_back({
+            {"type", "image"},
+            {"data", utils::base64_encode(bytes)},
+            {"mimeType", mime}
+        });
+    }
+
+    if (content.empty()) {
+        std::string msg = "No inline-returnable images for job " + job_id + ".";
+        if (!skipped.empty()) {
+            msg += " Skipped:";
+            for (const auto& s : skipped) msg += " " + s + ";";
+        }
+        return make_tool_result(msg, true);
+    }
+
+    // Prepend a short text note when some outputs were skipped or truncated so
+    // the model knows the inline images aren't the complete set.
+    if (truncated || !skipped.empty()) {
+        std::string note = "Returning " + std::to_string(content.size()) +
+            " image(s) for job " + job_id + ".";
+        if (truncated) note += " Output list truncated to first " +
+            std::to_string(kMaxImages) + "; fetch others by 'index'.";
+        if (!skipped.empty()) {
+            note += " Skipped:";
+            for (const auto& s : skipped) note += " " + s + ";";
+        }
+        content.insert(content.begin(), {{"type", "text"}, {"text", note}});
+    }
+
+    return {{"content", content}};
 }
 
 json McpServer::tool_model(const json& args) {
