@@ -1104,6 +1104,18 @@ onMounted(async () => {
           mode.value = data.type as 'txt2img' | 'img2img' | 'txt2vid'
         }
       }
+      // For partial reloads (selection defined) we restore the user's
+      // last-used settings for the current mode FIRST, so unselected
+      // sections show the user's actual prefs from localStorage rather
+      // than the hardcoded ref() defaults that a fresh component mount
+      // would otherwise display. loadJobParams then only overwrites the
+      // selected sections — e.g. prompt-only reload preserves steps /
+      // sampler / scheduler / resolution / etc. as the user expects.
+      // Full reload (selection undefined) skips this — loadJobParams
+      // overrides everything anyway.
+      if (selection) {
+        await loadSettingsForMode(mode.value)
+      }
       loadJobParams(data.type, data.params, selection)
       sessionStorage.removeItem('reloadJobParams')
       // Save these as the current settings for this mode
