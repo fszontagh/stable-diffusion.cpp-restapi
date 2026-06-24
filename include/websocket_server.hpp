@@ -198,4 +198,26 @@ void set_status_provider(StatusProviderCallback callback);
  */
 nlohmann::json get_server_status();
 
+// When the project is built with SDCPP_WEBSOCKET=OFF, websocket_server.cpp is
+// excluded from the build, so any out-of-line member or free function above
+// becomes an undefined symbol at link time. Two call sites — model_manager.cpp
+// and queue_manager.cpp — invoke get_websocket_server() and broadcast(...)
+// without #ifdef gating (every other consumer guards them with
+// #ifdef SDCPP_WEBSOCKET_ENABLED), and that's the link breakage in issue #9.
+//
+// The fix lives here rather than wrapping ~20 individual call sites: when the
+// macro is undefined, provide header-inline no-op stubs so the WS-disabled
+// build links and the `if (auto* ws = get_websocket_server()) { ws->broadcast(...); }`
+// pattern degrades to dead code (the compiler will see the nullptr and elide
+// the conditional). Future call sites added in any TU stay safe without
+// per-call gating.
+//
+// The real out-of-line definitions in websocket_server.cpp are only compiled
+// when SDCPP_WEBSOCKET=ON (CMakeLists.txt gates the source file on the option),
+// so there's no ODR conflict.
+#ifndef SDCPP_WEBSOCKET_ENABLED
+inline WebSocketServer* get_websocket_server() { return nullptr; }
+inline void WebSocketServer::broadcast(WSEventType, const nlohmann::json&) {}
+#endif
+
 } // namespace sdcpp
