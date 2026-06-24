@@ -424,6 +424,9 @@ public:
     bool get_group_folders_enabled() const {
         return group_folders_enabled_.load(std::memory_order_relaxed);
     }
+    // Output directory that job output paths are relative to. Used by callers
+    // (e.g. MCP image tool) that need to read generated files off disk.
+    const std::string& output_dir() const { return output_dir_; }
 private:
     /**
      * Compose the per-job subpath under output_dir_. Returns "<group_id>/<job_id>"
