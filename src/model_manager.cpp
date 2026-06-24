@@ -1229,6 +1229,17 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         loaded_options_["prediction"] = params.prediction;
     }
     loaded_options_["lora_apply_mode"] = params.lora_apply_mode;
+    // Backend placement strings — these are how upstream now expresses
+    // per-component CPU offload (e.g. params_backend="*=cpu" replaces the
+    // old offload_to_cpu bool). Echoing them is what makes /queue's
+    // "Reload Job" actually restore the offload setup the job ran under —
+    // without this the WebUI reload picks them up as empty strings and
+    // the model loads with GPU placement only, OOM'ing on anything that
+    // needed CPU-side params.
+    loaded_options_["backend"] = params.backend;
+    loaded_options_["params_backend"] = params.params_backend;
+    loaded_options_["rpc_servers"] = params.rpc_servers;
+    loaded_options_["force_sdxl_vae_conv_scale"] = params.force_sdxl_vae_conv_scale;
     loaded_options_["chroma_use_dit_mask"] = params.chroma_use_dit_mask;
     loaded_options_["chroma_use_t5_mask"] = params.chroma_use_t5_mask;
     loaded_options_["chroma_t5_mask_pad"] = params.chroma_t5_mask_pad;
