@@ -173,6 +173,9 @@ const loraSettings = ref<LoraSettings>({
 const LORA_REGEX = /<lora:([^:>]+):([^>]+)>/g
 
 const availableLoras = computed(() => store.models?.loras || [])
+// ESRGAN upscaler list — used by the Hi-Res Fix model selector. Matches
+// the pattern Upscale.vue uses for its own load dropdown.
+const esrganModels = computed(() => store.models?.esrgan || [])
 
 // Build a map of base names (without extension) to full names for matching
 const loraNameMap = computed(() => {
@@ -2136,8 +2139,21 @@ async function handleSubmit() {
               </div>
 
               <div v-if="hiresUpscaler === 'model'" class="form-group mt-2">
-                <label class="form-label">Upscaler Model Path</label>
-                <input v-model="hiresModelPath" type="text" class="form-input" placeholder="e.g. RealESRGAN_x4plus.pth" />
+                <label class="form-label">Upscaler Model</label>
+                <select v-if="esrganModels.length > 0" v-model="hiresModelPath" class="form-select">
+                  <option value="">— Select an upscaler —</option>
+                  <option v-for="m in esrganModels" :key="m.name" :value="m.name">{{ m.name }}</option>
+                </select>
+                <input
+                  v-else
+                  v-model="hiresModelPath"
+                  type="text"
+                  class="form-input"
+                  placeholder="e.g. RealESRGAN_x4plus.pth"
+                />
+                <small v-if="esrganModels.length === 0" class="form-hint">
+                  No ESRGAN models found in the configured upscaler directory. Drop one in and re-scan, or type the filename manually.
+                </small>
               </div>
 
               <div class="form-row">
