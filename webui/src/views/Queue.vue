@@ -892,6 +892,63 @@ function cancelReloadSelector() {
 }
 
 // Background model swap triggered by the "Model & components" checkbox.
+// Compatibility shim for job snapshots whose load_options predate the fields
+// the current backend expects. Two failure modes this fixes:
+//
+// 1. **Pre-#11a4228 snapshots** were captured before loaded_options_ echoed
+//    `backend` / `params_backend` / `rpc_servers`. Reloading on Z-Image bf16
+//    (or anything that ran with CPU-side params) hits OOM because
+//    stream_layers=true but params_backend is missing.
+//
+// 2. **Pre-alignment snapshots** carry legacy fields the strict backend
+//    allowlist now rejects (`keep_clip_on_cpu`, `offload_to_cpu`,
+//    `vae_decode_only`, the whole experimental-offload set, etc.). Sending
+//    them as-is would 400.
+//
+// Translates legacy bool flags to the new backend-spec strings (mirroring
+// sd-cli's prepare_backend_assignments), applies the stream_layers →
+// params_backend="*=cpu" auto-fill rule from ModelLoad.vue, and strips dead
+// keys before handing the result to /models/load.
+function normalizeLegacyLoadOptions(input: unknown): LoadModelParams['options'] {
+  if (!input || typeof input !== 'object') return {}
+  const opts: Record<string, unknown> = { ...(input as Record<string, unknown>) }
+
+  // Legacy offload_to_cpu → params_backend="*=cpu"
+  if (opts.offload_to_cpu === true && !opts.params_backend) {
+    opts.params_backend = '*=cpu'
+  }
+
+  // Legacy keep_*_on_cpu → backend "te=cpu,vae=cpu,controlnet=cpu" (prepended,
+  // preserving anything the snapshot already had in `backend`).
+  const backendParts: string[] = []
+  if (typeof opts.backend === 'string' && opts.backend) backendParts.push(opts.backend as string)
+  if (opts.keep_clip_on_cpu === true && !backendParts.some((p) => /\bte=cpu\b/.test(p))) backendParts.push('te=cpu')
+  if (opts.keep_vae_on_cpu === true && !backendParts.some((p) => /\bvae=cpu\b/.test(p))) backendParts.push('vae=cpu')
+  if (opts.keep_controlnet_on_cpu === true && !backendParts.some((p) => /\bcontrolnet=cpu\b/.test(p))) backendParts.push('controlnet=cpu')
+  if (backendParts.length > 0) opts.backend = backendParts.join(',')
+
+  // stream_layers=true without params_backend → fill with "*=cpu" (matches
+  // the in-form auto-watcher in ModelLoad.vue).
+  if (opts.stream_layers === true && !opts.params_backend) {
+    opts.params_backend = '*=cpu'
+  }
+
+  // Strip every dead/legacy field that the strict backend allowlist rejects.
+  const dead = [
+    'keep_clip_on_cpu', 'keep_vae_on_cpu', 'keep_controlnet_on_cpu',
+    'offload_to_cpu', 'vae_decode_only', 'free_params_immediately',
+    'flow_shift', 'vae_tiling', 'vae_tile_size_x', 'vae_tile_size_y', 'vae_tile_overlap',
+    'offload_mode', 'vram_estimation',
+    'offload_cond_stage', 'offload_diffusion',
+    'reload_cond_stage', 'reload_diffusion',
+    'log_offload_events', 'min_offload_size_mb', 'target_free_vram_mb',
+    'streaming_prefetch_layers', 'streaming_keep_layers_behind', 'streaming_min_free_vram_mb',
+  ]
+  for (const k of dead) delete opts[k]
+
+  return opts as LoadModelParams['options']
+}
+
 // Reads the job's recorded components + load_options and hands them to
 // /models/load. Failures surface as a toast — the form is already
 // populated from navigateWithSettings, so the user can retry the load
@@ -923,7 +980,7 @@ async function loadModelInBackground(job: Job) {
       if (lc.llm_vision) loadParams.llm_vision = lc.llm_vision
     }
     if (settings.load_options) {
-      loadParams.options = settings.load_options
+      loadParams.options = normalizeLegacyLoadOptions(settings.load_options)
     }
 
     api.loadModel(loadParams).then(() => {
@@ -1026,9 +1083,11 @@ async function loadModelAndRestart() {
       if (settings.loaded_components.llm_vision) loadParams.llm_vision = settings.loaded_components.llm_vision
     }
 
-    // Add load options if stored (critical for correct VRAM usage and behavior)
+    // Add load options if stored (critical for correct VRAM usage and behavior).
+    // Run them through the legacy-compat normalizer so pre-#11a4228 snapshots
+    // (which lack backend/params_backend) still reload correctly.
     if (settings.load_options) {
-      loadParams.options = settings.load_options
+      loadParams.options = normalizeLegacyLoadOptions(settings.load_options)
     }
 
     await api.loadModel(loadParams)
