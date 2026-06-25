@@ -126,6 +126,13 @@ export interface HealthResponse {
      */
     unified_streaming?: boolean
     mcp?: boolean
+    /**
+     * True when the binary was built with -DSD_SEFI_IMAGE=ON against the
+     * fork's `feat/sefi-image-prototype` branch (leejet PR #1707). The
+     * underlying sd.cpp can detect+serve the SeFi-Image architecture when
+     * this is true. Local-test only until the PR merges upstream.
+     */
+    sefi_image?: boolean
     auth_required?: boolean
   }
 }
@@ -1417,6 +1424,31 @@ export interface UploadModelResponse {
 }
 
 // Architecture Types
+/**
+ * Per-component scoring rule. The WebUI's component dropdowns apply these
+ * regex/score bonuses on top of the legacy hardcoded ranking so adding a
+ * new architecture is a JSON-only change. Multiple rules can fire on the
+ * same file — their bonuses accumulate.
+ */
+export interface ComponentScoringRule {
+  regex: string
+  score: number
+}
+
+/**
+ * Architecture-matching rule. The backend reports a single sd.cpp version
+ * string per loaded model (e.g. "SeFi-Image"), but a single architecture
+ * can split into multiple WebUI presets (Turbo / Base / RL) with different
+ * defaults. `match.architecture` is the reported string this preset claims
+ * to handle; `match.nameRegex` (optional) is tested against the loaded
+ * model's filename for disambiguation. Presets without nameRegex are the
+ * fallback for their architecture.
+ */
+export interface ArchitectureMatchRule {
+  architecture?: string
+  nameRegex?: string
+}
+
 export interface ArchitecturePreset {
   id: string
   name: string
@@ -1427,6 +1459,8 @@ export interface ArchitecturePreset {
   loadOptions: Record<string, unknown>
   imageEditMode?: 'ref_images' | 'init_image'
   generationDefaults: Record<string, unknown>
+  match?: ArchitectureMatchRule
+  componentScoring?: Partial<Record<'vae' | 'clip' | 't5' | 'llm' | 'controlnet' | 'taesd', ComponentScoringRule[]>>
 }
 
 export interface ArchitecturesResponse {

@@ -24,6 +24,12 @@ struct ArchitecturePreset {
     nlohmann::json loadOptions;                          // Options for loading
     std::string imageEditMode;                           // "ref_images" for reference-based editing
     nlohmann::json generationDefaults;                   // Default generation params
+    // Optional WebUI matching/scoring fields — opaque to the backend, passed
+    // straight through to /architectures so the WebUI can drive its preset
+    // resolution and component suggestion ranking from JSON instead of
+    // hardcoded per-architecture branches.
+    nlohmann::json match;                                // { architecture, nameRegex? }
+    nlohmann::json componentScoring;                     // { llm: [{regex, score}, ...], vae: [...] }
 
     nlohmann::json to_json() const;
 };
