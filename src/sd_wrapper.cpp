@@ -707,7 +707,17 @@ template <typename ParamsT>
 static void apply_hires_params(sd_hires_params_t& hires, const ParamsT& p) {
     if (!p.hires_enabled) return;
     hires.enabled              = true;
-    hires.upscaler             = str_to_sd_hires_upscaler(p.hires_upscaler.c_str());
+    // sd.cpp's str_to_sd_hires_upscaler returns SD_HIRES_UPSCALER_COUNT
+    // (the sentinel = enum count, currently 10) when the string doesn't
+    // match any known upscaler. Passing that through trips sd.cpp's own
+    // "hires upscaler '10' is invalid, disabling hires" guard. Leave
+    // hires.upscaler at whatever sd_hires_params_init set (LATENT) so
+    // the request still does something sensible — the user gets a
+    // latent-space hi-res pass instead of a silent disable.
+    enum sd_hires_upscaler_t parsed = str_to_sd_hires_upscaler(p.hires_upscaler.c_str());
+    if (parsed != SD_HIRES_UPSCALER_COUNT) {
+        hires.upscaler = parsed;
+    }
     hires.model_path           = p.hires_model_path.empty() ? nullptr : p.hires_model_path.c_str();
     hires.scale                = p.hires_scale;
     hires.target_width         = p.hires_target_width;
