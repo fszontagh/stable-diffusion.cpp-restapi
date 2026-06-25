@@ -38,16 +38,29 @@ export function extractWeightType(filename: string): string | null {
   return null
 }
 
+type ComponentType = 'vae' | 'clip' | 't5' | 'llm' | 'controlnet' | 'taesd'
+
 /**
- * Score a component for suggestion based on weight type matching
+ * Score a component for suggestion. Two scoring paths run in sequence and
+ * accumulate:
+ *   1. JSON-driven scoring from preset.componentScoring (the preferred path —
+ *      adding a new architecture is a model_architectures.json change only).
+ *   2. Legacy hardcoded scoring for architectures that don't have explicit
+ *      componentScoring rules in their preset (kept so we don't have to
+ *      backfill every existing preset at once).
+ *
+ * componentType identifies which scoring rule list to read; weight-type
+ * matching is universal and runs regardless of preset content.
  */
 function scoreComponent(
+  componentType: ComponentType,
   componentName: string,
   modelWeightType: string | null,
-  architectureId: string | null
+  preset: ArchitecturePreset | null
 ): number {
   let score = 0
   const name = componentName.toLowerCase()
+  const architectureId = preset?.id ?? null
 
   // Weight type matching
   if (modelWeightType) {
@@ -98,6 +111,10 @@ function scoreComponent(
       }
     }
 
+    // SeFi-Image scoring lives in the preset's componentScoring JSON now,
+    // not here — see model_architectures.json. The legacy block below is
+    // kept for architectures that don't have componentScoring rules yet.
+
     // Anima prefers Qwen3 0.6B for LLM and qwen_image_vae for VAE
     if (archLower.includes('anima')) {
       if (name.includes('qwen') && (name.includes('0.6b') || name.includes('06b') || name.includes('0_6b'))) {
@@ -120,6 +137,24 @@ function scoreComponent(
     }
   }
 
+  // JSON-driven scoring: each rule is { regex, score } applied against the
+  // raw (not stemmed) component filename. Rules accumulate, and bad regex
+  // strings silently skip so a malformed JSON entry doesn't poison the
+  // whole sort. This is the path new architectures should use.
+  const rules = preset?.componentScoring?.[componentType]
+  if (rules && Array.isArray(rules)) {
+    for (const rule of rules) {
+      if (!rule?.regex || typeof rule.score !== 'number') continue
+      try {
+        if (new RegExp(rule.regex, 'i').test(name)) {
+          score += rule.score
+        }
+      } catch {
+        // Malformed regex in JSON — skip silently
+      }
+    }
+  }
+
   return score
 }
 
@@ -130,18 +165,21 @@ export interface ComponentSuggestion {
 }
 
 /**
- * Sort and score components for suggestion
+ * Sort and score components for suggestion. Pass the resolved preset (not
+ * just the architecture ID) so the JSON-driven componentScoring rules
+ * apply. Callers that only have an architecture ID can look up the preset
+ * via store.architectures.architectures[id] or use findPresetForArchitecture.
  */
 export function suggestComponents(
-  _componentType: 'vae' | 'clip' | 't5' | 'llm' | 'controlnet' | 'taesd',
-  architectureId: string | null,
+  componentType: ComponentType,
+  preset: ArchitecturePreset | null,
   modelWeightType: string | null,
   availableModels: ModelInfo[]
 ): ComponentSuggestion[] {
   return availableModels
     .map(model => ({
       name: model.name,
-      score: scoreComponent(model.name, modelWeightType, architectureId),
+      score: scoreComponent(componentType, model.name, modelWeightType, preset),
       isSuggested: false
     }))
     .sort((a, b) => b.score - a.score)
@@ -149,6 +187,76 @@ export function suggestComponents(
       ...item,
       isSuggested: index === 0 && item.score > 50  // Only suggest if score is significant
     }))
+}
+
+/**
+ * Resolve the right preset for a reported architecture, using the JSON
+ * `match` rules. When multiple presets share `match.architecture` (e.g. the
+ * three SeFi family variants), filename regexes disambiguate. Presets
+ * without `match` are treated as having `match.architecture = key` so
+ * existing single-preset architectures keep working without JSON changes.
+ *
+ * Lookup order:
+ *   1. Exact key match (preserves existing behavior for non-match presets).
+ *   2. Among presets whose effective architecture equals reportedArchitecture,
+ *      prefer those whose nameRegex matches the modelName.
+ *   3. Among the same set, fall back to the preset without nameRegex.
+ *   4. Case-insensitive key match.
+ *   5. Partial match (longest key wins).
+ */
+export function findPresetForArchitecture(
+  reportedArchitecture: string | null,
+  modelName: string | null,
+  allPresets: Record<string, ArchitecturePreset> | null | undefined
+): ArchitecturePreset | null {
+  if (!reportedArchitecture || !allPresets) return null
+
+  // 1. Direct key hit — fastest, no surprises for legacy architectures
+  if (allPresets[reportedArchitecture]) return allPresets[reportedArchitecture]
+
+  // 2/3. Match-rule scan
+  const arch = reportedArchitecture
+  const archLower = arch.toLowerCase()
+  const haystack = (modelName ?? '').toLowerCase()
+  const matched: ArchitecturePreset[] = []
+  const fallbacks: ArchitecturePreset[] = []
+  for (const preset of Object.values(allPresets)) {
+    const effectiveArch = preset.match?.architecture ?? preset.id
+    if (!effectiveArch) continue
+    if (effectiveArch !== arch && effectiveArch.toLowerCase() !== archLower) continue
+    if (preset.match?.nameRegex) {
+      try {
+        if (new RegExp(preset.match.nameRegex, 'i').test(haystack)) {
+          matched.push(preset)
+        }
+      } catch {
+        // Bad regex in JSON — skip
+      }
+    } else {
+      fallbacks.push(preset)
+    }
+  }
+  if (matched.length > 0) return matched[0]
+  if (fallbacks.length > 0) return fallbacks[0]
+
+  // 4. Case-insensitive key match
+  for (const [key, value] of Object.entries(allPresets)) {
+    if (key.toLowerCase() === archLower) return value
+  }
+
+  // 5. Partial match — prefer longest key
+  let best: ArchitecturePreset | null = null
+  let bestLen = 0
+  for (const [key, value] of Object.entries(allPresets)) {
+    const keyLower = key.toLowerCase()
+    if (archLower.includes(keyLower) || keyLower.includes(archLower)) {
+      if (key.length > bestLen) {
+        best = value
+        bestLen = key.length
+      }
+    }
+  }
+  return best
 }
 
 /**

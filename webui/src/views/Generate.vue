@@ -12,6 +12,7 @@ import HighlightedPrompt from '../components/HighlightedPrompt.vue'
 import LoraPanel from '../components/LoraPanel.vue'
 import { hasTemplateSyntax, expandPrompt as expandPromptUtil } from '../utils/promptTemplate'
 import { openExpandPromptConfirm } from '../composables/useExpandPromptModal'
+import { findPresetForArchitecture } from '../composables/useArchitectures'
 
 const store = useAppStore()
 
@@ -802,40 +803,20 @@ interface RecommendedSettings {
   cacheMode?: string
 }
 
-// Resolve current architecture preset from store (exact → case-insensitive → partial match)
-const currentArchPreset = computed(() => {
-  const archName = store.modelArchitecture
-  if (!archName || !store.architectures?.architectures) return null
-
-  // Try exact match first
-  let archData = store.architectures.architectures[archName]
-
-  // Try case-insensitive match
-  if (!archData) {
-    for (const [key, value] of Object.entries(store.architectures.architectures)) {
-      if (key.toLowerCase() === archName.toLowerCase()) {
-        archData = value
-        break
-      }
-    }
-  }
-
-  // Try partial match - prefer longest (most specific) key match
-  if (!archData) {
-    let bestMatchLen = 0
-    for (const [key, value] of Object.entries(store.architectures.architectures)) {
-      if (archName.toLowerCase().includes(key.toLowerCase()) ||
-          key.toLowerCase().includes(archName.toLowerCase())) {
-        if (key.length > bestMatchLen) {
-          archData = value
-          bestMatchLen = key.length
-        }
-      }
-    }
-  }
-
-  return archData ?? null
-})
+// Resolve the current architecture preset using JSON-driven match rules
+// (preset.match.architecture + preset.match.nameRegex) defined in
+// model_architectures.json. When sd.cpp reports e.g. "SeFi-Image" and
+// multiple presets claim that architecture, the nameRegex against the
+// loaded model's filename disambiguates (Turbo / Base / RL pick the right
+// defaults without any hardcoded WebUI logic). Presets without `match`
+// keep working via direct key lookup — fully backward-compatible.
+const currentArchPreset = computed(() =>
+  findPresetForArchitecture(
+    store.modelArchitecture,
+    store.modelName,
+    store.architectures?.architectures
+  )
+)
 
 
 // Get recommended settings for current model from architecture JSON

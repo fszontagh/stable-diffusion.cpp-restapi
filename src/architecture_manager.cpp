@@ -20,6 +20,15 @@ nlohmann::json ArchitecturePreset::to_json() const {
     if (!imageEditMode.empty()) {
         j["imageEditMode"] = imageEditMode;
     }
+    // Pass-through WebUI matching/scoring rules. We don't validate the shape
+    // here — that's the WebUI's concern; we just forward whatever's in the
+    // JSON so a JSON-only architecture addition needs no WebUI rebuild.
+    if (!match.is_null() && !match.empty()) {
+        j["match"] = match;
+    }
+    if (!componentScoring.is_null() && !componentScoring.empty()) {
+        j["componentScoring"] = componentScoring;
+    }
     return j;
 }
 
@@ -127,6 +136,9 @@ void ArchitectureManager::load_from_file() {
             preset.loadOptions = value.value("loadOptions", nlohmann::json::object());
             preset.imageEditMode = value.value("imageEditMode", std::string(""));
             preset.generationDefaults = value.value("generationDefaults", nlohmann::json::object());
+            // Optional WebUI-driven matching + scoring rules. Forwarded as-is.
+            preset.match = value.value("match", nlohmann::json::object());
+            preset.componentScoring = value.value("componentScoring", nlohmann::json::object());
 
             presets_[key] = preset;
 

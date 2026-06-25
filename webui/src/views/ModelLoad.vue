@@ -3,7 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { api, type LoadModelParams, type ModelInfo, type ArchitecturePreset, type OptionDescription } from '../api/client'
-import { useArchitectures, extractWeightType, suggestComponents, type ComponentSuggestion } from '../composables/useArchitectures'
+import { useArchitectures, extractWeightType, suggestComponents, findPresetForArchitecture, type ComponentSuggestion } from '../composables/useArchitectures'
 import RecHint from '../components/RecHint.vue'
 import BackendAssignmentEditor from '../components/BackendAssignmentEditor.vue'
 
@@ -109,27 +109,36 @@ const controlnetModels = computed(() => store.models?.controlnets || [])
 const llmModels = computed(() => store.models?.llm || [])
 const taesdModels = computed(() => store.models?.taesd || [])
 
-// Computed: Current architecture preset
-const currentArchitecture = computed((): ArchitecturePreset | null => {
-  if (!selectedArchitecture.value || !store.architectures?.architectures) return null
-  return store.architectures.architectures[selectedArchitecture.value] || null
-})
+// Computed: Current architecture preset. Uses the JSON-driven resolver so
+// `selectedArchitecture` values that aren't exact preset keys (e.g. the
+// "SeFi-Image" string sd.cpp reports, when the actual presets are
+// SeFi-Image-Turbo / -Base / -RL) still resolve via match.architecture +
+// match.nameRegex against the loaded model's filename.
+const currentArchitecture = computed((): ArchitecturePreset | null =>
+  findPresetForArchitecture(
+    selectedArchitecture.value,
+    props.modelName,
+    store.architectures?.architectures
+  )
+)
 
 // Computed: Model weight type
 const modelWeightType = computed(() => extractWeightType(props.modelName))
 
-// Computed: Component suggestions
+// Computed: Component suggestions. Pass the resolved preset so JSON-driven
+// componentScoring rules apply (the legacy hardcoded scoring keeps working
+// as a fallback for presets that don't have componentScoring entries).
 const vaeSuggestions = computed(() =>
-  suggestComponents('vae', selectedArchitecture.value, modelWeightType.value, vaeModels.value)
+  suggestComponents('vae', currentArchitecture.value, modelWeightType.value, vaeModels.value)
 )
 const clipSuggestions = computed(() =>
-  suggestComponents('clip', selectedArchitecture.value, modelWeightType.value, clipModels.value)
+  suggestComponents('clip', currentArchitecture.value, modelWeightType.value, clipModels.value)
 )
 const t5Suggestions = computed(() =>
-  suggestComponents('t5', selectedArchitecture.value, modelWeightType.value, t5Models.value)
+  suggestComponents('t5', currentArchitecture.value, modelWeightType.value, t5Models.value)
 )
 const llmSuggestions = computed(() =>
-  suggestComponents('llm', selectedArchitecture.value, modelWeightType.value, llmModels.value)
+  suggestComponents('llm', currentArchitecture.value, modelWeightType.value, llmModels.value)
 )
 
 // Computed: Required components based on architecture
