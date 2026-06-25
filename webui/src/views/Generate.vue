@@ -173,6 +173,9 @@ const loraSettings = ref<LoraSettings>({
 const LORA_REGEX = /<lora:([^:>]+):([^>]+)>/g
 
 const availableLoras = computed(() => store.models?.loras || [])
+// ESRGAN upscaler list — used by the Hi-Res Fix model selector. Matches
+// the pattern Upscale.vue uses for its own load dropdown.
+const esrganModels = computed(() => store.models?.esrgan || [])
 
 // Build a map of base names (without extension) to full names for matching
 const loraNameMap = computed(() => {
@@ -1077,6 +1080,15 @@ onMounted(async () => {
     .then(r => { genOptionDescriptions.value = r.options ?? {} })
     .catch(() => { /* silent — degrades to no tooltips */ })
 
+  // Refetch architectures unconditionally so the "Recommended settings"
+  // strip (and currentArchPreset / recommended computeds) pick up presets
+  // added on the backend after the WebUI was first loaded — e.g. a server
+  // upgrade that adds a new architecture (SeFi-Image, etc.). Without this,
+  // an open tab from before the upgrade keeps showing the stale preset
+  // list and a freshly-loaded model whose architecture exists ONLY in the
+  // new preset list reports no recommended defaults.
+  store.fetchArchitectures().catch(() => { /* silent — degrades to no recs */ })
+
   // First check if we have reloaded job params from Queue view
   const savedParams = sessionStorage.getItem('reloadJobParams')
   if (savedParams) {
@@ -1103,6 +1115,18 @@ onMounted(async () => {
         if (!selection || selection.has('settings') || selection.has('advanced')) {
           mode.value = data.type as 'txt2img' | 'img2img' | 'txt2vid'
         }
+      }
+      // For partial reloads (selection defined) we restore the user's
+      // last-used settings for the current mode FIRST, so unselected
+      // sections show the user's actual prefs from localStorage rather
+      // than the hardcoded ref() defaults that a fresh component mount
+      // would otherwise display. loadJobParams then only overwrites the
+      // selected sections — e.g. prompt-only reload preserves steps /
+      // sampler / scheduler / resolution / etc. as the user expects.
+      // Full reload (selection undefined) skips this — loadJobParams
+      // overrides everything anyway.
+      if (selection) {
+        await loadSettingsForMode(mode.value)
       }
       loadJobParams(data.type, data.params, selection)
       sessionStorage.removeItem('reloadJobParams')
@@ -2124,8 +2148,21 @@ async function handleSubmit() {
               </div>
 
               <div v-if="hiresUpscaler === 'model'" class="form-group mt-2">
-                <label class="form-label">Upscaler Model Path</label>
-                <input v-model="hiresModelPath" type="text" class="form-input" placeholder="e.g. RealESRGAN_x4plus.pth" />
+                <label class="form-label">Upscaler Model</label>
+                <select v-if="esrganModels.length > 0" v-model="hiresModelPath" class="form-select">
+                  <option value="">— Select an upscaler —</option>
+                  <option v-for="m in esrganModels" :key="m.name" :value="m.name">{{ m.name }}</option>
+                </select>
+                <input
+                  v-else
+                  v-model="hiresModelPath"
+                  type="text"
+                  class="form-input"
+                  placeholder="e.g. RealESRGAN_x4plus.pth"
+                />
+                <small v-if="esrganModels.length === 0" class="form-hint">
+                  No ESRGAN models found in the configured upscaler directory. Drop one in and re-scan, or type the filename manually.
+                </small>
               </div>
 
               <div class="form-row">

@@ -1058,6 +1058,14 @@ void RequestHandlers::handle_health(const httplib::Request& req, httplib::Respon
 #else
             {"mcp", false},
 #endif
+#ifdef SDCPP_SEFI_IMAGE_ENABLED
+            // Experimental SeFi-Image build (leejet PR #1707 on the fork
+            // branch). When true, the linked sd.cpp can detect/serve the
+            // SeFi-Image architecture. Local-test only until the PR merges.
+            {"sefi_image", true},
+#else
+            {"sefi_image", false},
+#endif
             {"auth_required", auth_manager_.enabled()}
         }}
     };
@@ -1793,18 +1801,20 @@ void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Respo
             }
         }
 
-        // Generate output path if not provided
-        // Default naming: modelname.quanttype.gguf
+        // Generate output path if not provided. Default naming: modelname.quanttype.gguf
         std::string output_path;
         if (body.contains("output_path") && !body["output_path"].get<std::string>().empty()) {
             output_path = body["output_path"].get<std::string>();
-            // Coerce bare filenames (no directory) into the input's parent dir.
-            // The WebUI used to send these from generateOutputPath() when the
-            // model was passed by name only; we now treat them as relative-
-            // to-source so the converted file lands next to the original.
             fs::path output_p(output_path);
-            if (!output_p.has_parent_path()) {
-                output_path = (fs::path(input_path).parent_path() / output_p).string();
+            // Resolve relative output paths by replacing the input file's name
+            // with the output's filename, in the input's directory. Whatever
+            // subdir the client sent in the relative path (e.g. "sefi/foo.gguf"
+            // from a WebUI that prepends the model's stored subpath) is
+            // ignored — we don't try to map it onto a model-type base dir,
+            // we just convert in place. Absolute paths pass through unchanged
+            // for callers that want an explicit destination.
+            if (!output_p.is_absolute()) {
+                output_path = (fs::path(input_path).parent_path() / output_p.filename()).string();
             }
         } else {
             // Generate default output path
@@ -1822,6 +1832,21 @@ void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Respo
                 }
             }
             output_path = (input_p.parent_path() / (stem + "." + output_type + ".gguf")).string();
+        }
+
+        // Ensure the output directory exists so sd.cpp's fopen() doesn't fail
+        // with the generic "failed to write GGUF file" message — the user
+        // already paid the load+convert cost (60-120s on a 5B-class model)
+        // and shouldn't lose it to a missing-dir issue at the write step.
+        try {
+            fs::path parent = fs::path(output_path).parent_path();
+            if (!parent.empty()) {
+                fs::create_directories(parent);
+            }
+        } catch (const std::exception& e) {
+            send_error(res, std::string("Could not create output directory for '") +
+                              output_path + "': " + e.what(), 400);
+            return;
         }
 
         // Update body with output_path for the queue job

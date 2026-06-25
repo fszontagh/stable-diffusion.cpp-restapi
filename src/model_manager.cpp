@@ -2,6 +2,7 @@
 #include "websocket_server.hpp"
 #include "utils.hpp"
 #include "memory_utils.hpp"
+#include "sd_error_capture.hpp"
 
 #include <iostream>
 #include <sstream>
@@ -620,6 +621,11 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loading_step_ = 0;
     loading_total_steps_ = 0;
     model_loading_ = true;
+    // Drain any stale SD_LOG_ERROR captures so the post-fail diagnostic
+    // only reflects messages from THIS load attempt — a previous failed
+    // generate that left errors in the ring buffer would otherwise leak
+    // into the next load's user-facing failure string.
+    clear_sd_errors();
 
     // Helper to clear loading state on exit
     auto clear_loading = [this]() {
@@ -1161,8 +1167,56 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     }
 
     if (context_ == nullptr) {
-        std::string error_msg = "Failed to load model: " + params.model_name +
-            " (insufficient memory - try a quantized model or enable offloading)";
+        // sd.cpp returns nullptr for every failure mode (OOM, missing tensor,
+        // metadata validation, backend init, etc.) and the only signal of
+        // WHY is the SD_LOG_ERROR stream captured by main.cpp's log callback.
+        // Pull what was logged for THIS load attempt and infer a reason
+        // category — falling back to OOM only when nothing was captured (which
+        // is the genuine signature of new_sd_ctx erroring out before sd.cpp
+        // got a chance to log anything).
+        std::string sd_errors = get_sd_error();
+        std::string reason;
+        if (sd_errors.empty()) {
+            // No captured logs → most likely a silent OOM during ggml_init /
+            // tensor allocation. The hint about quantized models / offloading
+            // is the actionable advice for that case.
+            reason = "insufficient memory — try a quantized model, lower max_vram, "
+                     "or enable params_backend=*=cpu + stream_layers for offloading";
+        } else {
+            // Classify the captured errors into a one-line top-level reason,
+            // then append the raw log lines so the WebUI / queue surface
+            // exactly what sd.cpp said. Cheap substring checks — these are
+            // log lines we control upstream of, no regex needed.
+            auto contains = [&sd_errors](const char* needle) {
+                return sd_errors.find(needle) != std::string::npos;
+            };
+            if (contains("not in model metadata") || contains("model metadata validation failed")) {
+                reason = "model metadata mismatch — sd.cpp expected tensor names "
+                         "that aren't in the file (likely diffusers/LDM naming "
+                         "convention mismatch, missing component file, or "
+                         "architecture not supported by this build)";
+            } else if (contains("out of memory") || contains("OOM") ||
+                       contains("CUDA error") || contains("ggml_cuda_compute_forward")) {
+                reason = "insufficient memory — try a quantized model, lower max_vram, "
+                         "or enable params_backend=*=cpu + stream_layers for offloading";
+            } else if (contains("unknown") && contains("architecture")) {
+                reason = "model architecture not recognized by this build";
+            } else if (contains("no such file") || contains("does not exist") ||
+                       contains("failed to open")) {
+                reason = "file access error";
+            } else {
+                reason = "load failed";
+            }
+            // Append the raw sd.cpp error lines (capped to ~512 chars so a
+            // 100-line tensor-missing dump doesn't make the toast unreadable).
+            constexpr size_t MAX_RAW = 512;
+            std::string raw = sd_errors;
+            if (raw.size() > MAX_RAW) {
+                raw = raw.substr(0, MAX_RAW) + "… (truncated; full log in journal)";
+            }
+            reason += ". sd.cpp: " + raw;
+        }
+        std::string error_msg = "Failed to load model: " + params.model_name + " (" + reason + ")";
         last_load_error_ = error_msg;
         loaded_model_name_.clear();
         loaded_model_architecture_.clear();
@@ -1229,6 +1283,17 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         loaded_options_["prediction"] = params.prediction;
     }
     loaded_options_["lora_apply_mode"] = params.lora_apply_mode;
+    // Backend placement strings — these are how upstream now expresses
+    // per-component CPU offload (e.g. params_backend="*=cpu" replaces the
+    // old offload_to_cpu bool). Echoing them is what makes /queue's
+    // "Reload Job" actually restore the offload setup the job ran under —
+    // without this the WebUI reload picks them up as empty strings and
+    // the model loads with GPU placement only, OOM'ing on anything that
+    // needed CPU-side params.
+    loaded_options_["backend"] = params.backend;
+    loaded_options_["params_backend"] = params.params_backend;
+    loaded_options_["rpc_servers"] = params.rpc_servers;
+    loaded_options_["force_sdxl_vae_conv_scale"] = params.force_sdxl_vae_conv_scale;
     loaded_options_["chroma_use_dit_mask"] = params.chroma_use_dit_mask;
     loaded_options_["chroma_use_t5_mask"] = params.chroma_use_t5_mask;
     loaded_options_["chroma_t5_mask_pad"] = params.chroma_t5_mask_pad;
