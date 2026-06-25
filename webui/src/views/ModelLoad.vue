@@ -246,10 +246,11 @@ onMounted(async () => {
     await store.fetchModels()
   }
 
-  // Fetch architectures if not loaded
-  if (!store.architectures) {
-    await store.fetchArchitectures()
-  }
+  // Always refetch architectures on mount — drops the stale-cache problem
+  // where a tab opened before the server was upgraded keeps an old preset
+  // list and would silently miss newly-added presets (SeFi-Image, etc.).
+  // Cheap call, returns ~30 KB on a fully-stocked install.
+  await store.fetchArchitectures()
 
   // Fetch option descriptions
   try {
@@ -499,6 +500,18 @@ function onKeepAllInRam(e: Event) {
         <p v-if="currentArchitecture" class="architecture-description">
           {{ currentArchitecture.description }}
         </p>
+        <!-- SeFi-Image requires a build with -DSD_SEFI_IMAGE=ON (leejet PR #1707).
+             Surface a warning here so users on a stock build aren't surprised
+             by the load failing. Gated on the /health.features.sefi_image flag. -->
+        <div
+          v-if="selectedArchitecture === 'SeFi-Image' && !store.sefiImageEnabled"
+          class="form-hint"
+          style="color: var(--color-warning, #c80); margin-top: 0.4rem;"
+        >
+          ⚠ This build doesn't have SeFi-Image support compiled in. Loading a
+          SeFi model will fail with "Unknown model architecture". Rebuild with
+          <code>-DSD_SEFI_IMAGE=ON</code> to enable.
+        </div>
         <div v-if="currentArchitecture?.generationDefaults" class="generation-defaults">
           <strong>Recommended settings:</strong>
           <span v-if="currentArchitecture.generationDefaults.cfg_scale">

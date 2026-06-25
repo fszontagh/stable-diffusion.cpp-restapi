@@ -1080,6 +1080,15 @@ onMounted(async () => {
     .then(r => { genOptionDescriptions.value = r.options ?? {} })
     .catch(() => { /* silent — degrades to no tooltips */ })
 
+  // Refetch architectures unconditionally so the "Recommended settings"
+  // strip (and currentArchPreset / recommended computeds) pick up presets
+  // added on the backend after the WebUI was first loaded — e.g. a server
+  // upgrade that adds a new architecture (SeFi-Image, etc.). Without this,
+  // an open tab from before the upgrade keeps showing the stale preset
+  // list and a freshly-loaded model whose architecture exists ONLY in the
+  // new preset list reports no recommended defaults.
+  store.fetchArchitectures().catch(() => { /* silent — degrades to no recs */ })
+
   // First check if we have reloaded job params from Queue view
   const savedParams = sessionStorage.getItem('reloadJobParams')
   if (savedParams) {
