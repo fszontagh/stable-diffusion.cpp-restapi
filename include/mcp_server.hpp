@@ -41,6 +41,7 @@ private:
     nlohmann::json tool_generate(const nlohmann::json& args);
     nlohmann::json tool_model(const nlohmann::json& args);
     nlohmann::json tool_job(const nlohmann::json& args);
+    nlohmann::json tool_image(const nlohmann::json& args);
 
     // Resource implementations
     nlohmann::json resource_health();
