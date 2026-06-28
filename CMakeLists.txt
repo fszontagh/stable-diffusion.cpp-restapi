@@ -86,6 +86,12 @@ option(SDCPP_ASSISTANT "Build LLM Assistant feature" ON)
 # resulting binary won't run on any other GPU model.
 option(SD_CUDA_ARCH_NATIVE "Compile CUDA only for the local GPU (faster local builds, non-portable binary)" OFF)
 option(SDCPP_MCP "Build MCP (Model Context Protocol) server support" ON)
+# SeFi-Image support is now in leejet/master (PR #1707 merged via
+# commit 03e9a22 on 2026-06-28). The previous SD_SEFI_IMAGE option that
+# pointed FetchContent at the fork branch is no longer needed — the
+# default leejet build has it natively. Left as a comment in case we
+# want to revive the fork-experiment pattern for some future PR; the
+# elseif branch in the FetchContent block below was removed.
 set(SDCPP_LOCAL_SOURCE "" CACHE PATH "Path to local stable-diffusion.cpp source (for development/testing)")
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
@@ -246,8 +252,25 @@ else()
             GIT_SUBMODULES_RECURSE TRUE
         )
     else()
-        # Pinned to leejet/master HEAD (854bebf — bumped from b12098f).
+        # Pinned to leejet/master HEAD (c179075 — bumped from 854bebf).
         # New surface in this bump:
+        #   - PR #1707 (03e9a22): SeFi-Image support merged upstream. The
+        #     previous SD_SEFI_IMAGE fork-branch option is gone — every
+        #     leejet build now detects/serves SeFi-Image natively. WebUI
+        #     presets (SeFi-Image-Turbo / -Base / -RL) continue to work.
+        #   - PR #1705 (8caa3f9): Krea2 architecture (transformer + Wan2.1
+        #     VAE + Qwen3-VL 4B). New preset added in
+        #     data/model_architectures.json.
+        #   - PR #1669 (2938272): logit-normal scheduler enum value added.
+        #     Surfaced in include/api_schemas/common.hpp SCHEDULER_VALUES.
+        #   - PR #1684 (41f7acb): guidance_schedule (internal — affects how
+        #     guidance is computed during sampling). No public-API change.
+        #   - PR #1713 (d77b8f5): Qwen-Image/Wan VAE diffusers naming
+        #     support. Fixes load failures for converted VAE files.
+        #   - PR #1714 (7b5f34d): Qwen2D VAE support.
+        #   - PR #1698 (f440ad9): mmap read-only fix.
+        #   - PR #1711 (ec4cb81): TAEHV encoding fix for image models.
+        # Earlier notable changes (from the 854bebf bump still apply):
         #   - PR #1687 (perf): adds bool `eager_load` to sd_ctx_params_t.
         #     Pre-loads all params into the params backend at model-load time
         #     instead of lazily on first use. Pairs naturally with
@@ -275,7 +298,7 @@ else()
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        854bebfe02a7fb07b06b2ad151d27af51b690679
+            GIT_TAG        c1790754d31bec0731ed5fddc9d5b9ff22ee19cd
             GIT_SHALLOW    FALSE
             GIT_SUBMODULES ${SDCPP_SUBMODULES}
             GIT_SUBMODULES_RECURSE TRUE

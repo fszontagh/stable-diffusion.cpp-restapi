@@ -509,18 +509,10 @@ function onKeepAllInRam(e: Event) {
         <p v-if="currentArchitecture" class="architecture-description">
           {{ currentArchitecture.description }}
         </p>
-        <!-- SeFi-Image requires a build with -DSD_SEFI_IMAGE=ON (leejet PR #1707).
-             Surface a warning here so users on a stock build aren't surprised
-             by the load failing. Gated on the /health.features.sefi_image flag. -->
-        <div
-          v-if="selectedArchitecture === 'SeFi-Image' && !store.sefiImageEnabled"
-          class="form-hint"
-          style="color: var(--color-warning, #c80); margin-top: 0.4rem;"
-        >
-          ⚠ This build doesn't have SeFi-Image support compiled in. Loading a
-          SeFi model will fail with "Unknown model architecture". Rebuild with
-          <code>-DSD_SEFI_IMAGE=ON</code> to enable.
-        </div>
+        <!-- SeFi-Image was merged into leejet/master (PR #1707, commit
+             03e9a22), so the previous "needs SD_SEFI_IMAGE=ON" warning is
+             no longer applicable. Left as a historical comment in case we
+             need a similar gate for some future experimental architecture. -->
         <div v-if="currentArchitecture?.generationDefaults" class="generation-defaults">
           <strong>Recommended settings:</strong>
           <span v-if="currentArchitecture.generationDefaults.cfg_scale">

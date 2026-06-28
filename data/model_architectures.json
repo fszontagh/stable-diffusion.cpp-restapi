@@ -870,14 +870,14 @@
     },
     "SeFi-Image-Turbo": {
       "name": "SeFi-Image (Turbo)",
-      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, TURBO variants (1B-turbo / 2B-turbo / 5B-turbo) \u2014 4 steps, CFG 1.0 (distilled). Requires _vae companion from convert_sefi.py. Build needs SD_SEFI_IMAGE=ON (leejet PR #1707).",
+      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, TURBO variants (1B-turbo / 2B-turbo / 5B-turbo) \u2014 4 steps, CFG 1.0 (distilled). Now in leejet/master (PR #1707 merged via 03e9a22).",
       "aliases": [
         "sefi-turbo",
         "sefi_turbo",
         "SeFi Turbo"
       ],
       "requiredComponents": {
-        "vae": "matching _vae.safetensors from convert_sefi.py",
+        "vae": "Standard Flux2 VAE (flux2_ae.safetensors from black-forest-labs/FLUX.2-dev)",
         "llm": "Qwen3-VL-2B (1B/2B turbo) or Qwen3-VL-4B-Instruct (5B turbo)"
       },
       "optionalComponents": {},
@@ -914,26 +914,30 @@
         ],
         "vae": [
           {
-            "regex": "_vae\\.(?:safetensors|gguf)$",
+            "regex": "flux2[_.\\-]?ae",
+            "score": 95
+          },
+          {
+            "regex": "flux2.*vae",
             "score": 90
           },
           {
-            "regex": "sefi.*vae",
-            "score": 85
+            "regex": "^ae(?:[_.\\-]|$)",
+            "score": 70
           }
         ]
       }
     },
     "SeFi-Image-Base": {
       "name": "SeFi-Image (Base)",
-      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, BASE variants (1B-Base / 2B-Base / 5B-Base) \u2014 50 steps, CFG 4.0. Requires _vae companion from convert_sefi.py. Build needs SD_SEFI_IMAGE=ON (leejet PR #1707).",
+      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, BASE variants (1B-Base / 2B-Base / 5B-Base) \u2014 50 steps, CFG 4.0. Now in leejet/master (PR #1707 merged via 03e9a22).",
       "aliases": [
         "sefi-base",
         "sefi_base",
         "SeFi Base"
       ],
       "requiredComponents": {
-        "vae": "matching _vae.safetensors from convert_sefi.py",
+        "vae": "Standard Flux2 VAE (flux2_ae.safetensors from black-forest-labs/FLUX.2-dev)",
         "llm": "Qwen3-VL-2B (1B/2B base) or Qwen3-VL-4B-Instruct (5B base)"
       },
       "optionalComponents": {},
@@ -969,26 +973,30 @@
         ],
         "vae": [
           {
-            "regex": "_vae\\.(?:safetensors|gguf)$",
+            "regex": "flux2[_.\\-]?ae",
+            "score": 95
+          },
+          {
+            "regex": "flux2.*vae",
             "score": 90
           },
           {
-            "regex": "sefi.*vae",
-            "score": 85
+            "regex": "^ae(?:[_.\\-]|$)",
+            "score": 70
           }
         ]
       }
     },
     "SeFi-Image-RL": {
       "name": "SeFi-Image (RL)",
-      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, RL-finetuned variant (5B-RL) \u2014 50 steps, CFG 4.0. Requires _vae companion from convert_sefi.py. Build needs SD_SEFI_IMAGE=ON (leejet PR #1707).",
+      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, RL-finetuned variant (5B-RL) \u2014 50 steps, CFG 4.0. Now in leejet/master (PR #1707 merged via 03e9a22).",
       "aliases": [
         "sefi-rl",
         "sefi_rl",
         "SeFi RL"
       ],
       "requiredComponents": {
-        "vae": "matching _vae.safetensors from convert_sefi.py",
+        "vae": "Standard Flux2 VAE (flux2_ae.safetensors from black-forest-labs/FLUX.2-dev)",
         "llm": "Qwen3-VL-4B-Instruct"
       },
       "optionalComponents": {},
@@ -1025,11 +1033,118 @@
         ],
         "vae": [
           {
-            "regex": "_vae\\.(?:safetensors|gguf)$",
+            "regex": "flux2[_.\\-]?ae",
+            "score": 95
+          },
+          {
+            "regex": "flux2.*vae",
             "score": 90
           },
           {
-            "regex": "sefi.*vae",
+            "regex": "^ae(?:[_.\\-]|$)",
+            "score": 70
+          }
+        ]
+      }
+    },
+    "Krea2-Raw": {
+      "name": "Krea2 (Raw)",
+      "description": "Krea2 diffusion transformer (Raw variant) \u2014 50 steps, CFG 4.0. Uses Wan 2.1 VAE and Qwen3-VL 4B encoder. Added in leejet/master via PR #1705.",
+      "aliases": [
+        "krea2-raw",
+        "krea2_raw",
+        "Krea2 Raw"
+      ],
+      "requiredComponents": {
+        "vae": "Wan 2.1 VAE (wan_2.1_vae.safetensors)",
+        "llm": "Qwen3-VL 4B Instruct"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 4.0,
+        "steps": 50,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "Krea2"
+      },
+      "componentScoring": {
+        "llm": [
+          {
+            "regex": "qwen3[_.\\-]?vl[_.\\-]?4b",
+            "score": 110
+          },
+          {
+            "regex": "qwen3[_.\\-]?vl",
+            "score": 90
+          }
+        ],
+        "vae": [
+          {
+            "regex": "wan[_.\\-]?2[._\\-]1[_.\\-]?vae",
+            "score": 100
+          },
+          {
+            "regex": "wan.*vae",
+            "score": 85
+          }
+        ]
+      }
+    },
+    "Krea2-Turbo": {
+      "name": "Krea2 (Turbo)",
+      "description": "Krea2 diffusion transformer (Turbo variant) \u2014 4 steps, CFG 1.0. Uses Wan 2.1 VAE and Qwen3-VL 4B encoder. Added in leejet/master via PR #1705.",
+      "aliases": [
+        "krea2-turbo",
+        "krea2_turbo",
+        "Krea2 Turbo"
+      ],
+      "requiredComponents": {
+        "vae": "Wan 2.1 VAE (wan_2.1_vae.safetensors)",
+        "llm": "Qwen3-VL 4B Instruct"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 4,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "Krea2",
+        "nameRegex": "(?:^|[_.\\-/])turbo(?:[_.\\-/]|$|\\.)"
+      },
+      "componentScoring": {
+        "llm": [
+          {
+            "regex": "qwen3[_.\\-]?vl[_.\\-]?4b",
+            "score": 110
+          },
+          {
+            "regex": "qwen3[_.\\-]?vl",
+            "score": 90
+          }
+        ],
+        "vae": [
+          {
+            "regex": "wan[_.\\-]?2[._\\-]1[_.\\-]?vae",
+            "score": 100
+          },
+          {
+            "regex": "wan.*vae",
             "score": 85
           }
         ]
