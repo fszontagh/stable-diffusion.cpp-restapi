@@ -14,7 +14,8 @@ inline const std::vector<std::string> SAMPLER_VALUES = {
 
 inline const std::vector<std::string> SCHEDULER_VALUES = {
     "discrete", "karras", "exponential", "ays", "gits", "sgm_uniform",
-    "simple", "smoothstep", "kl_optimal", "lcm", "bong_tangent", "ltx2"
+    "simple", "smoothstep", "kl_optimal", "lcm", "bong_tangent", "ltx2",
+    "logit_normal"
 };
 
 inline const std::vector<std::string> MODEL_TYPE_VALUES = {

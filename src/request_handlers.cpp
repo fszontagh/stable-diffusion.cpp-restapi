@@ -1058,14 +1058,12 @@ void RequestHandlers::handle_health(const httplib::Request& req, httplib::Respon
 #else
             {"mcp", false},
 #endif
-#ifdef SDCPP_SEFI_IMAGE_ENABLED
-            // Experimental SeFi-Image build (leejet PR #1707 on the fork
-            // branch). When true, the linked sd.cpp can detect/serve the
-            // SeFi-Image architecture. Local-test only until the PR merges.
+            // SeFi-Image is in leejet/master as of commit 03e9a22 (PR #1707
+            // merged 2026-06-28), so the linked sd.cpp always supports it.
+            // The field stays in /health for back-compat with older WebUI
+            // bundles that gate UI on it; can be dropped after a release or
+            // two.
             {"sefi_image", true},
-#else
-            {"sefi_image", false},
-#endif
             {"auth_required", auth_manager_.enabled()}
         }}
     };
@@ -1113,7 +1111,8 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             "kl_optimal",
             "lcm",
             "bong_tangent",
-            "ltx2"
+            "ltx2",
+            "logit_normal"
         }},
         {"quantization_types", nlohmann::json::array({
             {{"id", "f32"}, {"name", "F32 (32-bit float)"}, {"bits", 32}},
