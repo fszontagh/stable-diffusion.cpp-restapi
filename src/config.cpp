@@ -166,6 +166,23 @@ void from_json(const nlohmann::json& j, RecycleBinConfig& c) {
     c.retention_minutes = j.value("retention_minutes", 10080);
 }
 
+// McpConfig JSON serialization
+void to_json(nlohmann::json& j, const McpConfig& c) {
+    j = nlohmann::json{
+        {"image_tool_enabled", c.image_tool_enabled},
+        {"image_default_max_dim", c.image_default_max_dim},
+        {"image_max_dim", c.image_max_dim},
+        {"image_jpeg_quality", c.image_jpeg_quality}
+    };
+}
+
+void from_json(const nlohmann::json& j, McpConfig& c) {
+    c.image_tool_enabled = j.value("image_tool_enabled", false);
+    c.image_default_max_dim = j.value("image_default_max_dim", 768);
+    c.image_max_dim = j.value("image_max_dim", 2048);
+    c.image_jpeg_quality = j.value("image_jpeg_quality", 85);
+}
+
 // Config JSON serialization
 void to_json(nlohmann::json& j, const Config& c) {
     j = nlohmann::json{
@@ -176,6 +193,7 @@ void to_json(nlohmann::json& j, const Config& c) {
         {"assistant", c.assistant},
         {"recycle_bin", c.recycle_bin},
         {"auth", c.auth},
+        {"mcp", c.mcp},
         {"output_group_folders", c.output_group_folders}
     };
 }
@@ -201,6 +219,9 @@ void from_json(const nlohmann::json& j, Config& c) {
     }
     if (j.contains("auth")) {
         c.auth = j["auth"].get<AuthConfig>();
+    }
+    if (j.contains("mcp")) {
+        c.mcp = j["mcp"].get<McpConfig>();
     }
     if (j.contains("output_group_folders")) {
         c.output_group_folders = j["output_group_folders"].get<bool>();

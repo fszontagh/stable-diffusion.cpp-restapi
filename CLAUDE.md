@@ -172,7 +172,7 @@ The MCP server at `POST /mcp` implements JSON-RPC 2.0 for Streamable HTTP transp
 - `generate(type, prompt, ...)` — Types: `txt2img`, `img2img`, `video`, `upscale`
 - `model(action, ...)` — Actions: `load`, `unload`, `list`
 - `job(action, ...)` — Actions: `status`, `cancel`, `delete` (soft-delete → recycle bin), `search` (filtered/paginated)
-- `image(job_id, [index])` — Returns a completed job's output(s) as inline MCP image content (base64) so the model can actually see the result, not just a URL. Capped at 4 images; `.mp4` outputs skipped (use the URL from `job status`).
+- `image(job_id, [index], [size])` — Returns a completed job's output(s) as inline MCP image content (base64 JPEG) so a vision-capable model can see the result, not just a URL. **Opt-in: only registered when `config.mcp.image_tool_enabled` is true.** Outputs are downscaled to `size` (longest side, default `mcp.image_default_max_dim`=768, clamped to `mcp.image_max_dim`=2048) and JPEG-re-encoded (`mcp.image_jpeg_quality`=85) to bound payload — an 8192px upscale comes back small. Capped at 4 images; non-decodable outputs (`.mp4`, webp) skipped (use the URL from `job status`). `/health` `features.mcp_image_tool` reports the toggle.
 
 **Resources (7):** sdcpp://health, sdcpp://memory, sdcpp://models, sdcpp://models/loaded, sdcpp://queue (last 10 items), sdcpp://queue/{job_id}, sdcpp://architectures
 

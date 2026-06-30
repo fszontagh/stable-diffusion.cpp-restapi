@@ -174,6 +174,7 @@ RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queu
       paths_config_(config.paths),
       allow_public_outputs_(config.auth.allow_public_outputs),
       trusted_proxies_(config.server.trusted_proxies),
+      mcp_image_tool_enabled_(config.mcp.image_tool_enabled),
       output_dir_(output_dir), webui_dir_(webui_dir), docs_dir_(docs_dir)
     // ArchitectureManager uses config directory (where model_architectures.json lives), not output directory
     , architecture_manager_(std::make_unique<ArchitectureManager>(
@@ -1066,6 +1067,9 @@ void RequestHandlers::handle_health(const httplib::Request& req, httplib::Respon
 #else
             {"sefi_image", false},
 #endif
+            // Runtime config toggle (not a build flag): whether the MCP `image`
+            // tool that returns generated images inline is enabled.
+            {"mcp_image_tool", mcp_image_tool_enabled_},
             {"auth_required", auth_manager_.enabled()}
         }}
     };

@@ -123,6 +123,28 @@ struct AuthConfig {
     bool allow_public_outputs = true;
 };
 
+struct McpConfig {
+    // Gates the MCP `image` tool, which returns generated image bytes inline
+    // (base64) so a vision-capable model can actually see the result. OFF by
+    // default: the inline payload is only useful to multimodal clients and
+    // costs context tokens, so opting in is a deliberate choice.
+    bool image_tool_enabled = false;
+
+    // Default max output dimension (longest side, px) the `image` tool
+    // downscales to before JPEG-encoding when the caller omits `size`. Kept
+    // conservative so an 8192² upscale doesn't blow up the context by default.
+    // A context-rich operator can raise this; the model can still override
+    // per-call via the tool's `size` parameter, clamped to image_max_dim.
+    int image_default_max_dim = 768;
+
+    // Hard ceiling for the per-call `size` parameter. Caps how large a model
+    // can request regardless of intent, bounding worst-case payload size.
+    int image_max_dim = 2048;
+
+    // JPEG quality (1-100) used when re-encoding image-tool output.
+    int image_jpeg_quality = 85;
+};
+
 /**
  * Complete application configuration
  */
@@ -134,6 +156,7 @@ struct Config {
     AssistantConfig assistant;
     RecycleBinConfig recycle_bin;
     AuthConfig auth;
+    McpConfig mcp;
 
     // When true, jobs created via expand_prompt write outputs into
     // <output>/<group_id>/<job_id>/ instead of flat <output>/<job_id>/. Lets
