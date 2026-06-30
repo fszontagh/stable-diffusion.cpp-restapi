@@ -236,6 +236,7 @@ private:
     PathsConfig paths_config_;  // Snapshot of configured model/output paths (for WebDAV mapping)
     bool allow_public_outputs_ = true;          // auth.allow_public_outputs
     std::vector<std::string> trusted_proxies_;  // server.trusted_proxies (X-Forwarded-* whitelist)
+    bool mcp_image_tool_enabled_ = false;       // mcp.image_tool_enabled (surfaced in /health features)
     std::string output_dir_;
     std::string webui_dir_;
     std::string docs_dir_;

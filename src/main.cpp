@@ -415,7 +415,7 @@ int main(int argc, char* argv[]) {
         // Initialize MCP server (if enabled at build time)
 #ifdef SDCPP_MCP_ENABLED
         std::cout << "Initializing MCP server..." << std::endl;
-        sdcpp::McpServer mcp_server(server, model_manager, queue_manager, auth_manager);
+        sdcpp::McpServer mcp_server(server, model_manager, queue_manager, auth_manager, config.mcp);
         mcp_server.register_endpoint();
 #else
         std::cout << "MCP server disabled at build time" << std::endl;
