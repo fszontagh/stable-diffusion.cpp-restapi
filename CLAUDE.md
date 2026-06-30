@@ -168,10 +168,11 @@ Events broadcast from `src/websocket_server.cpp`:
 
 The MCP server at `POST /mcp` implements JSON-RPC 2.0 for Streamable HTTP transport. It's compile-time optional via `SDCPP_MCP` (ON by default).
 
-**Tools (3 consolidated):**
+**Tools (4):**
 - `generate(type, prompt, ...)` — Types: `txt2img`, `img2img`, `video`, `upscale`
 - `model(action, ...)` — Actions: `load`, `unload`, `list`
 - `job(action, ...)` — Actions: `status`, `cancel`, `delete` (soft-delete → recycle bin), `search` (filtered/paginated)
+- `image(job_id, [index])` — Returns a completed job's output(s) as inline MCP image content (base64) so the model can actually see the result, not just a URL. Capped at 4 images; `.mp4` outputs skipped (use the URL from `job status`).
 
 **Resources (7):** sdcpp://health, sdcpp://memory, sdcpp://models, sdcpp://models/loaded, sdcpp://queue (last 10 items), sdcpp://queue/{job_id}, sdcpp://architectures
 
