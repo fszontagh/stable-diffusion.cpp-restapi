@@ -4,6 +4,10 @@
 #include "memory_utils.hpp"
 #include "auth_manager.hpp"
 #include "utils.hpp"
+#include "config.hpp"
+#include "stb_image.h"
+#include "stb_image_write.h"
+#include "stb_image_resize.h"
 
 #include <iostream>
 #include <fstream>
@@ -13,6 +17,8 @@
 #include <iterator>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
+#include <algorithm>
 
 namespace sdcpp {
 
@@ -21,9 +27,9 @@ using json = nlohmann::json;
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
 McpServer::McpServer(httplib::Server& server, ModelManager& model_manager, QueueManager& queue_manager,
-                     AuthManager& auth_manager)
+                     AuthManager& auth_manager, const McpConfig& mcp_config)
     : server_(server), model_manager_(model_manager), queue_manager_(queue_manager),
-      auth_manager_(auth_manager) {}
+      auth_manager_(auth_manager), mcp_config_(mcp_config) {}
 
 // ─── Endpoint Registration ───────────────────────────────────────────────────
 
@@ -322,19 +328,35 @@ json McpServer::handle_list_tools() {
         }}
     });
 
-    // 4. image — fetch generated image bytes for a completed job
-    tools.push_back({
-        {"name", "image"},
-        {"description", "Fetch the actual generated image(s) for a completed job as inline image content (not just a URL). Use this after 'generate' + 'job status' to let the model see the result. Returns image content blocks the model can view. Video (.mp4) outputs cannot be returned inline — use the URL from 'job status' instead."},
-        {"inputSchema", {
-            {"type", "object"},
-            {"required", json::array({"job_id"})},
-            {"properties", {
-                {"job_id", {{"type", "string"}, {"description", "Job UUID of a completed generation job"}}},
-                {"index", {{"type", "integer"}, {"description", "Zero-based index of a single output to fetch. Omit to fetch all outputs (capped at 4)."}}}
+    // 4. image — fetch generated image bytes for a completed job.
+    //    Gated behind config: the inline base64 payload is only useful to a
+    //    vision-capable client and costs context tokens, so it's opt-in.
+    if (mcp_config_.image_tool_enabled) {
+        tools.push_back({
+            {"name", "image"},
+            {"description",
+                "Fetch the actual generated image(s) for a completed job as inline image "
+                "content (not just a URL) so a vision-capable model can view the result. "
+                "Use after 'generate' + 'job status'. Images are downscaled to the 'size' "
+                "longest-side limit (default " + std::to_string(mcp_config_.image_default_max_dim) +
+                "px) and re-encoded as JPEG to bound payload size, so an 8192px upscale "
+                "won't flood the context. Video (.mp4) outputs cannot be returned inline — "
+                "use the URL from 'job status' instead."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"required", json::array({"job_id"})},
+                {"properties", {
+                    {"job_id", {{"type", "string"}, {"description", "Job UUID of a completed generation job"}}},
+                    {"index", {{"type", "integer"}, {"description", "Zero-based index of a single output to fetch. Omit to fetch all outputs (capped at 4)."}}},
+                    {"size", {{"type", "integer"}, {"description",
+                        "Max longest-side dimension in pixels. The image is downscaled to fit "
+                        "(aspect preserved; never upscaled). Omit for the server default (" +
+                        std::to_string(mcp_config_.image_default_max_dim) + "px). Clamped to a max of " +
+                        std::to_string(mcp_config_.image_max_dim) + "px."}}}
+                }}
             }}
-        }}
-    });
+        });
+    }
 
     return {{"tools", tools}};
 }
@@ -352,7 +374,13 @@ json McpServer::handle_call_tool(const json& params) {
     if (name == "generate") return tool_generate(args);
     if (name == "model") return tool_model(args);
     if (name == "job") return tool_job(args);
-    if (name == "image") return tool_image(args);
+    if (name == "image") {
+        if (!mcp_config_.image_tool_enabled) {
+            return make_tool_result("The 'image' tool is disabled. Enable it via "
+                                    "config mcp.image_tool_enabled.", true);
+        }
+        return tool_image(args);
+    }
 
     return make_tool_result("Unknown tool: " + name, true);
 }
@@ -457,40 +485,68 @@ json McpServer::tool_image(const json& args) {
     bool truncated = selected.size() > kMaxImages;
     if (truncated) selected.resize(kMaxImages);
 
-    // Map file extension to MIME type. Only raster image types are returnable
-    // as MCP image content; video (.mp4) and unknown types are skipped.
-    auto mime_for = [](const std::string& path) -> std::string {
-        auto dot = path.find_last_of('.');
-        if (dot == std::string::npos) return "";
-        std::string ext = path.substr(dot + 1);
-        for (auto& c : ext) c = static_cast<char>(::tolower(c));
-        if (ext == "png") return "image/png";
-        if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
-        if (ext == "webp") return "image/webp";
-        if (ext == "gif") return "image/gif";
-        return "";
+    // Resolve the longest-side limit: caller's `size`, else the server default,
+    // clamped to [1, image_max_dim] so a model can't request an unbounded image.
+    int max_dim = mcp_config_.image_default_max_dim;
+    if (args.contains("size") && args["size"].is_number_integer()) {
+        max_dim = args["size"].get<int>();
+    }
+    if (max_dim < 1) max_dim = 1;
+    if (max_dim > mcp_config_.image_max_dim) max_dim = mcp_config_.image_max_dim;
+
+    // Decode → (downscale to max_dim, aspect preserved, never upscale) → JPEG.
+    // This bounds payload size regardless of source resolution, so an 8192px
+    // upscale comes back as a small JPEG instead of a multi-MB base64 blob.
+    // Returns base64 JPEG, or "" with `err` set. Non-decodable outputs (video,
+    // webp — stb can't read those) fail here and are reported as skipped.
+    const int jpeg_quality = mcp_config_.image_jpeg_quality;
+    auto encode_jpeg = [max_dim, jpeg_quality](const std::string& path,
+                                               std::string& err) -> std::string {
+        int w, h, ch;
+        unsigned char* data = stbi_load(path.c_str(), &w, &h, &ch, 3);  // force RGB
+        if (!data) {
+            const char* reason = stbi_failure_reason();
+            err = std::string("decode failed") + (reason ? std::string(": ") + reason : "");
+            return "";
+        }
+        bool resized = false;
+        if (w > max_dim || h > max_dim) {
+            float scale = std::min(static_cast<float>(max_dim) / w,
+                                   static_cast<float>(max_dim) / h);
+            int nw = std::max(1, static_cast<int>(w * scale));
+            int nh = std::max(1, static_cast<int>(h * scale));
+            auto* rz = static_cast<unsigned char*>(malloc(static_cast<size_t>(nw) * nh * 3));
+            if (!rz) { stbi_image_free(data); err = "out of memory"; return ""; }
+            stbir_resize_uint8(data, w, h, 0, rz, nw, nh, 0, 3);
+            stbi_image_free(data);
+            data = rz; w = nw; h = nh; resized = true;
+        }
+        std::vector<unsigned char> jpg;
+        auto cb = [](void* ctx, void* d, int s) {
+            auto* v = static_cast<std::vector<unsigned char>*>(ctx);
+            auto* b = static_cast<unsigned char*>(d);
+            v->insert(v->end(), b, b + s);
+        };
+        int ok = stbi_write_jpg_to_func(cb, &jpg, w, h, 3, data, jpeg_quality);
+        if (resized) free(data); else stbi_image_free(data);
+        if (!ok || jpg.empty()) { err = "JPEG encode failed"; return ""; }
+        return utils::base64_encode(jpg.data(), jpg.size());
     };
 
     json content = json::array();
     std::vector<std::string> skipped;
     for (const auto& out : selected) {
-        std::string mime = mime_for(out);
-        if (mime.empty()) {
-            skipped.push_back(out + " (unsupported type for inline content)");
-            continue;
-        }
         std::string full_path = queue_manager_.output_dir() + "/" + out;
-        std::ifstream f(full_path, std::ios::binary);
-        if (!f) {
-            skipped.push_back(out + " (file not found on disk)");
+        std::string err;
+        std::string b64 = encode_jpeg(full_path, err);
+        if (b64.empty()) {
+            skipped.push_back(out + " (" + err + ")");
             continue;
         }
-        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)),
-                                   std::istreambuf_iterator<char>());
         content.push_back({
             {"type", "image"},
-            {"data", utils::base64_encode(bytes)},
-            {"mimeType", mime}
+            {"data", b64},
+            {"mimeType", "image/jpeg"}
         });
     }
 
