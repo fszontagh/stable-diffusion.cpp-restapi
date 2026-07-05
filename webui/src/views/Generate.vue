@@ -567,6 +567,20 @@ async function saveSettings() {
   // img_edit shares txt2img backend settings
   const backendMode = mode.value === 'img_edit' ? 'txt2img' : mode.value
 
+  // Optimistic local cache update: mirror the freshly-configured values into
+  // store.generationDefaults BEFORE the HTTP PUT lands. Without this, the
+  // "navigate to Queue and back" flow re-reads store.generationDefaults on
+  // remount and sees stale values — the user's configured settings look
+  // "lost" even though the backend save fired at onBeforeUnmount. Same
+  // pattern saveLoraSettings uses (see line 705 comment).
+  if (store.generationDefaults) {
+    const existing = (store.generationDefaults[backendMode] as Record<string, unknown>) || {}
+    store.generationDefaults = {
+      ...store.generationDefaults,
+      [backendMode]: { ...existing, ...(toSave as Record<string, unknown>) }
+    }
+  }
+
   try {
     await api.updateGenerationDefaultsForMode(backendMode, toSave as any)
     // Silently save, don't show toast for each change

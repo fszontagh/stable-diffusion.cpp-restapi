@@ -298,7 +298,7 @@ else()
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        c1790754d31bec0731ed5fddc9d5b9ff22ee19cd
+            GIT_TAG        b11c95a41c0c6ba39cfc8af9ffaded015b2d6636
             GIT_SHALLOW    FALSE
             GIT_SUBMODULES ${SDCPP_SUBMODULES}
             GIT_SUBMODULES_RECURSE TRUE

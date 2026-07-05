@@ -48,7 +48,12 @@ static prediction_t string_to_prediction_type(const std::string& str) {
     if (str == "edm_v") return EDM_V_PRED;
     if (str == "flow" || str == "sd3_flow") return FLOW_PRED;
     if (str == "flux_flow") return FLUX_FLOW_PRED;
-    if (str == "flux2_flow") return FLUX2_FLOW_PRED;
+    if (str == "sefi_flow") return SEFI_FLOW_PRED;      // leejet PR #1707
+    if (str == "minit2i_flow") return MINIT2I_FLOW_PRED; // leejet PR #1683
+    // FLUX2_FLOW_PRED was removed upstream — Flux2 now uses FLUX_FLOW_PRED.
+    // Accept the legacy "flux2_flow" string and map it there so old configs
+    // don't 400.
+    if (str == "flux2_flow") return FLUX_FLOW_PRED;
     return PREDICTION_COUNT;  // auto-detect for unknown
 }
 
