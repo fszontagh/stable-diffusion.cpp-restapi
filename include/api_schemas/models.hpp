@@ -47,7 +47,9 @@ struct LoadOptions {
             .optional_field("tensor_type_rules", schema::FieldType::String, "Custom tensor type rules string")
             .enum_field("rng_type", "Random number generator type", RNG_TYPE_VALUES, "cuda")
             .optional_field("sampler_rng_type", schema::FieldType::String, "Sampler-specific RNG type")
-            .enum_field("prediction", "Prediction type", {"eps", "v", "edm_v", "sd3_flow", "flux_flow", "flux2_flow", ""})
+            // "flux2_flow" is a legacy alias — upstream removed FLUX2_FLOW_PRED,
+            // Flux2 now uses FLUX_FLOW_PRED. Kept for compat.
+            .enum_field("prediction", "Prediction type", {"eps", "v", "edm_v", "sd3_flow", "flux_flow", "flux2_flow", "sefi_flow", "minit2i_flow", ""})
             .enum_field("lora_apply_mode", "LoRA application mode", {"auto", "immediately", "at_runtime"}, "auto")
             .optional_field("chroma_use_dit_mask", schema::FieldType::Boolean, "Use DiT attention mask (Chroma)", false)
             .optional_field("chroma_use_t5_mask", schema::FieldType::Boolean, "Use T5 attention mask (Chroma)", false)

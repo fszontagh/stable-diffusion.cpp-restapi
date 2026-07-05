@@ -1112,7 +1112,11 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             "lcm",
             "bong_tangent",
             "ltx2",
-            "logit_normal"
+            "logit_normal",
+            "flux",         // leejet PR #1723
+            "flux2",        // leejet PR #1722
+            "beta",         // leejet PR #811
+            "normal"        // leejet PR #1724 — alias for "discrete"
         }},
         {"quantization_types", nlohmann::json::array({
             {{"id", "f32"}, {"name", "F32 (32-bit float)"}, {"bits", 32}},

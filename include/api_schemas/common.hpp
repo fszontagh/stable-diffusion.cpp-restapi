@@ -15,7 +15,12 @@ inline const std::vector<std::string> SAMPLER_VALUES = {
 inline const std::vector<std::string> SCHEDULER_VALUES = {
     "discrete", "karras", "exponential", "ays", "gits", "sgm_uniform",
     "simple", "smoothstep", "kl_optimal", "lcm", "bong_tangent", "ltx2",
-    "logit_normal"
+    "logit_normal",
+    // Added in leejet master post-c179075:
+    "flux",         // PR #1723
+    "flux2",        // PR #1722
+    "beta",         // PR #811
+    "normal"        // PR #1724 — alias for "discrete"
 };
 
 inline const std::vector<std::string> MODEL_TYPE_VALUES = {

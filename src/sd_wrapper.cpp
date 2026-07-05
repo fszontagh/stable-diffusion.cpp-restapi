@@ -1557,12 +1557,20 @@ std::vector<std::string> SDWrapper::upscale_image(
     input_image.channel = params.image_channels;
     input_image.data = const_cast<uint8_t*>(params.image_data.data());
 
-    // Upscale
-    sd_image_t upscaled = upscale(upscaler_ctx, input_image, params.upscale_factor);
-
-    if (upscaled.data == nullptr) {
+    // Upscale. leejet PR #1728 changed upscale() from returning a single
+    // sd_image_t (by value, .data==null on fail) to bool + out-params (an
+    // array with count). Even for the ESRGAN case that always produces one
+    // output, the new API uses the array shape uniformly, so we take the
+    // first entry and free via free_sd_images().
+    sd_image_t* upscaled_arr = nullptr;
+    int num_upscaled = 0;
+    bool up_ok = upscale(upscaler_ctx, input_image, params.upscale_factor,
+                         &upscaled_arr, &num_upscaled);
+    if (!up_ok || upscaled_arr == nullptr || num_upscaled == 0 ||
+        upscaled_arr[0].data == nullptr) {
         throw std::runtime_error(build_error_message("Upscaling failed"));
     }
+    const sd_image_t& upscaled = upscaled_arr[0];
 
     std::string filename = "upscaled.png";
     std::string filepath = (fs::path(job_output_dir) / filename).string();
@@ -1572,7 +1580,7 @@ std::vector<std::string> SDWrapper::upscale_image(
     }
     outputs.push_back(job_id + "/" + filename);
 
-    free(upscaled.data);
+    free_sd_images(upscaled_arr, num_upscaled);
 
     return outputs;
 }
@@ -1593,21 +1601,25 @@ std::vector<uint8_t> SDWrapper::upscale_image_data(
     input_image.channel = channels;
     input_image.data = const_cast<uint8_t*>(image_data);
 
-    // Upscale (factor is determined by the model)
-    sd_image_t upscaled = upscale(upscaler_ctx, input_image, 4);
-
-    if (!upscaled.data) {
+    // Upscale (factor is determined by the model). Same signature swap as
+    // the file-emitting upscale path above — leejet PR #1728.
+    sd_image_t* upscaled_arr = nullptr;
+    int num_upscaled = 0;
+    bool up_ok = upscale(upscaler_ctx, input_image, 4, &upscaled_arr, &num_upscaled);
+    if (!up_ok || upscaled_arr == nullptr || num_upscaled == 0 ||
+        upscaled_arr[0].data == nullptr) {
         throw std::runtime_error(build_error_message("Upscaling failed"));
     }
+    const sd_image_t& upscaled = upscaled_arr[0];
 
     out_width = upscaled.width;
     out_height = upscaled.height;
 
-    // Copy data to vector
+    // Copy data to vector before freeing the sd.cpp-owned buffer
     size_t data_size = out_width * out_height * upscaled.channel;
     std::vector<uint8_t> result(upscaled.data, upscaled.data + data_size);
 
-    free(upscaled.data);
+    free_sd_images(upscaled_arr, num_upscaled);
 
     return result;
 }
@@ -1793,16 +1805,23 @@ std::vector<std::string> SDWrapper::generate_txt2img(
     std::cout << "[SDWrapper] Size: " << params.width << "x" << params.height << ", steps: " << params.steps << ", batch: " << params.batch_count << std::endl;
     std::cout << "[SDWrapper] Calling generate_image()..." << std::endl;
 
-    images = generate_image(ctx, &gen_params);
+    // generate_image() gained a bool return + out-params in leejet PR #1728.
+    // Old signature: sd_image_t* generate_image(ctx, params) — nullptr on fail.
+    // New signature: bool generate_image(ctx, params, sd_image_t** out, int* n_out).
+    // Batch count still comes from gen_params.batch_count; n_out lets the lib
+    // report a shorter list (e.g. hi-res-fix producing fewer frames than the
+    // batch would suggest) instead of us assuming batch_count post-generation.
+    int num_images = 0;
+    bool gen_ok = generate_image(ctx, &gen_params, &images, &num_images);
 
-    if (images == nullptr) {
-        std::cerr << "[SDWrapper] generate_image returned nullptr!" << std::endl;
+    if (!gen_ok || images == nullptr) {
+        std::cerr << "[SDWrapper] generate_image returned false or null!" << std::endl;
         throw std::runtime_error(build_error_message("Image generation failed"));
     }
 
-    std::cout << "[SDWrapper] generate_image returned, processing " << params.batch_count << " images" << std::endl;
+    std::cout << "[SDWrapper] generate_image returned, processing " << num_images << " images" << std::endl;
 
-    for (int i = 0; i < params.batch_count; i++) {
+    for (int i = 0; i < num_images; i++) {
         std::cout << "[SDWrapper] Image " << i << ": "
                   << images[i].width << "x" << images[i].height << "x" << images[i].channel
                   << ", data=" << (images[i].data ? "valid" : "NULL") << std::endl;
@@ -1818,11 +1837,11 @@ std::vector<std::string> SDWrapper::generate_txt2img(
 
             // Return relative path
             outputs.push_back(job_id + "/" + filename);
-
-            free(images[i].data);
         }
     }
-    free(images);
+    // free_sd_images() (new helper) handles both the per-image data buffers
+    // and the array itself so we don't have to loop-free ourselves.
+    free_sd_images(images, num_images);
 
     // Check if any images were successfully generated
     if (outputs.empty()) {
@@ -2109,14 +2128,17 @@ std::vector<std::string> SDWrapper::generate_img2img(
         gen_params.pm_params.id_embed_path = pm_embed_path_str.c_str();
     }
 
-    // Generate images
-    sd_image_t* images = generate_image(ctx, &gen_params);
+    // Generate images. Same signature swap as txt2img — see the txt2img
+    // path above for the rationale (leejet PR #1728: bool return + out-params).
+    sd_image_t* images = nullptr;
+    int num_images = 0;
+    bool gen_ok = generate_image(ctx, &gen_params, &images, &num_images);
 
-    if (images == nullptr) {
+    if (!gen_ok || images == nullptr) {
         throw std::runtime_error(build_error_message("Image generation failed"));
     }
 
-    for (int i = 0; i < params.batch_count; i++) {
+    for (int i = 0; i < num_images; i++) {
         if (images[i].data) {
             std::string filename = "output_" + std::to_string(i) + ".png";
             std::string filepath = (fs::path(job_output_dir) / filename).string();
@@ -2127,11 +2149,9 @@ std::vector<std::string> SDWrapper::generate_img2img(
             }
 
             outputs.push_back(job_id + "/" + filename);
-
-            free(images[i].data);
         }
     }
-    free(images);
+    free_sd_images(images, num_images);
 
     // Check if any images were successfully generated
     if (outputs.empty()) {
