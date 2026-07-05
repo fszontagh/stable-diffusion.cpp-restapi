@@ -1097,7 +1097,9 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             "er_sde",
             "euler_cfg_pp",
             "euler_a_cfg_pp",
-            "euler_ge"
+            "euler_ge",
+            "dpm++2m_sde",      // leejet PR #1742
+            "dpm++2m_sde_bt"    // leejet PR #1743 — Brownian-tree variant
         }},
         {"schedulers", {
             "discrete",

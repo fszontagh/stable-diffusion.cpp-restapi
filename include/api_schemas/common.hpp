@@ -9,7 +9,9 @@ namespace api {
 inline const std::vector<std::string> SAMPLER_VALUES = {
     "euler", "euler_a", "heun", "dpm2", "dpm++2s_a", "dpm++2m", "dpm++2mv2",
     "ipndm", "ipndm_v", "lcm", "ddim_trailing", "tcd", "res_multistep", "res_2s",
-    "er_sde", "euler_cfg_pp", "euler_a_cfg_pp", "euler_ge"
+    "er_sde", "euler_cfg_pp", "euler_a_cfg_pp", "euler_ge",
+    // leejet PR #1742 (DPM++ 2M SDE) and #1743 (Brownian-tree variant).
+    "dpm++2m_sde", "dpm++2m_sde_bt"
 };
 
 inline const std::vector<std::string> SCHEDULER_VALUES = {
