@@ -142,6 +142,15 @@ const hiresSteps = ref(0)
 const hiresDenoisingStrength = ref(0.4)
 const hiresUpscaleTileSize = ref(0)
 
+// Circular RoPE / tileable position embeddings — moved from load params to
+// per-generation in leejet PR #1748. Toggling doesn't need an unload+reload
+// anymore. Independent axes so users can pick horizontal-only, vertical-only,
+// or fully-tileable output.
+const circularX = ref(false)
+const circularY = ref(false)
+// Qwen-Image layered rendering (leejet PR #1119). Image path only.
+const qwenImageLayers = ref(0)
+
 // High-noise pass extras (txt2vid only). The shared `high_noise_*` knobs
 // (steps/cfg/sampler/distilled_guidance/slg_*) are not modeled in UI yet,
 // but parity is reached for the brand-new fields listed below.
@@ -465,6 +474,9 @@ function getCurrentSettings() {
     hiresSteps: hiresSteps.value,
     hiresDenoisingStrength: hiresDenoisingStrength.value,
     hiresUpscaleTileSize: hiresUpscaleTileSize.value,
+    circularX: circularX.value,
+    circularY: circularY.value,
+    qwenImageLayers: qwenImageLayers.value,
     highNoiseImgCfg: highNoiseImgCfg.value,
     highNoiseScheduler: highNoiseScheduler.value,
     highNoiseEta: highNoiseEta.value,
@@ -522,6 +534,9 @@ function applySettings(settings: Record<string, unknown>) {
   if (settings.hiresSteps !== undefined) hiresSteps.value = settings.hiresSteps as number
   if (settings.hiresDenoisingStrength !== undefined) hiresDenoisingStrength.value = settings.hiresDenoisingStrength as number
   if (settings.hiresUpscaleTileSize !== undefined) hiresUpscaleTileSize.value = settings.hiresUpscaleTileSize as number
+  if (settings.circularX !== undefined) circularX.value = settings.circularX as boolean
+  if (settings.circularY !== undefined) circularY.value = settings.circularY as boolean
+  if (settings.qwenImageLayers !== undefined) qwenImageLayers.value = settings.qwenImageLayers as number
   if (settings.highNoiseImgCfg !== undefined) highNoiseImgCfg.value = settings.highNoiseImgCfg as number
   if (settings.highNoiseScheduler !== undefined) highNoiseScheduler.value = settings.highNoiseScheduler as string
   if (settings.highNoiseEta !== undefined) highNoiseEta.value = settings.highNoiseEta as number
@@ -1371,6 +1386,9 @@ function loadJobParams(
     if (params.hires_steps !== undefined) hiresSteps.value = params.hires_steps as number
     if (params.hires_denoising_strength !== undefined) hiresDenoisingStrength.value = params.hires_denoising_strength as number
     if (params.hires_upscale_tile_size !== undefined) hiresUpscaleTileSize.value = params.hires_upscale_tile_size as number
+    if (params.circular_x !== undefined) circularX.value = params.circular_x as boolean
+    if (params.circular_y !== undefined) circularY.value = params.circular_y as boolean
+    if (params.qwen_image_layers !== undefined) qwenImageLayers.value = params.qwen_image_layers as number
     if (params.high_noise_img_cfg !== undefined) highNoiseImgCfg.value = params.high_noise_img_cfg as number
     if (params.high_noise_scheduler !== undefined) highNoiseScheduler.value = params.high_noise_scheduler as string
     if (params.high_noise_eta !== undefined) highNoiseEta.value = params.high_noise_eta as number
@@ -1533,6 +1551,13 @@ async function handleSubmit() {
       baseParams.hires_denoising_strength = hiresDenoisingStrength.value
       if (hiresUpscaleTileSize.value > 0) baseParams.hires_upscale_tile_size = hiresUpscaleTileSize.value
     }
+
+    // Circular RoPE / tileable position embeddings (per-gen since PR #1748).
+    // Only send when true — omitting matches sd.cpp's default (both false).
+    if (circularX.value) baseParams.circular_x = true
+    if (circularY.value) baseParams.circular_y = true
+    // Qwen-Image layered (image path only; > 0 = enabled).
+    if (qwenImageLayers.value > 0) baseParams.qwen_image_layers = qwenImageLayers.value
 
     // Control image
     if (controlImage.value && hasControlNet.value) {
@@ -2100,6 +2125,40 @@ async function handleSubmit() {
               <label class="form-label">Extra Sample Args</label>
               <input v-model="extraSampleArgs" type="text" class="form-input" placeholder="key1=val1,key2=val2" />
               <div class="form-hint">Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs).</div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Circular RoPE / tileable position embeddings. Was a load-time
+             option (Ideogram4 tileable-texture workflows) until leejet PR
+             #1748 moved it to per-generation params — no more model reload
+             just to toggle. -->
+        <details class="card accordion">
+          <summary class="accordion-header">Circular RoPE (Tileable Output)</summary>
+          <div class="accordion-content">
+            <label class="form-checkbox">
+              <input v-model="circularX" type="checkbox" />
+              Circular X (horizontal seam)
+            </label>
+            <label class="form-checkbox mt-1">
+              <input v-model="circularY" type="checkbox" />
+              Circular Y (vertical seam)
+            </label>
+            <div class="form-hint mt-1">
+              Off for normal generation. Enable one for horizontal-only or
+              vertical-only tiling; enable both for fully-wrappable textures
+              (skyboxes, repeating patterns, Ideogram4 panoramas).
+            </div>
+            <!-- Qwen-Image layered rendering. Image path only — the video
+                 pipeline (sd_vid_gen_params_t) doesn't expose this. -->
+            <div v-if="mode !== 'txt2vid'" class="form-group mt-2">
+              <label class="form-label">Qwen-Image Layers</label>
+              <input v-model.number="qwenImageLayers" type="number" min="0"
+                     class="form-input small" placeholder="0 = disabled" />
+              <div class="form-hint">
+                Qwen-Image layered rendering (leejet PR #1119). 0 = disabled.
+                Only meaningful for Qwen-Image checkpoints.
+              </div>
             </div>
           </div>
         </details>

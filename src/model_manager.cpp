@@ -298,15 +298,14 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
             // Model behavior
             "prediction", "lora_apply_mode",
             // Chroma-specific
-            "chroma_use_dit_mask", "chroma_use_t5_mask", "chroma_t5_mask_pad",
-            // Qwen-Image specific
-            "qwen_image_zero_cond_t",
+            // chroma_use_dit_mask / chroma_use_t5_mask / chroma_t5_mask_pad /
+            // qwen_image_zero_cond_t consolidated into `model_args` upstream
+            // (leejet PR #1757). Kept below `model_args` in the allowlist.
+            "model_args",
             // VAE format override (leejet PR for sd_vae_format_t enum)
             "vae_format",
-            // Tileable / seamless texture position embeddings (leejet PR #1627
-            // — circular RoPE for ideogram4 + Flux). Independent X/Y axes so
-            // users can request horizontal-only or vertical-only tiling.
-            "circular_x", "circular_y",
+            // circular_x / circular_y moved to per-generation params in
+            // leejet PR #1748 — see the /txt2img /img2img /txt2vid schemas.
             // Backend routing (sd.cpp post-2026-05-16; rpc_servers added in leejet PR #1629)
             "backend", "params_backend", "rpc_servers",
             // Experimental offload (only honored when SDCPP_EXPERIMENTAL_OFFLOAD is on,
@@ -363,18 +362,15 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
 
         params.force_sdxl_vae_conv_scale = opts.value("force_sdxl_vae_conv_scale", false);
 
-        // Chroma options
-        params.chroma_use_dit_mask = opts.value("chroma_use_dit_mask", true);
-        params.chroma_use_t5_mask = opts.value("chroma_use_t5_mask", false);
-        params.chroma_t5_mask_pad = opts.value("chroma_t5_mask_pad", 1);
+        // Model-specific args (leejet PR #1757) — replaces the previous
+        // chroma_use_dit_mask / chroma_use_t5_mask / chroma_t5_mask_pad /
+        // qwen_image_zero_cond_t individual fields. Empty = defaults.
+        params.model_args = opts.value("model_args", "");
 
-        // Qwen-Image specific
-        params.qwen_image_zero_cond_t = opts.value("qwen_image_zero_cond_t", false);
-
-        // VAE format override + tileable position embeddings
+        // VAE format override
         params.vae_format = opts.value("vae_format", "auto");
-        params.circular_x = opts.value("circular_x", false);
-        params.circular_y = opts.value("circular_y", false);
+        // circular_x / circular_y now per-generation (leejet PR #1748) —
+        // see the generation request schemas + sd_wrapper.
 
         // Backend routing
         params.backend = opts.value("backend", "");
@@ -1042,13 +1038,10 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     // Set LoRA apply mode
     ctx_params.lora_apply_mode = string_to_lora_apply_mode(params.lora_apply_mode);
 
-    // Chroma options
-    ctx_params.chroma_use_dit_mask = params.chroma_use_dit_mask;
-    ctx_params.chroma_use_t5_mask = params.chroma_use_t5_mask;
-    ctx_params.chroma_t5_mask_pad = params.chroma_t5_mask_pad;
-
-    // Qwen-Image: zero the conditional T branch when requested.
-    ctx_params.qwen_image_zero_cond_t = params.qwen_image_zero_cond_t;
+    // Model-specific args (leejet PR #1757) — opaque "key=value,key=value"
+    // string handed to the model parser. Same pointer-lifetime constraint
+    // as backend below.
+    ctx_params.model_args = params.model_args.empty() ? nullptr : params.model_args.c_str();
 
     // VAE format override. Default "auto" → SD_VAE_FORMAT_AUTO (-1) so sd.cpp
     // detects from the weights. Explicit values: "flux", "sd3", "flux2".
@@ -1062,9 +1055,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         ctx_params.vae_format = SD_VAE_FORMAT_AUTO;
     }
 
-    // Tileable / seamless texture position embeddings (leejet PR #1627).
-    ctx_params.circular_x = params.circular_x;
-    ctx_params.circular_y = params.circular_y;
+    // Tileable / seamless texture position embeddings moved to per-gen
+    // in leejet PR #1748 — see sd_wrapper's generate_txt2img etc.
 
     // Backend routing. Pointers into sd_ctx_params_t must stay valid for the
     // duration of new_sd_ctx() — `params` outlives that call here, so passing
@@ -1299,13 +1291,10 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["params_backend"] = params.params_backend;
     loaded_options_["rpc_servers"] = params.rpc_servers;
     loaded_options_["force_sdxl_vae_conv_scale"] = params.force_sdxl_vae_conv_scale;
-    loaded_options_["chroma_use_dit_mask"] = params.chroma_use_dit_mask;
-    loaded_options_["chroma_use_t5_mask"] = params.chroma_use_t5_mask;
-    loaded_options_["chroma_t5_mask_pad"] = params.chroma_t5_mask_pad;
-    loaded_options_["qwen_image_zero_cond_t"] = params.qwen_image_zero_cond_t;
+    loaded_options_["model_args"] = params.model_args;
     loaded_options_["vae_format"] = params.vae_format;
-    loaded_options_["circular_x"] = params.circular_x;
-    loaded_options_["circular_y"] = params.circular_y;
+    // circular_x / circular_y are per-gen now (leejet PR #1748); they no
+    // longer live on load params so no echo-back here.
 
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
     // ── feature/vram-offloading-v2 echoes back the full legacy offload set ──

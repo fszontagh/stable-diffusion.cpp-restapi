@@ -258,6 +258,10 @@ export const useAppStore = defineStore('app', () => {
   // `feature/vram-offloading-v2` (multi-mode offload_mode + streaming_* tuning).
   // Only meaningful when experimentalOffloadEnabled is true.
   const unifiedStreamingEnabled = computed(() => health.value?.features?.unified_streaming ?? false)
+  // True when the linked sd.cpp has SeFi-Image support compiled in
+  // (leejet PR #1707 fork branch). Used to ungrey the SeFi-Image
+  // architecture preset and surface an "experimental build" badge.
+  const sefiImageEnabled = computed(() => health.value?.features?.sefi_image ?? false)
 
   const queueStats = computed(() => ({
     pending: queue.value?.pending_count ?? 0,
@@ -1075,6 +1079,7 @@ export const useAppStore = defineStore('app', () => {
     upscalerName,
     experimentalOffloadEnabled,
     unifiedStreamingEnabled,
+    sefiImageEnabled,
     queueStats,
     samplers,
     schedulers,
