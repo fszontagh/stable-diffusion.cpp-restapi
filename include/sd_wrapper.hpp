@@ -137,6 +137,16 @@ struct Txt2ImgParams {
     float hires_denoising_strength = 0.4f;
     int hires_upscale_tile_size = 0;
 
+    // Circular RoPE / tileable position embeddings — moved from load params
+    // to per-gen in leejet PR #1748 (was on sd_ctx_params_t). Toggling no
+    // longer requires an unload+reload cycle.
+    bool circular_x = false;
+    bool circular_y = false;
+
+    // Qwen-Image layered support (leejet PR #1119, exposed on sd_img_gen_params_t
+    // after PR #1748). 0 = no layered rendering.
+    int qwen_image_layers = 0;
+
     // Upscaling (optional - requires upscaler loaded)
     bool upscale = false;               // Enable upscaling after generation
     bool upscale_auto_unload = true;    // Unload upscaler after upscaling
@@ -248,6 +258,16 @@ struct Img2ImgParams {
     int hires_steps = 0;
     float hires_denoising_strength = 0.4f;
     int hires_upscale_tile_size = 0;
+
+    // Circular RoPE / tileable position embeddings — moved from load params
+    // to per-gen in leejet PR #1748 (was on sd_ctx_params_t). Toggling no
+    // longer requires an unload+reload cycle.
+    bool circular_x = false;
+    bool circular_y = false;
+
+    // Qwen-Image layered support (leejet PR #1119, exposed on sd_img_gen_params_t
+    // after PR #1748). 0 = no layered rendering.
+    int qwen_image_layers = 0;
 
     // Upscaling (optional - requires upscaler loaded)
     bool upscale = false;               // Enable upscaling after generation
@@ -387,6 +407,12 @@ struct Txt2VidParams {
     int hires_steps = 0;
     float hires_denoising_strength = 0.4f;
     int hires_upscale_tile_size = 0;
+
+    // Circular RoPE / tileable position embeddings — moved to per-gen in
+    // leejet PR #1748. Video path only carries circular_x/y (no
+    // qwen_image_layers).
+    bool circular_x = false;
+    bool circular_y = false;
 
     static Txt2VidParams from_json(const nlohmann::json& j);
     nlohmann::json to_json() const;

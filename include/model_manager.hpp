@@ -171,14 +171,13 @@ struct ModelLoadParams {
     // VAE tiling is per-generation (sd_tiling_params_t) — wired in the request schemas + sd_wrapper.
     bool force_sdxl_vae_conv_scale = false;
 
-    // Chroma options
-    bool chroma_use_dit_mask = true;
-    bool chroma_use_t5_mask = false;
-    int chroma_t5_mask_pad = 1;
-
-    // Qwen-Image specific: zero out the conditional T branch (upstream addition).
-    // Off by default — only Qwen-Image checkpoints look at this knob.
-    bool qwen_image_zero_cond_t = false;
+    // Model-specific arguments (leejet PR #1757). Consolidates the previous
+    // individual load flags — chroma_use_dit_mask, chroma_use_t5_mask,
+    // chroma_t5_mask_pad, qwen_image_zero_cond_t — into a single opaque
+    // string handed to the model parser. Format is sd.cpp's own
+    // "key=value,key=value" spec (e.g. "chroma_use_dit_mask=true,
+    // chroma_t5_mask_pad=1,qwen_image_zero_cond_t=false"). Empty = defaults.
+    std::string model_args = "";
 
     // VAE format override (leejet master, post 1ceb5bd). Values: "auto" (default,
     // sd.cpp detects from the VAE weights), "flux", "sd3", "flux2". Maps to
@@ -186,12 +185,10 @@ struct ModelLoadParams {
     // metadata sd.cpp uses for autodetection.
     std::string vae_format = "auto";
 
-    // Circular RoPE / tileable position embeddings. Used for seamless texture
-    // generation — when on, the position embedding wraps so the output tiles
-    // perfectly on the chosen axis. Required for Ideogram4-style workflows
-    // (leejet PR #1627). Both bools are on sd_ctx_params_t.
-    bool circular_x = false;
-    bool circular_y = false;
+    // circular_x / circular_y moved to per-generation params (leejet PR
+    // #1748) — see Txt2ImgParams / Img2ImgParams / Txt2VidParams. Removing
+    // them from load params removes the "unload + reload just to toggle
+    // tileable" workflow.
 
     // Backend routing (sd.cpp post-2026-05-16). Empty = let sd.cpp pick the
     // default backend (matches the historical behavior of selecting the

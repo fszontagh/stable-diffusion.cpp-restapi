@@ -78,6 +78,14 @@ struct GenerationRequestBase {
             .optional_field("hires_steps", schema::FieldType::Integer, "Hires sampling steps (0 = inherit main steps)", 0)
             .optional_field("hires_denoising_strength", schema::FieldType::Number, "Hires denoising strength", 0.4)
             .optional_field("hires_upscale_tile_size", schema::FieldType::Integer, "Hires upscaler tile size", 0)
+            // Circular RoPE / tileable position embeddings. Per-generation
+            // since leejet PR #1748 — before that it was a load-time option
+            // requiring an unload+reload cycle to toggle.
+            .optional_field("circular_x", schema::FieldType::Boolean, "Circular RoPE on the X axis — seamless/tileable output across the horizontal seam. Required for Ideogram4-style tileable-texture workflows.", false)
+            .optional_field("circular_y", schema::FieldType::Boolean, "Circular RoPE on the Y axis — seamless/tileable output across the vertical seam.", false)
+            // Qwen-Image layered rendering (PR #1119, exposed on sd_img_gen_params_t
+            // after #1748). 0 = no layered rendering. Image path only.
+            .optional_field("qwen_image_layers", schema::FieldType::Integer, "Qwen-Image layered rendering (image path only; 0 = disabled)", 0)
             // Post-gen ESRGAN upscale — restapi orchestration on top of sd.cpp, NOT the same as hires_*
             .optional_field("upscale", schema::FieldType::Boolean, "Auto-run a loaded ESRGAN upscaler after generation (post-gen, distinct from hires_enabled)", false)
             .optional_field("upscale_repeats", schema::FieldType::Integer, "Number of upscale passes", 1)

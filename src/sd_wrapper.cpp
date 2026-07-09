@@ -770,6 +770,10 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
         "hires_enabled", "hires_upscaler", "hires_model_path",
         "hires_scale", "hires_target_width", "hires_target_height",
         "hires_steps", "hires_denoising_strength", "hires_upscale_tile_size",
+        // Circular RoPE / tileable position embeddings — per-gen since PR #1748.
+        "circular_x", "circular_y",
+        // Qwen-Image layered (PR #1119, surfaced on sd_img_gen_params_t after #1748).
+        "qwen_image_layers",
         "upscale", "upscale_auto_unload", "upscale_repeats",
     };
     reject_unknown_keys("/txt2img body", j, KNOWN);
@@ -873,6 +877,11 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     p.hires_steps = parse_int(j, "hires_steps", 0);
     p.hires_denoising_strength = parse_float(j, "hires_denoising_strength", 0.4f);
     p.hires_upscale_tile_size = parse_int(j, "hires_upscale_tile_size", 0);
+
+    // Per-gen circular RoPE + qwen_image_layers (leejet PR #1748 / #1119)
+    p.circular_x = parse_bool(j, "circular_x", false);
+    p.circular_y = parse_bool(j, "circular_y", false);
+    p.qwen_image_layers = parse_int(j, "qwen_image_layers", 0);
 
     // Post-gen ESRGAN upscale (restapi orchestration, distinct from hires above)
     p.upscale = parse_bool(j, "upscale", false);
@@ -1001,6 +1010,8 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
         "hires_enabled", "hires_upscaler", "hires_model_path",
         "hires_scale", "hires_target_width", "hires_target_height",
         "hires_steps", "hires_denoising_strength", "hires_upscale_tile_size",
+        // Per-gen circular RoPE + Qwen-Image layered (leejet PRs #1748 / #1119).
+        "circular_x", "circular_y", "qwen_image_layers",
         "upscale", "upscale_auto_unload", "upscale_repeats",
     };
     reject_unknown_keys("/img2img body", j, KNOWN);
@@ -1126,6 +1137,11 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     p.hires_steps = parse_int(j, "hires_steps", 0);
     p.hires_denoising_strength = parse_float(j, "hires_denoising_strength", 0.4f);
     p.hires_upscale_tile_size = parse_int(j, "hires_upscale_tile_size", 0);
+
+    // Per-gen circular RoPE + qwen_image_layers (leejet PR #1748 / #1119)
+    p.circular_x = parse_bool(j, "circular_x", false);
+    p.circular_y = parse_bool(j, "circular_y", false);
+    p.qwen_image_layers = parse_int(j, "qwen_image_layers", 0);
 
     // Post-gen ESRGAN upscale (restapi orchestration, distinct from hires above)
     p.upscale = parse_bool(j, "upscale", false);
@@ -1267,6 +1283,8 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
         "hires_enabled", "hires_upscaler", "hires_model_path",
         "hires_scale", "hires_target_width", "hires_target_height",
         "hires_steps", "hires_denoising_strength", "hires_upscale_tile_size",
+        // Per-gen circular RoPE (leejet PR #1748). Video path has no qwen_image_layers.
+        "circular_x", "circular_y",
     };
     reject_unknown_keys("/txt2vid body", j, KNOWN);
 
@@ -1396,6 +1414,10 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     p.hires_steps = parse_int(j, "hires_steps", 0);
     p.hires_denoising_strength = parse_float(j, "hires_denoising_strength", 0.4f);
     p.hires_upscale_tile_size = parse_int(j, "hires_upscale_tile_size", 0);
+
+    // Per-gen circular RoPE (leejet PR #1748). Video path has no qwen_image_layers.
+    p.circular_x = parse_bool(j, "circular_x", false);
+    p.circular_y = parse_bool(j, "circular_y", false);
 
     return p;
 }
@@ -1752,6 +1774,11 @@ std::vector<std::string> SDWrapper::generate_txt2img(
     // Built-in hi-res-fix (sd_hires_params_t) — distinct from post-gen ESRGAN
     apply_hires_params(gen_params.hires, params);
 
+    // Per-gen circular RoPE (leejet PR #1748) + Qwen-Image layered (PR #1119)
+    gen_params.circular_x = params.circular_x;
+    gen_params.circular_y = params.circular_y;
+    gen_params.qwen_image_layers = params.qwen_image_layers;
+
     // VAE tiling support
     if (params.vae_tiling) {
         gen_params.vae_tiling_params.enabled = true;
@@ -2083,6 +2110,11 @@ std::vector<std::string> SDWrapper::generate_img2img(
     // Built-in hi-res-fix (sd_hires_params_t) — distinct from post-gen ESRGAN
     apply_hires_params(gen_params.hires, params);
 
+    // Per-gen circular RoPE (leejet PR #1748) + Qwen-Image layered (PR #1119)
+    gen_params.circular_x = params.circular_x;
+    gen_params.circular_y = params.circular_y;
+    gen_params.qwen_image_layers = params.qwen_image_layers;
+
     // VAE tiling support
     if (params.vae_tiling) {
         gen_params.vae_tiling_params.enabled = true;
@@ -2340,6 +2372,10 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
 
     // Built-in hi-res-fix
     apply_hires_params(vid_params.hires, params);
+
+    // Per-gen circular RoPE (leejet PR #1748). Video path has no qwen_image_layers.
+    vid_params.circular_x = params.circular_x;
+    vid_params.circular_y = params.circular_y;
 
     // VAE tiling for large videos. temporal_tiling on the video path is the
     // common case — LTX 2.3 et al. split along the time axis as well as XY.

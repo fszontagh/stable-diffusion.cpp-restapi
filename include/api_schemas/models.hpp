@@ -51,13 +51,15 @@ struct LoadOptions {
             // Flux2 now uses FLUX_FLOW_PRED. Kept for compat.
             .enum_field("prediction", "Prediction type", {"eps", "v", "edm_v", "sd3_flow", "flux_flow", "flux2_flow", "sefi_flow", "minit2i_flow", ""})
             .enum_field("lora_apply_mode", "LoRA application mode", {"auto", "immediately", "at_runtime"}, "auto")
-            .optional_field("chroma_use_dit_mask", schema::FieldType::Boolean, "Use DiT attention mask (Chroma)", false)
-            .optional_field("chroma_use_t5_mask", schema::FieldType::Boolean, "Use T5 attention mask (Chroma)", false)
-            .optional_field("chroma_t5_mask_pad", schema::FieldType::Integer, "T5 mask padding (Chroma)", 0)
-            .optional_field("qwen_image_zero_cond_t", schema::FieldType::Boolean, "Qwen-Image: zero the conditional T branch (Qwen-Image checkpoints only)", false)
+            // Model-specific args (leejet PR #1757) — one opaque string that
+            // replaces the previous chroma_use_dit_mask / chroma_use_t5_mask /
+            // chroma_t5_mask_pad / qwen_image_zero_cond_t individual load
+            // flags. Format is sd.cpp's own key=value list, e.g.
+            // "chroma_use_dit_mask=true,chroma_t5_mask_pad=1,qwen_image_zero_cond_t=false".
+            .optional_field("model_args", schema::FieldType::String, "Model-specific args (key=value list) — replaces the old chroma_*/qwen_image_zero_cond_t individual load flags.")
             .enum_field("vae_format", "VAE weight format override (auto = sd.cpp detects from the file)", {"auto", "flux", "sd3", "flux2"}, "auto")
-            .optional_field("circular_x", schema::FieldType::Boolean, "Circular RoPE on the X axis — produces seamless/tileable output across the horizontal seam. Required for Ideogram4-style tileable-texture workflows.", false)
-            .optional_field("circular_y", schema::FieldType::Boolean, "Circular RoPE on the Y axis — produces seamless/tileable output across the vertical seam.", false)
+            // circular_x / circular_y moved to per-generation params in
+            // leejet PR #1748 — see GenerationRequestBase.
             .optional_field("backend", schema::FieldType::String, "Main compute backend override (empty = sd.cpp picks). Use per-component placement here too — e.g. \"diffusion=cuda0,vae=cpu\" — that's how per-component CPU keeping is expressed now (formerly keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu).")
             .optional_field("params_backend", schema::FieldType::String, "Parameter storage backend override (empty = same as backend). Set to \"*=cpu\" for the global \"keep all weights in RAM\" mode that was previously offload_to_cpu.")
             .optional_field("rpc_servers", schema::FieldType::String, "RPC distributed-backend node list, comma-separated host:port pairs (leejet PR #1629). Empty = no RPC.")

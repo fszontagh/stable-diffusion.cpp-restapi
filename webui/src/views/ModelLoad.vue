@@ -89,15 +89,14 @@ const loadParams = ref<LoadModelParams>({
     sampler_rng_type: '',
     prediction: '',
     lora_apply_mode: 'auto',
-    // Chroma-only knobs (ignored for other architectures).
-    chroma_use_dit_mask: true,
-    chroma_use_t5_mask: false,
-    chroma_t5_mask_pad: 1,
-    qwen_image_zero_cond_t: false,
-    // leejet master post-1ceb5bd: VAE format override + tileable RoPE.
-    vae_format: 'auto',
-    circular_x: false,
-    circular_y: false
+    // Model-specific args (leejet PR #1757). Empty string = defaults.
+    // Replaces chroma_use_dit_mask / chroma_use_t5_mask / chroma_t5_mask_pad /
+    // qwen_image_zero_cond_t individual flags.
+    model_args: '',
+    // VAE format override.
+    vae_format: 'auto'
+    // circular_x / circular_y moved to per-generation in leejet PR #1748 —
+    // toggling no longer requires a model reload. See the Generate page.
   }
 })
 
@@ -869,36 +868,29 @@ function onKeepAllInRam(e: Event) {
             </div>
           </div>
 
-          <!-- Chroma-specific mask tuning -->
+          <!-- Model-specific args (leejet PR #1757). Consolidates the old
+               chroma_use_dit_mask / chroma_use_t5_mask / chroma_t5_mask_pad /
+               qwen_image_zero_cond_t individual toggles into one key=value
+               string handed to the model parser. -->
           <div class="options-group">
-            <h4 class="options-group-title">Chroma Masks</h4>
-            <div class="options-grid">
-              <label class="form-checkbox" :title="getOptionDesc('chroma_use_dit_mask')?.description">
-                <input v-model="loadParams.options!.chroma_use_dit_mask" type="checkbox" />
-                <span>Chroma: use DiT mask</span>
-                <RecHint :desc="getOptionDesc('chroma_use_dit_mask')" />
-              </label>
-              <label class="form-checkbox" :title="getOptionDesc('chroma_use_t5_mask')?.description">
-                <input v-model="loadParams.options!.chroma_use_t5_mask" type="checkbox" />
-                <span>Chroma: use T5 mask</span>
-                <RecHint :desc="getOptionDesc('chroma_use_t5_mask')" />
-              </label>
-            </div>
-            <div class="form-group inline-group" :title="getOptionDesc('chroma_t5_mask_pad')?.description">
-              <label class="form-label">Chroma T5 Mask Pad</label>
-              <input v-model.number="loadParams.options!.chroma_t5_mask_pad" type="number" class="form-input small" min="0" />
-            </div>
-          </div>
-
-          <!-- Qwen-Image specific -->
-          <div class="options-group">
-            <h4 class="options-group-title">Qwen-Image</h4>
-            <div class="options-grid">
-              <label class="form-checkbox" :title="getOptionDesc('qwen_image_zero_cond_t')?.description">
-                <input v-model="loadParams.options!.qwen_image_zero_cond_t" type="checkbox" />
-                <span>Qwen-Image: zero conditioning timestep</span>
-                <RecHint :desc="getOptionDesc('qwen_image_zero_cond_t')" />
-              </label>
+            <h4 class="options-group-title">Model Args</h4>
+            <div class="form-group" :title="getOptionDesc('model_args')?.description">
+              <label class="form-label">Model-specific args</label>
+              <input
+                v-model="loadParams.options!.model_args"
+                type="text"
+                class="form-input"
+                placeholder="e.g. chroma_use_dit_mask=true,chroma_t5_mask_pad=1,qwen_image_zero_cond_t=false"
+              />
+              <small class="form-hint">
+                Comma-separated <code>key=value</code> pairs handed to the
+                sd.cpp model parser. Common keys:
+                <code>chroma_use_dit_mask</code>,
+                <code>chroma_use_t5_mask</code>,
+                <code>chroma_t5_mask_pad</code>,
+                <code>qwen_image_zero_cond_t</code>. Leave empty for defaults.
+              </small>
+              <RecHint :desc="getOptionDesc('model_args')" />
             </div>
           </div>
 
@@ -940,29 +932,10 @@ function onKeepAllInRam(e: Event) {
             </div>
           </div>
 
-          <!-- Tileable position embeddings (leejet PR #1627 — circular RoPE).
-               Required for Ideogram4 tileable-texture workflows. Two
-               independent axes so users can pick horizontal-only,
-               vertical-only, or fully-tileable output. -->
-          <div class="options-group">
-            <h4 class="options-group-title">Tileable Output (Circular RoPE)</h4>
-            <div class="options-grid">
-              <label class="form-checkbox">
-                <input v-model="loadParams.options!.circular_x" type="checkbox" />
-                <span>Circular X (horizontal seam)</span>
-                <RecHint :desc="getOptionDesc('circular_x')" />
-              </label>
-              <label class="form-checkbox">
-                <input v-model="loadParams.options!.circular_y" type="checkbox" />
-                <span>Circular Y (vertical seam)</span>
-                <RecHint :desc="getOptionDesc('circular_y')" />
-              </label>
-            </div>
-            <small class="form-hint">
-              Off for normal generation. Enable one or both for seamless / tileable output
-              (skyboxes, repeating textures, Ideogram4 panoramas). Tile both for fully-wrappable textures.
-            </small>
-          </div>
+          <!-- Circular RoPE (tileable position embeddings) moved to
+               per-generation controls in leejet PR #1748 — see the Generate
+               page's "Circular RoPE / Tileable Output" section. Toggling no
+               longer forces a model unload+reload cycle. -->
         </div>
       </details>
 

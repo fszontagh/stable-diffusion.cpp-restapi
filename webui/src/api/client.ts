@@ -31,13 +31,14 @@ export interface LoadOptions {
   sampler_rng_type?: string
   prediction?: string
   lora_apply_mode?: string
-  chroma_use_dit_mask?: boolean
-  chroma_use_t5_mask?: boolean
-  chroma_t5_mask_pad?: number
-  // leejet master post-1ceb5bd: VAE format override + tileable position embeddings
+  // chroma_use_dit_mask / chroma_use_t5_mask / chroma_t5_mask_pad were
+  // consolidated into `model_args` in leejet PR #1757 — one opaque
+  // key=value string handed to the model parser.
+  model_args?: string
+  // VAE format override.
   vae_format?: 'auto' | 'flux' | 'sd3' | 'flux2'
-  circular_x?: boolean
-  circular_y?: boolean
+  // circular_x / circular_y moved to GenerationParams in leejet PR #1748
+  // (they now live on sd_img_gen_params_t + sd_vid_gen_params_t).
 
   // Compute backend override (replaces the old keep_clip_on_cpu /
   // keep_vae_on_cpu / keep_controlnet_on_cpu booleans). e.g.
@@ -48,8 +49,7 @@ export interface LoadOptions {
   params_backend?: string
   // Comma-separated host:port pairs for distributed-backend (rpc) workers.
   rpc_servers?: string
-  // Qwen-Image-specific: zero out the conditioning timestep.
-  qwen_image_zero_cond_t?: boolean
+  // qwen_image_zero_cond_t consolidated into `model_args` in leejet PR #1757.
 
   // Residency-aware streaming planner (leejet master + unified-streaming fork).
   // Pairs naturally with params_backend='*=cpu' and max_vram > 0.
@@ -265,6 +265,13 @@ export interface GenerationParams {
   hires_steps?: number
   hires_denoising_strength?: number
   hires_upscale_tile_size?: number
+  // Circular RoPE / tileable position embeddings (leejet PR #1748 — moved
+  // from load-time to per-generation). Toggling no longer requires a
+  // model unload+reload cycle.
+  circular_x?: boolean
+  circular_y?: boolean
+  // Qwen-Image layered rendering (leejet PR #1119; image path only).
+  qwen_image_layers?: number
   upscale?: boolean
   upscale_repeats?: number
   upscale_auto_unload?: boolean
