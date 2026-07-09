@@ -3,11 +3,22 @@
 #include "queue_manager.hpp"
 #include "memory_utils.hpp"
 #include "auth_manager.hpp"
+#include "utils.hpp"
+#include "config.hpp"
+#include "stb_image.h"
+#include "stb_image_write.h"
+#include "stb_image_resize.h"
 
 #include <iostream>
 #include <fstream>
 #include <optional>
 #include <set>
+#include <vector>
+#include <iterator>
+#include <cctype>
+#include <cstdint>
+#include <cstdlib>
+#include <algorithm>
 
 namespace sdcpp {
 
@@ -16,9 +27,9 @@ using json = nlohmann::json;
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
 McpServer::McpServer(httplib::Server& server, ModelManager& model_manager, QueueManager& queue_manager,
-                     AuthManager& auth_manager)
+                     AuthManager& auth_manager, const McpConfig& mcp_config)
     : server_(server), model_manager_(model_manager), queue_manager_(queue_manager),
-      auth_manager_(auth_manager) {}
+      auth_manager_(auth_manager), mcp_config_(mcp_config) {}
 
 // ─── Endpoint Registration ───────────────────────────────────────────────────
 
@@ -317,6 +328,36 @@ json McpServer::handle_list_tools() {
         }}
     });
 
+    // 4. image — fetch generated image bytes for a completed job.
+    //    Gated behind config: the inline base64 payload is only useful to a
+    //    vision-capable client and costs context tokens, so it's opt-in.
+    if (mcp_config_.image_tool_enabled) {
+        tools.push_back({
+            {"name", "image"},
+            {"description",
+                "Fetch the actual generated image(s) for a completed job as inline image "
+                "content (not just a URL) so a vision-capable model can view the result. "
+                "Use after 'generate' + 'job status'. Images are downscaled to the 'size' "
+                "longest-side limit (default " + std::to_string(mcp_config_.image_default_max_dim) +
+                "px) and re-encoded as JPEG to bound payload size, so an 8192px upscale "
+                "won't flood the context. Video (.mp4) outputs cannot be returned inline — "
+                "use the URL from 'job status' instead."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"required", json::array({"job_id"})},
+                {"properties", {
+                    {"job_id", {{"type", "string"}, {"description", "Job UUID of a completed generation job"}}},
+                    {"index", {{"type", "integer"}, {"description", "Zero-based index of a single output to fetch. Omit to fetch all outputs (capped at 4)."}}},
+                    {"size", {{"type", "integer"}, {"description",
+                        "Max longest-side dimension in pixels. The image is downscaled to fit "
+                        "(aspect preserved; never upscaled). Omit for the server default (" +
+                        std::to_string(mcp_config_.image_default_max_dim) + "px). Clamped to a max of " +
+                        std::to_string(mcp_config_.image_max_dim) + "px."}}}
+                }}
+            }}
+        });
+    }
+
     return {{"tools", tools}};
 }
 
@@ -333,6 +374,13 @@ json McpServer::handle_call_tool(const json& params) {
     if (name == "generate") return tool_generate(args);
     if (name == "model") return tool_model(args);
     if (name == "job") return tool_job(args);
+    if (name == "image") {
+        if (!mcp_config_.image_tool_enabled) {
+            return make_tool_result("The 'image' tool is disabled. Enable it via "
+                                    "config mcp.image_tool_enabled.", true);
+        }
+        return tool_image(args);
+    }
 
     return make_tool_result("Unknown tool: " + name, true);
 }
@@ -402,6 +450,130 @@ json McpServer::tool_generate(const json& args) {
     } catch (const std::exception& e) {
         return make_tool_result("Failed to queue job: " + std::string(e.what()), true);
     }
+}
+
+json McpServer::tool_image(const json& args) {
+    if (!args.contains("job_id") || !args["job_id"].is_string()) {
+        return make_tool_result("Missing required parameter: job_id", true);
+    }
+    std::string job_id = args["job_id"].get<std::string>();
+
+    auto job = queue_manager_.get_job(job_id);
+    if (!job.has_value()) {
+        return make_tool_result("Job not found: " + job_id, true);
+    }
+    if (job->outputs.empty()) {
+        return make_tool_result("Job has no outputs yet (status: " +
+            queue_status_to_string(job->status) + "). Wait for completion.", true);
+    }
+
+    // Resolve which outputs to fetch: a single one if 'index' given, else all.
+    std::vector<std::string> selected;
+    if (args.contains("index") && args["index"].is_number_integer()) {
+        long idx = args["index"].get<long>();
+        if (idx < 0 || static_cast<size_t>(idx) >= job->outputs.size()) {
+            return make_tool_result("index out of range: job has " +
+                std::to_string(job->outputs.size()) + " output(s)", true);
+        }
+        selected.push_back(job->outputs[static_cast<size_t>(idx)]);
+    } else {
+        selected = job->outputs;
+    }
+
+    // Cap inline payload to avoid blowing up the context with many large images.
+    constexpr size_t kMaxImages = 4;
+    bool truncated = selected.size() > kMaxImages;
+    if (truncated) selected.resize(kMaxImages);
+
+    // Resolve the longest-side limit: caller's `size`, else the server default,
+    // clamped to [1, image_max_dim] so a model can't request an unbounded image.
+    int max_dim = mcp_config_.image_default_max_dim;
+    if (args.contains("size") && args["size"].is_number_integer()) {
+        max_dim = args["size"].get<int>();
+    }
+    if (max_dim < 1) max_dim = 1;
+    if (max_dim > mcp_config_.image_max_dim) max_dim = mcp_config_.image_max_dim;
+
+    // Decode → (downscale to max_dim, aspect preserved, never upscale) → JPEG.
+    // This bounds payload size regardless of source resolution, so an 8192px
+    // upscale comes back as a small JPEG instead of a multi-MB base64 blob.
+    // Returns base64 JPEG, or "" with `err` set. Non-decodable outputs (video,
+    // webp — stb can't read those) fail here and are reported as skipped.
+    const int jpeg_quality = mcp_config_.image_jpeg_quality;
+    auto encode_jpeg = [max_dim, jpeg_quality](const std::string& path,
+                                               std::string& err) -> std::string {
+        int w, h, ch;
+        unsigned char* data = stbi_load(path.c_str(), &w, &h, &ch, 3);  // force RGB
+        if (!data) {
+            const char* reason = stbi_failure_reason();
+            err = std::string("decode failed") + (reason ? std::string(": ") + reason : "");
+            return "";
+        }
+        bool resized = false;
+        if (w > max_dim || h > max_dim) {
+            float scale = std::min(static_cast<float>(max_dim) / w,
+                                   static_cast<float>(max_dim) / h);
+            int nw = std::max(1, static_cast<int>(w * scale));
+            int nh = std::max(1, static_cast<int>(h * scale));
+            auto* rz = static_cast<unsigned char*>(malloc(static_cast<size_t>(nw) * nh * 3));
+            if (!rz) { stbi_image_free(data); err = "out of memory"; return ""; }
+            stbir_resize_uint8(data, w, h, 0, rz, nw, nh, 0, 3);
+            stbi_image_free(data);
+            data = rz; w = nw; h = nh; resized = true;
+        }
+        std::vector<unsigned char> jpg;
+        auto cb = [](void* ctx, void* d, int s) {
+            auto* v = static_cast<std::vector<unsigned char>*>(ctx);
+            auto* b = static_cast<unsigned char*>(d);
+            v->insert(v->end(), b, b + s);
+        };
+        int ok = stbi_write_jpg_to_func(cb, &jpg, w, h, 3, data, jpeg_quality);
+        if (resized) free(data); else stbi_image_free(data);
+        if (!ok || jpg.empty()) { err = "JPEG encode failed"; return ""; }
+        return utils::base64_encode(jpg.data(), jpg.size());
+    };
+
+    json content = json::array();
+    std::vector<std::string> skipped;
+    for (const auto& out : selected) {
+        std::string full_path = queue_manager_.output_dir() + "/" + out;
+        std::string err;
+        std::string b64 = encode_jpeg(full_path, err);
+        if (b64.empty()) {
+            skipped.push_back(out + " (" + err + ")");
+            continue;
+        }
+        content.push_back({
+            {"type", "image"},
+            {"data", b64},
+            {"mimeType", "image/jpeg"}
+        });
+    }
+
+    if (content.empty()) {
+        std::string msg = "No inline-returnable images for job " + job_id + ".";
+        if (!skipped.empty()) {
+            msg += " Skipped:";
+            for (const auto& s : skipped) msg += " " + s + ";";
+        }
+        return make_tool_result(msg, true);
+    }
+
+    // Prepend a short text note when some outputs were skipped or truncated so
+    // the model knows the inline images aren't the complete set.
+    if (truncated || !skipped.empty()) {
+        std::string note = "Returning " + std::to_string(content.size()) +
+            " image(s) for job " + job_id + ".";
+        if (truncated) note += " Output list truncated to first " +
+            std::to_string(kMaxImages) + "; fetch others by 'index'.";
+        if (!skipped.empty()) {
+            note += " Skipped:";
+            for (const auto& s : skipped) note += " " + s + ";";
+        }
+        content.insert(content.begin(), {{"type", "text"}, {"text", note}});
+    }
+
+    return {{"content", content}};
 }
 
 json McpServer::tool_model(const json& args) {

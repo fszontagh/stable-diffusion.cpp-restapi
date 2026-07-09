@@ -56,5 +56,11 @@
         "password": "",
         "token_ttl_minutes": 1440,
         "allow_public_outputs": true
+    },
+    "mcp": {
+        "image_tool_enabled": false,
+        "image_default_max_dim": 768,
+        "image_max_dim": 2048,
+        "image_jpeg_quality": 85
     }
 }
