@@ -453,6 +453,21 @@ function isRefImagesJob(job: Job): boolean {
   return false
 }
 
+// ControlNet + inpaint-mask detection for input thumbnails on the queue
+// row. Both are persisted to <job_dir>/control.png and <job_dir>/mask.png
+// by sd_wrapper.cpp at generation time — the presence of the base64 field
+// in params is enough to know we should try to render the thumbnail.
+function hasControlImage(job: Job): boolean {
+  const p = job.params
+  if (!p) return false
+  return typeof p.control_image_base64 === 'string' && (p.control_image_base64 as string).length > 0
+}
+function hasMaskImage(job: Job): boolean {
+  const p = job.params
+  if (!p) return false
+  return typeof p.mask_image_base64 === 'string' && (p.mask_image_base64 as string).length > 0
+}
+
 // Generation jobs produce image/video outputs that have thumbnails.
 // Non-generation jobs (model_download, model_hash, convert) do not.
 const GENERATION_JOB_TYPES = ['txt2img', 'img2img', 'txt2vid', 'upscale'] as const
@@ -1472,7 +1487,12 @@ async function sendImageToUpscale(outputPath: string) {
             <div v-else-if="job.status === 'completed' && job.outputs.length > 0" class="job-outputs">
               <!-- Generation jobs: render image thumbnails -->
               <template v-if="isGenerationJob(job)">
-                <!-- Source image for upscale, img2img, and image edit jobs -->
+                <!-- Input thumbnails: source (init/ref), mask, control.
+                     Rendered inline before the arrow so a user can see all
+                     inputs that fed the job at a glance. Each thumbnail is
+                     independent — a job can have any combination (e.g. a
+                     txt2img with ControlNet has control but no source; an
+                     inpaint has source + mask + potentially control). -->
                 <template v-if="job.type === 'upscale' || job.type === 'img2img' || isRefImagesJob(job)">
                   <div class="source-image">
                     <span class="source-label">Source</span>
@@ -1484,6 +1504,32 @@ async function sendImageToUpscale(outputPath: string) {
                       <img :src="getThumbUrl(job.job_id + '/source.png')" alt="Source" />
                     </button>
                   </div>
+                </template>
+                <template v-if="hasMaskImage(job)">
+                  <div class="source-image">
+                    <span class="source-label">Mask</span>
+                    <button
+                      class="output-thumb source-thumb"
+                      @click="openLightbox([job.job_id + '/mask.png'], 0)"
+                      title="View inpaint mask"
+                    >
+                      <img :src="getThumbUrl(job.job_id + '/mask.png')" alt="Mask" />
+                    </button>
+                  </div>
+                </template>
+                <template v-if="hasControlImage(job)">
+                  <div class="source-image">
+                    <span class="source-label">Control</span>
+                    <button
+                      class="output-thumb source-thumb"
+                      @click="openLightbox([job.job_id + '/control.png'], 0)"
+                      title="View ControlNet input image"
+                    >
+                      <img :src="getThumbUrl(job.job_id + '/control.png')" alt="Control" />
+                    </button>
+                  </div>
+                </template>
+                <template v-if="job.type === 'upscale' || job.type === 'img2img' || isRefImagesJob(job) || hasMaskImage(job) || hasControlImage(job)">
                   <span class="arrow-separator">→</span>
                 </template>
                 <button
