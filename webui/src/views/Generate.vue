@@ -1214,6 +1214,55 @@ onMounted(async () => {
           // Source image not available - user can re-upload
         }
       }
+
+      // ControlNet + mask + init images are persisted to <job_dir>/*.png at
+      // generation time (sd_wrapper.cpp). Fetch them on reload so the
+      // widgets aren't broken <img> tags — the base64 payloads aren't in
+      // the queue snapshot (too heavy). Same 404-tolerant pattern as the
+      // img_edit source fetch above.
+      const restoreImageFromDisk = async (
+        url: string,
+        setter: (v: string) => void,
+        clearer: () => void
+      ) => {
+        try {
+          const response = await fetch(url)
+          if (response.ok) {
+            const blob = await response.blob()
+            const reader = new FileReader()
+            reader.onload = () => { setter(reader.result as string) }
+            reader.readAsDataURL(blob)
+          } else {
+            clearer()
+          }
+        } catch {
+          clearer()
+        }
+      }
+      if (data.job_id && data.params) {
+        const p = data.params as Record<string, unknown>
+        if (p.control_image_base64 !== undefined) {
+          await restoreImageFromDisk(
+            `/output/${data.job_id}/control.png`,
+            (v) => { controlImage.value = v },
+            () => { controlImage.value = undefined }
+          )
+        }
+        if (p.mask_image_base64 !== undefined) {
+          await restoreImageFromDisk(
+            `/output/${data.job_id}/mask.png`,
+            (v) => { maskImage.value = v },
+            () => { maskImage.value = undefined }
+          )
+        }
+        if (mode.value === 'img2img' && p.init_image_base64 !== undefined) {
+          await restoreImageFromDisk(
+            `/output/${data.job_id}/source.png`,
+            (v) => { initImage.value = v },
+            () => { initImage.value = undefined }
+          )
+        }
+      }
       // Reset suppress flag after Vue's deferred watchers have executed
       await nextTick()
       suppressPromptRestore = false
@@ -1459,10 +1508,15 @@ function openPreviewLightbox() {
   }
 }
 
-// Show sidebar when there's content to display (source images or preview)
+// Show sidebar when there's content to display (source images, preview,
+// or a ControlNet input widget). Without the hasControlNet check, moving
+// the ControlNet card from the main column into the sidebar meant users
+// on the Text-to-Image tab with a ControlNet loaded couldn't see the
+// Control Image uploader at all — the sidebar was collapsed.
 const showSidebar = computed(() => {
   if (mode.value === 'img2img' || mode.value === 'img_edit') return true
   if (isCurrentJobProcessing.value) return true
+  if (hasControlNet.value && mode.value !== 'txt2vid') return true
   return false
 })
 

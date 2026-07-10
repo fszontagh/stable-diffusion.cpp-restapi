@@ -1747,12 +1747,20 @@ std::vector<std::string> SDWrapper::generate_txt2img(
         gen_params.auto_resize_ref_image = params.auto_resize_ref_image;
         gen_params.increase_ref_index = params.increase_ref_index;
 
-        // Save first reference image as source.png for queue display
-        if (ref_images[0].data) {
-            std::string source_filepath = (fs::path(job_output_dir) / "source.png").string();
-            if (!save_image(source_filepath, ref_images[0].data,
-                      ref_images[0].width, ref_images[0].height, ref_images[0].channel)) {
-                std::cerr << "[SDWrapper] Failed to save ref source image to " << source_filepath << std::endl;
+        // Persist every reference image to disk. The first goes to
+        // source.png (Queue view's primary thumbnail slot); extras get
+        // ref_1.png, ref_2.png, … so the queue can display the whole
+        // set alongside the output for multi-ref workflows (Flux Kontext
+        // with several image conditions).
+        for (size_t ri = 0; ri < ref_images.size(); ++ri) {
+            if (!ref_images[ri].data) continue;
+            std::string filename = (ri == 0) ? "source.png"
+                                             : ("ref_" + std::to_string(ri) + ".png");
+            std::string ref_filepath = (fs::path(job_output_dir) / filename).string();
+            if (!save_image(ref_filepath, ref_images[ri].data,
+                            ref_images[ri].width, ref_images[ri].height,
+                            ref_images[ri].channel)) {
+                std::cerr << "[SDWrapper] Failed to save ref image to " << ref_filepath << std::endl;
             }
         }
     }
@@ -1764,6 +1772,22 @@ std::vector<std::string> SDWrapper::generate_txt2img(
         gen_params.control_image.channel = params.control_image_channels;
         gen_params.control_image.data = const_cast<uint8_t*>(params.control_image_data.data());
         gen_params.control_strength = params.control_strength;
+        // Persist the control image to disk for two reasons:
+        //   1. Queue view can render a thumbnail alongside the output (same
+        //      way upscale jobs show input+output side by side).
+        //   2. Job reload from queue can restore the control image widget
+        //      without needing the base64 payload in the snapshot.
+        // Kept next to any ref_image/source.png the ref-image path writes —
+        // the file names don't collide since only one flow ever writes
+        // both, and the Queue view treats them as distinct thumbnails.
+        std::string control_filepath = (fs::path(job_output_dir) / "control.png").string();
+        if (!save_image(control_filepath,
+                        params.control_image_data.data(),
+                        params.control_image_width,
+                        params.control_image_height,
+                        params.control_image_channels)) {
+            std::cerr << "[SDWrapper] Failed to save control image to " << control_filepath << std::endl;
+        }
     } else {
         gen_params.control_image.data = nullptr;
     }
@@ -2061,6 +2085,13 @@ std::vector<std::string> SDWrapper::generate_img2img(
         gen_params.mask_image.height = mask_height;
         gen_params.mask_image.channel = 1;
         gen_params.mask_image.data = const_cast<uint8_t*>(mask_ptr);
+        // Persist the mask alongside source.png / control.png so Queue view
+        // can render it as a job thumbnail and Reload can restore the
+        // widget without needing the base64 payload in the snapshot.
+        std::string mask_filepath = (fs::path(job_output_dir) / "mask.png").string();
+        if (!save_image(mask_filepath, mask_ptr, mask_width, mask_height, 1)) {
+            std::cerr << "[SDWrapper] Failed to save mask image to " << mask_filepath << std::endl;
+        }
     } else {
         // No mask provided - create white mask at aligned dimensions (same as sd.cpp CLI)
         default_mask_data.resize(aligned_width * aligned_height, 255);
@@ -2100,6 +2131,22 @@ std::vector<std::string> SDWrapper::generate_img2img(
         gen_params.control_image.channel = params.control_image_channels;
         gen_params.control_image.data = const_cast<uint8_t*>(params.control_image_data.data());
         gen_params.control_strength = params.control_strength;
+        // Persist the control image to disk for two reasons:
+        //   1. Queue view can render a thumbnail alongside the output (same
+        //      way upscale jobs show input+output side by side).
+        //   2. Job reload from queue can restore the control image widget
+        //      without needing the base64 payload in the snapshot.
+        // Kept next to any ref_image/source.png the ref-image path writes —
+        // the file names don't collide since only one flow ever writes
+        // both, and the Queue view treats them as distinct thumbnails.
+        std::string control_filepath = (fs::path(job_output_dir) / "control.png").string();
+        if (!save_image(control_filepath,
+                        params.control_image_data.data(),
+                        params.control_image_width,
+                        params.control_image_height,
+                        params.control_image_channels)) {
+            std::cerr << "[SDWrapper] Failed to save control image to " << control_filepath << std::endl;
+        }
     } else {
         gen_params.control_image.data = nullptr;
     }
