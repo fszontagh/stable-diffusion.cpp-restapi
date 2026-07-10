@@ -4,6 +4,11 @@ import { ref, watch } from 'vue'
 const props = defineProps<{
   label?: string
   modelValue?: string
+  // Read-only mode. Blocks drop, click, and paste. Useful for panels that
+  // must stay visible for layout stability but are inert until some
+  // precondition is met (e.g. ControlNet uploader before a ControlNet
+  // model is loaded).
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -25,6 +30,7 @@ watch(() => props.modelValue, (newValue) => {
 })
 
 function handleDragOver(e: DragEvent) {
+  if (props.disabled) return
   e.preventDefault()
   dragover.value = true
 }
@@ -34,6 +40,7 @@ function handleDragLeave() {
 }
 
 function handleDrop(e: DragEvent) {
+  if (props.disabled) return
   e.preventDefault()
   dragover.value = false
   const file = e.dataTransfer?.files[0]
@@ -41,6 +48,7 @@ function handleDrop(e: DragEvent) {
 }
 
 function handleFileSelect(e: Event) {
+  if (props.disabled) return
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (file) processFile(file)
@@ -72,7 +80,7 @@ function clearImage() {
     <label v-if="label" class="form-label">{{ label }}</label>
     <div
       v-if="!preview"
-      :class="['upload-zone', { dragover }]"
+      :class="['upload-zone', { dragover, disabled }]"
       @dragover="handleDragOver"
       @dragleave="handleDragLeave"
       @drop="handleDrop"
@@ -81,6 +89,7 @@ function clearImage() {
         type="file"
         accept="image/*"
         class="file-input"
+        :disabled="disabled"
         @change="handleFileSelect"
       />
       <div class="upload-content">
@@ -118,6 +127,20 @@ function clearImage() {
 .upload-zone.dragover {
   border-color: var(--accent-primary);
   background: rgba(0, 217, 255, 0.05);
+}
+
+.upload-zone.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: auto;
+}
+.upload-zone.disabled:hover {
+  border-color: var(--border-color);
+  background: transparent;
+}
+.upload-zone.disabled .file-input {
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .file-input {

@@ -167,6 +167,14 @@ a:focus-visible {
   box-shadow: var(--shadow-sm);
 }
 
+/* Muted variant. Kept visible for layout stability when a card's
+   precondition (e.g. required component loaded) isn't met yet, so
+   controls stay where the user expects them without popping in. The
+   dim comes from opacity so children can still render legibly. */
+.card.card-disabled {
+  opacity: 0.55;
+}
+
 .card-header {
   display: flex;
   align-items: center;

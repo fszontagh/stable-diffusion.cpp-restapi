@@ -1529,15 +1529,13 @@ function openPreviewLightbox() {
   }
 }
 
-// Show sidebar when there's content to display (source images, preview,
-// or a ControlNet input widget). Without the hasControlNet check, moving
-// the ControlNet card from the main column into the sidebar meant users
-// on the Text-to-Image tab with a ControlNet loaded couldn't see the
-// Control Image uploader at all — the sidebar was collapsed.
+// Show sidebar for any image-generating mode. The ControlNet upload
+// card is always rendered (disabled when no ControlNet is loaded), so
+// the sidebar always has something to show on txt2img / img2img /
+// img_edit. Only txt2vid hides it unless a generation is in flight.
 const showSidebar = computed(() => {
-  if (mode.value === 'img2img' || mode.value === 'img_edit') return true
+  if (mode.value !== 'txt2vid') return true
   if (isCurrentJobProcessing.value) return true
-  if (hasControlNet.value && mode.value !== 'txt2vid') return true
   return false
 })
 
@@ -2533,14 +2531,30 @@ async function handleSubmit() {
              ControlNet component is loaded on the current model. Placed here
              to match the img2img/img_edit layout (input images live in the
              right column). -->
-        <div v-if="hasControlNet && mode !== 'txt2vid'" class="card">
+        <!-- ControlNet card is always rendered (except in txt2vid mode) so
+             the layout stays stable; the uploader is disabled with a hint
+             when no ControlNet is loaded. Loading one lights the card up
+             without the user having to switch tabs or hunt for the widget. -->
+        <div v-if="mode !== 'txt2vid'" :class="['card', { 'card-disabled': !hasControlNet }]">
           <div class="card-header">
             <h3 class="card-title">ControlNet</h3>
           </div>
-          <ImageUploader v-model="controlImage" label="Control Image" />
+          <div v-if="!hasControlNet" class="info-hint">
+            No ControlNet loaded. Load a ControlNet component with the model
+            (Model Load page) to enable this input.
+          </div>
+          <ImageUploader v-model="controlImage" label="Control Image" :disabled="!hasControlNet" />
           <div class="form-group">
             <label class="form-label">Control Strength: {{ controlStrength.toFixed(2) }}</label>
-            <input v-model.number="controlStrength" type="range" class="form-range" min="0" max="1" step="0.05" />
+            <input
+              v-model.number="controlStrength"
+              type="range"
+              class="form-range"
+              min="0"
+              max="1"
+              step="0.05"
+              :disabled="!hasControlNet"
+            />
           </div>
         </div>
       </div>
