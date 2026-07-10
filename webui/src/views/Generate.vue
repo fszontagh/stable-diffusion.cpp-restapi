@@ -847,6 +847,31 @@ const currentArchPreset = computed(() =>
   )
 )
 
+// Image Edit mode ("edit this reference image" — sd-cli's `-r`) is only
+// supported by DiT / flow-based architectures that carry a ref_images path
+// (Flux Kontext, Flux2, Z-Image, Qwen Image Edit, etc.). The classic
+// U-Net families (SD1/SD2/SDXL/LCM/SSD-1B/…) don't handle ref_images — for
+// those the img2img flow with an init image is the "edit" primitive.
+//
+// Data-driven: check whether the current preset declares an imageEditMode
+// in model_architectures.json. Empty / absent = tab stays visible but
+// disabled with a hint, so the user can see it exists and understand why
+// it's off. If no model is loaded yet we don't know, so leave enabled.
+const supportsImageEdit = computed<boolean>(() => {
+  const preset = currentArchPreset.value
+  if (!preset) return true  // no preset yet — don't preemptively disable
+  return Boolean(preset.imageEditMode)
+})
+
+// Tooltip displayed on hover of the disabled Image Edit tab. Kept as a
+// separate computed so the string can contain apostrophes without
+// escaping in the template attribute (Vue's SFC parser rejects
+// backslash-escaped single quotes inside a double-quoted :attr).
+const imageEditTabTooltip = computed<string>(() => {
+  if (supportsImageEdit.value) return ''
+  return 'The loaded model does not support ref-image editing. Use Image to Image with an init image instead — that is what sd-cli’s -r does for the classic U-Net families (SD1/SD2/SDXL/LCM).'
+})
+
 
 // Get recommended settings for current model from architecture JSON
 const recommended = computed((): RecommendedSettings | null => {
@@ -1098,6 +1123,14 @@ onMounted(async () => {
   // list and a freshly-loaded model whose architecture exists ONLY in the
   // new preset list reports no recommended defaults.
   store.fetchArchitectures().catch(() => { /* silent — degrades to no recs */ })
+
+  // Force-refresh /health on mount so `loaded_components` reflects the
+  // currently-loaded model even if the ModelLoaded WS event fired before
+  // this tab was opened (or the WS was briefly disconnected). Without this,
+  // navigating Model Load → Generate immediately after a load could see a
+  // stale `loaded_components.controlnet` and the ControlNet input widget
+  // wouldn't appear until the user manually refreshed.
+  store.fetchHealth().catch(() => { /* silent — computeds fall through to null */ })
 
   // First check if we have reloaded job params from Queue view
   const savedParams = sessionStorage.getItem('reloadJobParams')
@@ -1698,7 +1731,12 @@ async function handleSubmit() {
         <button :class="['tab', { active: mode === 'img2img' }]" @click="mode = 'img2img'">
           Image to Image
         </button>
-        <button :class="['tab', { active: mode === 'img_edit' }]" @click="mode = 'img_edit'">
+        <button
+          :class="['tab', { active: mode === 'img_edit', disabled: !supportsImageEdit }]"
+          :disabled="!supportsImageEdit"
+          :title="imageEditTabTooltip"
+          @click="supportsImageEdit && (mode = 'img_edit')"
+        >
           Image Edit
         </button>
         <button :class="['tab', { active: mode === 'txt2vid' }]" @click="mode = 'txt2vid'">
@@ -1805,17 +1843,9 @@ async function handleSubmit() {
           @update:settings="loraSettings = $event"
         />
 
-        <!-- ControlNet Section -->
-        <div v-if="hasControlNet" class="card">
-          <div class="card-header">
-            <h3 class="card-title">ControlNet</h3>
-          </div>
-          <ImageUploader v-model="controlImage" label="Control Image" />
-          <div class="form-group">
-            <label class="form-label">Control Strength: {{ controlStrength.toFixed(2) }}</label>
-            <input v-model.number="controlStrength" type="range" class="form-range" min="0" max="1" step="0.05" />
-          </div>
-        </div>
+        <!-- ControlNet input moved to the right sidebar (see the RIGHT
+             column further down) so it matches the img2img/img_edit layout —
+             control image lives next to the other input images. -->
 
         <!-- Parameters -->
         <div class="card">
@@ -2413,6 +2443,21 @@ async function handleSubmit() {
             Upload a reference image and describe the changes in the prompt.
           </div>
           <ImageUploader v-model="refImage" label="Reference Image" />
+        </div>
+
+        <!-- ControlNet input — visible in any generating mode when a
+             ControlNet component is loaded on the current model. Placed here
+             to match the img2img/img_edit layout (input images live in the
+             right column). -->
+        <div v-if="hasControlNet && mode !== 'txt2vid'" class="card">
+          <div class="card-header">
+            <h3 class="card-title">ControlNet</h3>
+          </div>
+          <ImageUploader v-model="controlImage" label="Control Image" />
+          <div class="form-group">
+            <label class="form-label">Control Strength: {{ controlStrength.toFixed(2) }}</label>
+            <input v-model.number="controlStrength" type="range" class="form-range" min="0" max="1" step="0.05" />
+          </div>
         </div>
       </div>
     </div>
