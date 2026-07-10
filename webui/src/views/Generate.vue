@@ -1199,7 +1199,11 @@ onMounted(async () => {
         pendingLoraParseFromJobReload.value = true
       }
 
-      // For image edit jobs reloaded from queue, fetch the saved source image
+      // For image edit jobs reloaded from queue, fetch the saved source image.
+      // Strip the data URL prefix so refImage.value matches the
+      // ImageUploader convention (raw base64). Historically the submit
+      // path for img_edit had a defensive strip that hid this mismatch,
+      // but keeping the value clean is cheaper than relying on that.
       if (mode.value === 'img_edit' && data.job_id) {
         try {
           const sourceUrl = `/output/${data.job_id}/source.png`
@@ -1207,19 +1211,32 @@ onMounted(async () => {
           if (response.ok) {
             const blob = await response.blob()
             const reader = new FileReader()
-            reader.onload = () => { refImage.value = reader.result as string }
+            reader.onload = () => {
+              const dataUrl = reader.result as string
+              const comma = dataUrl.indexOf(',')
+              refImage.value = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+            }
             reader.readAsDataURL(blob)
           }
         } catch {
-          // Source image not available - user can re-upload
+          // Source image not available. User can re-upload.
         }
       }
 
       // ControlNet + mask + init images are persisted to <job_dir>/*.png at
       // generation time (sd_wrapper.cpp). Fetch them on reload so the
-      // widgets aren't broken <img> tags — the base64 payloads aren't in
+      // widgets aren't broken <img> tags. The base64 payloads aren't in
       // the queue snapshot (too heavy). Same 404-tolerant pattern as the
       // img_edit source fetch above.
+      //
+      // Format: strip the "data:image/png;base64," prefix so `.value`
+      // matches the ImageUploader component's convention (raw base64
+      // only). The submit path forwards `.value` verbatim to the backend
+      // as `*_image_base64`, and the backend's decode_base64_image
+      // rejects the data URL prefix as "Invalid base64 character".
+      // ImageUploader's preview computed re-adds the prefix for display,
+      // so keeping the stripped form here means both display and submit
+      // work through the same value.
       const restoreImageFromDisk = async (
         url: string,
         setter: (v: string) => void,
@@ -1230,7 +1247,11 @@ onMounted(async () => {
           if (response.ok) {
             const blob = await response.blob()
             const reader = new FileReader()
-            reader.onload = () => { setter(reader.result as string) }
+            reader.onload = () => {
+              const dataUrl = reader.result as string
+              const comma = dataUrl.indexOf(',')
+              setter(comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl)
+            }
             reader.readAsDataURL(blob)
           } else {
             clearer()
@@ -1646,9 +1667,16 @@ async function handleSubmit() {
     // Qwen-Image layered (image path only; > 0 = enabled).
     if (qwenImageLayers.value > 0) baseParams.qwen_image_layers = qwenImageLayers.value
 
-    // Control image
+    // Control image. Defensive strip of any "data:image/*;base64," prefix,
+    // matching the img_edit ref_image submit path below. Both ImageUploader
+    // (raw base64) and restoreImageFromDisk (raw base64 as of the reload
+    // fix) keep the value clean, but the assistant-set-image handler at
+    // line ~1096 explicitly wraps with the prefix, so the strip guards
+    // against that path landing a bad payload at the backend, which fails
+    // with "Invalid base64 character".
+    const stripDataUrlPrefix = (v: string) => v.includes(',') ? v.split(',')[1] : v
     if (controlImage.value && hasControlNet.value) {
-      baseParams.control_image_base64 = controlImage.value
+      baseParams.control_image_base64 = stripDataUrlPrefix(controlImage.value)
       baseParams.control_strength = controlStrength.value
     }
 
@@ -1693,14 +1721,16 @@ async function handleSubmit() {
         submitting.value = false
         return
       }
-      // Traditional img2img → img2img endpoint
+      // Traditional img2img → img2img endpoint. Same defensive strip as
+      // the control_image path above: guard against any value that got
+      // wrapped with a "data:image/*;base64," prefix along the way.
       const params: Img2ImgParams = {
         ...baseParams,
-        init_image_base64: initImage.value,
+        init_image_base64: stripDataUrlPrefix(initImage.value),
         strength: strength.value
       }
       if (maskImage.value) {
-        params.mask_image_base64 = maskImage.value
+        params.mask_image_base64 = stripDataUrlPrefix(maskImage.value)
       }
       result = await api.img2img(params)
     } else {
