@@ -429,6 +429,21 @@ a:focus-visible {
   outline-offset: -2px;
 }
 
+/* Disabled state: kept visible so the user can see the tab exists — the
+   :title attribute explains why it's off. Overrides :hover so hovering
+   a non-DiT-loaded Image Edit tab doesn't fake a clickable affordance. */
+.tab:disabled,
+.tab.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: auto;  /* keep tooltip working via :title */
+}
+.tab:disabled:hover,
+.tab.disabled:hover {
+  color: var(--text-secondary);
+  background: transparent;
+}
+
 /* Badges */
 .badge {
   display: inline-flex;
