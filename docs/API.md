@@ -3,6 +3,8 @@
 REST API for stable-diffusion.cpp image and video generation.
 
 **Base URL:** `http://<host>:<port>`
+
+> **Canonical field reference:** [`API_REFERENCE.md`](API_REFERENCE.md) is auto-generated from `/openapi.json` and is always in sync with the running server. Use it as the source of truth for exact field names, types, and defaults. This document explains workflows and gives examples.
 **Default:** `http://localhost:8080`
 
 **Content-Type:** All requests and responses use `application/json`
@@ -212,31 +214,25 @@ Check server status, loaded model, and all loaded components.
     "load_options": {
         "n_threads": -1,
         "flash_attn": true,
+        "diffusion_flash_attn": true,
         "enable_mmap": true,
-        "vae_decode_only": true,
         "vae_conv_direct": true,
         "diffusion_conv_direct": false,
-        "vae_tiling": false,
         "weight_type": "",
+        "vae_format": "",
         "rng_type": "cuda",
+        "sampler_rng_type": "",
+        "prediction": "",
         "lora_apply_mode": "auto",
-        "offload_mode": "none",
-        "vram_estimation": "dryrun",
-        "offload_cond_stage": true,
-        "offload_diffusion": false,
-        "reload_cond_stage": true,
-        "reload_diffusion": true,
-        "target_free_vram_mb": 0,
-        "min_offload_size_mb": 0,
-        "log_offload_events": true,
-        "free_params_immediately": false,
         "tae_preview_only": false,
-        "chroma_use_dit_mask": true,
-        "chroma_use_t5_mask": false,
-        "chroma_t5_mask_pad": 1,
-        "streaming_prefetch_layers": 1,
-        "streaming_keep_layers_behind": 0,
-        "streaming_min_free_vram_mb": 0
+        "eager_load": false,
+        "rpc_servers": "",
+        "backend": "",
+        "params_backend": "",
+        "model_args": "",
+        "stream_layers": false,
+        "max_vram": 0,
+        "tensor_type_rules": ""
     },
     "memory": {
         "system": {
@@ -325,7 +321,7 @@ Check server status, loaded model, and all loaded components.
 | `upscaler_loaded` | boolean | Whether an upscaler is currently loaded |
 | `upscaler_name` | string\|null | Name of loaded upscaler model, or null |
 | `ws_enabled` | boolean | Whether the WebSocket endpoint is compiled in and listening (clients connect to `ws://<host>:<port>/ws` on the same port as the REST API) |
-| `load_options` | object | The full set of load options the currently-loaded model was loaded with — `n_threads`, `flash_attn`, `enable_mmap`, `vae_decode_only`, `vae_conv_direct`, `diffusion_conv_direct`, `vae_tiling`, `weight_type`, `rng_type`, `lora_apply_mode`, `offload_mode`, `vram_estimation`, `offload_cond_stage`, `offload_diffusion`, `reload_cond_stage`, `reload_diffusion`, `target_free_vram_mb`, `min_offload_size_mb`, `log_offload_events`, `free_params_immediately`, `tae_preview_only`, `chroma_use_dit_mask`, `chroma_use_t5_mask`, `chroma_t5_mask_pad`, plus layer-streaming fields when offload is enabled. Empty object `{}` when no model is loaded. Useful for the WebUI to restore "Edit" form state from the actual server side. |
+| `load_options` | object | The full set of load options the currently-loaded model was loaded with - the same field set as `LoadOptions` in `/openapi.json` (e.g. `n_threads`, `flash_attn`, `diffusion_flash_attn`, `enable_mmap`, `vae_conv_direct`, `diffusion_conv_direct`, `weight_type`, `vae_format`, `rng_type`, `sampler_rng_type`, `prediction`, `lora_apply_mode`, `tae_preview_only`, `eager_load`, `rpc_servers`, `backend`, `params_backend`, `model_args`, `stream_layers`, `max_vram`, `tensor_type_rules`). Empty object `{}` when no model is loaded. Useful for the WebUI to restore "Edit" form state from the actual server side. |
 | `memory` | object | System, process, and GPU memory information (see [Memory](#memory)) |
 | `features` | object | Feature flags |
 | `features.experimental_offload` | boolean | Whether experimental VRAM offloading is compiled in |
@@ -610,13 +606,11 @@ Concurrency: only one load can be in flight at a time. A second `POST /models/lo
     "photo_maker": null,
     "options": {
         "n_threads": 8,
-        "keep_clip_on_cpu": true,
-        "keep_vae_on_cpu": false,
-        "keep_controlnet_on_cpu": false,
         "flash_attn": true,
-        "offload_to_cpu": false,
-        "vae_decode_only": true,
-        "flow_shift": 0.0,
+        "diffusion_flash_attn": true,
+        "backend": "te=cpu",
+        "params_backend": "",
+        "model_args": "",
         "rng_type": "cuda",
         "prediction": "",
         "lora_apply_mode": "auto"
@@ -649,49 +643,33 @@ Concurrency: only one load can be in flight at a time. A second `POST /models/lo
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `n_threads` | integer | -1 (auto) | Number of CPU threads |
-| `keep_clip_on_cpu` | boolean | true | Keep CLIP on CPU to save VRAM |
-| `keep_vae_on_cpu` | boolean | false | Keep VAE on CPU |
-| `keep_controlnet_on_cpu` | boolean | false | Keep ControlNet on CPU |
 | `vae_conv_direct` | boolean | false | Use ggml_conv2d_direct in VAE |
 | `diffusion_conv_direct` | boolean | false | Use ggml_conv2d_direct in diffusion model |
 | `flash_attn` | boolean | true | Enable Flash Attention for CLIP / T5 / conditioner |
 | `diffusion_flash_attn` | boolean | false | Enable Flash Attention specifically for the diffusion model (UNet/DiT/Flux). sd.cpp keeps this separate from `flash_attn` because CUDA support and numerical stability used to differ between the two. |
-| `offload_to_cpu` | boolean | false | Offload model to CPU |
 | `enable_mmap` | boolean | true | Use memory-mapped file loading |
-| `vae_decode_only` | boolean | true | VAE decode only mode |
 | `tae_preview_only` | boolean | false | Only use TAESD for preview, not final |
-| `free_params_immediately` | boolean | false | Free model params after loading |
-| `flow_shift` | float | auto | Flow shift (INFINITY = auto-detect) |
+| `eager_load` | boolean | false | Eagerly move weights to the compute backend at load time |
 | `weight_type` | string | "" | Weight type (f32, f16, q8_0, q5_0, q4_0) |
+| `vae_format` | string | "" | Override VAE format detection |
 | `tensor_type_rules` | string | "" | Per-tensor weight rules (e.g., `"^vae\.=f16"`) |
 | `rng_type` | string | "cuda" | RNG type: `std_default`, `cuda`, `cpu` |
 | `sampler_rng_type` | string | "" | Sampler RNG (empty = use rng_type) |
 | `prediction` | string | "" | Prediction type override (`eps`, `v`, `edm_v`, `sd3_flow`, `flux_flow`, `flux2_flow`, or empty for auto) |
 | `lora_apply_mode` | string | "auto" | LoRA apply mode: `auto`, `immediately`, `at_runtime` |
-| `vae_tiling` | boolean | false | Enable VAE tiling for large images |
-| `vae_tile_size_x` | integer | 0 | VAE tile size X (0 = auto) |
-| `vae_tile_size_y` | integer | 0 | VAE tile size Y (0 = auto) |
-| `vae_tile_overlap` | float | 0.5 | VAE tile overlap (0.0-1.0) |
-| `chroma_use_dit_mask` | boolean | true | Chroma: use DiT mask |
-| `chroma_use_t5_mask` | boolean | false | Chroma: use T5 mask |
-| `chroma_t5_mask_pad` | integer | 1 | Chroma: T5 mask padding |
+| `rpc_servers` | string | "" | Comma-separated RPC backend endpoints |
+| `backend` | string | "" | Per-component placement, e.g. `"te=cpu"`, `"te=cpu,vae=cpu,controlnet=cpu"` to hold specific components on CPU RAM |
+| `params_backend` | string | "" | Global params placement, e.g. `"*=cpu"` to hold model weights on CPU RAM |
+| `model_args` | string | "" | Comma-separated architecture-specific `key=value` knobs (Chroma DiT/T5 masking, Qwen-Image conditioning, etc.). See `/openapi.json` for the current set. |
 
-**Experimental Offload Options** (requires `-DSD_EXPERIMENTAL_OFFLOAD=ON` build):
+**Layer streaming** (requires `-DSD_EXPERIMENTAL_OFFLOAD=ON` build; check `/health` `features.experimental_offload`). Use these to run models that don't fit in VRAM by streaming diffusion layers one at a time:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `offload_mode` | string | "none" | Offload mode: `none`, `cond_only`, `cond_diffusion`, `aggressive`, `layer_streaming` |
-| `vram_estimation` | string | "formula" | VRAM estimation: `dryrun` (accurate), `formula` (fast) |
-| `offload_cond_stage` | boolean | false | Offload LLM/CLIP after conditioning |
-| `offload_diffusion` | boolean | false | Offload diffusion model after sampling |
-| `reload_cond_stage` | boolean | false | Reload conditioning components after generation |
-| `reload_diffusion` | boolean | false | Reload diffusion model after generation |
-| `log_offload_events` | boolean | false | Log offload events for debugging |
-| `min_offload_size_mb` | integer | 0 | Minimum component size to offload (MB) |
-| `target_free_vram_mb` | integer | 0 | Target free VRAM before VAE decode (0 = always offload) |
-| `streaming_prefetch_layers` | integer | 1 | Number of layers to prefetch ahead (only meaningful when `offload_mode = layer_streaming`) |
-| `streaming_keep_layers_behind` | integer | 0 | Layers to keep after execution (for skip connections) |
-| `streaming_min_free_vram_mb` | integer | 0 | Minimum VRAM to keep free during streaming |
+| `stream_layers` | boolean | false | Enable per-layer streaming of the diffusion model |
+| `max_vram` | number | 0 | Streaming VRAM budget in GiB. Pair with `stream_layers: true`; the streaming planner handles prefetch and eviction internally. |
+
+Per-generation VAE tiling (`vae_tiling`, `vae_tile_size_x/y`, `vae_tile_overlap`) and `flow_shift`, `circular_x`, `circular_y` now live on the generation request, not on load. See the txt2img / img2img / txt2vid schemas in `/openapi.json`.
 
 **Success Response (202 Accepted) — async (default, no `?wait`):**
 
@@ -2547,7 +2525,7 @@ Get all supported model architecture presets and current architecture info.
             },
             "loadOptions": {
                 "flash_attn": true,
-                "keep_clip_on_cpu": true
+                "backend": "te=cpu"
             },
             "generationDefaults": {
                 "width": 1024,
@@ -3143,7 +3121,7 @@ curl -X POST http://localhost:8080/models/load \
     "clip_g": "clip_g.safetensors",
     "t5xxl": "t5xxl_fp16.safetensors",
     "options": {
-      "keep_clip_on_cpu": true
+      "backend": "te=cpu"
     }
   }'
 ```
@@ -3179,7 +3157,7 @@ curl -X POST http://localhost:8080/models/load \
     "clip_l": "clip_l.safetensors",
     "t5xxl": "t5xxl_fp16.safetensors",
     "options": {
-      "keep_clip_on_cpu": true,
+      "backend": "te=cpu",
       "flash_attn": true
     }
   }'
@@ -3212,7 +3190,7 @@ curl -X POST http://localhost:8080/models/load \
     "clip_l": "clip_l.safetensors",
     "t5xxl": "t5xxl_fp16.safetensors",
     "options": {
-      "keep_clip_on_cpu": true
+      "backend": "te=cpu"
     }
   }'
 ```
@@ -3247,9 +3225,8 @@ curl -X POST http://localhost:8080/models/load \
     "vae": "qwen_image_vae.safetensors",
     "llm": "Qwen2.5-VL-7B-Instruct-Q8_0.gguf",
     "options": {
-      "offload_to_cpu": true,
-      "flash_attn": true,
-      "flow_shift": 3.0
+      "params_backend": "*=cpu",
+      "flash_attn": true
     }
   }'
 ```
@@ -3527,7 +3504,7 @@ resp = requests.post(f"{BASE_URL}/models/load", json={
     "clip_l": "clip_l.safetensors",
     "t5xxl": "t5xxl_fp16.safetensors",
     "options": {
-        "keep_clip_on_cpu": True,
+        "backend": "te=cpu",
         "flash_attn": True
     }
 })

@@ -592,6 +592,23 @@ add_custom_target(docs-copy ALL
     COMMENT "Copying documentation files..."
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/docs ${SDCPP_DOCS_PATH}
 )
+
+# Manual target: regenerate docs/API_REFERENCE.md from a running server's
+# /openapi.json. Requires the server to be reachable at SDCPP_API_URL
+# (default http://localhost:8077). Invoke with: cmake --build build --target api-docs
+if(DEFINED ENV{SDCPP_API_URL})
+    set(_SDCPP_API_URL "$ENV{SDCPP_API_URL}")
+else()
+    set(_SDCPP_API_URL "http://localhost:8077/openapi.json")
+endif()
+add_custom_target(api-docs
+    COMMENT "Regenerating docs/API_REFERENCE.md from live /openapi.json..."
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate-api-docs.py
+        --url ${_SDCPP_API_URL}
+        --out ${CMAKE_SOURCE_DIR}/docs/API_REFERENCE.md
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    VERBATIM
+)
 target_compile_definitions(sdcpp-restapi PRIVATE
     SDCPP_DOCS_DEFAULT_PATH="${SDCPP_DOCS_PATH}"
 )
