@@ -1149,6 +1149,230 @@
           }
         ]
       }
+    },
+    "Krea2OstrisEdit": {
+      "name": "Krea2 (Ostris Edit)",
+      "description": "Krea2 Flux2-family edit variant by Ostris. Uses flux2_ae VAE and Mistral-Small-Instruct or Qwen3-VL as the text encoder.",
+      "aliases": [
+        "krea2-ostris-edit",
+        "ostris-edit"
+      ],
+      "requiredComponents": {
+        "vae": "flux2_ae.safetensors (Flux2 VAE)",
+        "llm": "Mistral-Small-Instruct or Qwen3-VL"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "prediction": "flux2_flow"
+      },
+      "imageEditMode": "ref_images",
+      "generationDefaults": {
+        "cfg_scale": 3.5,
+        "steps": 30,
+        "sampler": "euler",
+        "scheduler": "flux2",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "Flux2",
+        "nameRegex": "krea2.*ostris|ostris.*edit"
+      },
+      "componentScoring": {
+        "vae": [
+          { "regex": "flux2[_.\\-]?ae", "score": 110 },
+          { "regex": "flux2.*vae", "score": 90 }
+        ],
+        "llm": [
+          { "regex": "mistral[_.\\-]?small.*instruct", "score": 100 },
+          { "regex": "qwen3[_.\\-]?vl", "score": 90 }
+        ]
+      }
+    },
+    "Lingbot": {
+      "name": "Lingbot (Video)",
+      "description": "Lingbot text-to-video model. Uses a video VAE + T5-XXL text encoder.",
+      "aliases": [
+        "lingbot"
+      ],
+      "requiredComponents": {
+        "vae": "Video VAE",
+        "t5xxl": "T5-XXL text encoder"
+      },
+      "optionalComponents": {},
+      "videoModel": true,
+      "loadOptions": {
+        "flash_attn": true,
+        "params_backend": "*=cpu"
+      },
+      "generationDefaults": {
+        "cfg_scale": 6.0,
+        "steps": 30,
+        "sampler": "euler_a",
+        "scheduler": "flux",
+        "width": 640,
+        "height": 384,
+        "fps": 30,
+        "video_frames": 24
+      },
+      "match": {
+        "nameRegex": "lingbot"
+      }
+    },
+    "AnimateDiff-v3": {
+      "name": "AnimateDiff v3 (SD1.5)",
+      "description": "AnimateDiff v3 motion module attached to an SD1.5 base. Produces short animated clips.",
+      "aliases": [
+        "animatediff-v3",
+        "AnimateDiff v3"
+      ],
+      "requiredComponents": {
+        "base": "SD 1.5 checkpoint",
+        "motion_module": "AnimateDiff v3 motion module (mm_sd15_v3.ckpt / .safetensors)"
+      },
+      "optionalComponents": {
+        "vae": "Improves color accuracy"
+      },
+      "videoModel": true,
+      "loadOptions": {
+        "flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 7.0,
+        "steps": 25,
+        "sampler": "euler_a",
+        "scheduler": "karras",
+        "width": 512,
+        "height": 512,
+        "fps": 8,
+        "video_frames": 16
+      },
+      "match": {
+        "architecture": "SD 1.x",
+        "nameRegex": "animatediff[_.\\-]?v3|animate[_.\\-]?diff.*v3|mm[_.\\-]?sd15[_.\\-]?v3"
+      },
+      "componentScoring": {
+        "motion_module": [
+          { "regex": "mm[_.\\-]?sd15[_.\\-]?v3", "score": 110 },
+          { "regex": "animatediff.*v3", "score": 100 },
+          { "regex": "animate.*diff", "score": 80 }
+        ]
+      }
+    },
+    "AnimateDiff-v2": {
+      "name": "AnimateDiff v2 (SD1.5)",
+      "description": "AnimateDiff v2 motion module attached to an SD1.5 base.",
+      "aliases": [
+        "animatediff-v2",
+        "AnimateDiff v2"
+      ],
+      "requiredComponents": {
+        "base": "SD 1.5 checkpoint",
+        "motion_module": "AnimateDiff v2 motion module (mm_sd15_v2.ckpt / .safetensors)"
+      },
+      "optionalComponents": {
+        "vae": "Improves color accuracy"
+      },
+      "videoModel": true,
+      "loadOptions": {
+        "flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 7.0,
+        "steps": 25,
+        "sampler": "euler_a",
+        "scheduler": "karras",
+        "width": 512,
+        "height": 512,
+        "fps": 8,
+        "video_frames": 16
+      },
+      "match": {
+        "architecture": "SD 1.x",
+        "nameRegex": "animatediff[_.\\-]?v2|animate[_.\\-]?diff.*v2|mm[_.\\-]?sd15[_.\\-]?v2"
+      },
+      "componentScoring": {
+        "motion_module": [
+          { "regex": "mm[_.\\-]?sd15[_.\\-]?v2", "score": 110 },
+          { "regex": "animatediff.*v2", "score": 100 },
+          { "regex": "animate.*diff", "score": 70 }
+        ]
+      }
+    },
+    "PiD-1.5": {
+      "name": "PiD (SD1.5)",
+      "description": "PiD motion module for SD 1.5 (AnimateDiff-family). Requires an SD1.5 base plus the PiD motion module.",
+      "aliases": [
+        "PiD",
+        "pid-1.5",
+        "pid_sd15"
+      ],
+      "requiredComponents": {
+        "base": "SD 1.5 checkpoint",
+        "motion_module": "PiD motion module"
+      },
+      "optionalComponents": {
+        "vae": "Improves color accuracy"
+      },
+      "videoModel": true,
+      "loadOptions": {
+        "flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 7.0,
+        "steps": 25,
+        "sampler": "euler_a",
+        "scheduler": "karras",
+        "width": 512,
+        "height": 512,
+        "fps": 8,
+        "video_frames": 16
+      },
+      "match": {
+        "architecture": "SD 1.x",
+        "nameRegex": "^pid|/pid[-_ ]?1\\.?5|pid[_.\\-]?sd15"
+      },
+      "componentScoring": {
+        "motion_module": [
+          { "regex": "^pid", "score": 110 },
+          { "regex": "pid[_.\\-]?sd15", "score": 100 }
+        ]
+      }
+    },
+    "HunyuanVideo-1.5": {
+      "name": "HunyuanVideo 1.5",
+      "description": "HunyuanVideo 1.5 text-to-video model. Requires LLaMA-based text encoder plus CLIP-L.",
+      "aliases": [
+        "hunyuanvideo-1.5",
+        "hunyuan-video-1.5"
+      ],
+      "requiredComponents": {
+        "llm": "LLaMA text encoder",
+        "clip_l": "CLIP-L text encoder"
+      },
+      "optionalComponents": {
+        "vae": "Video VAE"
+      },
+      "videoModel": true,
+      "loadOptions": {
+        "flash_attn": true,
+        "params_backend": "*=cpu"
+      },
+      "generationDefaults": {
+        "cfg_scale": 6.0,
+        "steps": 30,
+        "sampler": "euler",
+        "scheduler": "flux",
+        "width": 720,
+        "height": 480,
+        "fps": 24,
+        "video_frames": 30
+      },
+      "match": {
+        "nameRegex": "hunyuan.*video.*1\\.?5|hunyuanvideo[_.\\-]?1[_.\\-]?5"
+      }
     }
   },
   "version": 2,

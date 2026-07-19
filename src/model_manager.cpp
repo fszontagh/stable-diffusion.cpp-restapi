@@ -96,6 +96,8 @@ std::string model_type_to_string(ModelType type) {
         case ModelType::LLM: return "llm";
         case ModelType::ESRGAN: return "esrgan";
         case ModelType::TAESD: return "taesd";
+        case ModelType::MotionModule: return "motion_module";
+        case ModelType::ADetailer: return "adetailer";
         default: return "unknown";
     }
 }
@@ -112,6 +114,8 @@ ModelType string_to_model_type(const std::string& str) {
     if (str == "llm") return ModelType::LLM;
     if (str == "esrgan") return ModelType::ESRGAN;
     if (str == "taesd") return ModelType::TAESD;
+    if (str == "motion_module") return ModelType::MotionModule;
+    if (str == "adetailer") return ModelType::ADetailer;
     return ModelType::Checkpoint;
 }
 
@@ -210,6 +214,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         "model_name", "model_type",
         // Component model paths
         "vae", "clip_l", "clip_g", "clip_vision", "t5xxl", "controlnet",
+        "motion_module",
         "llm", "llm_vision", "taesd",
         "high_noise_diffusion_model", "uncond_diffusion_model", "photo_maker",
         "pulid_weights",
@@ -243,6 +248,9 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
     }
     if (j.contains("controlnet") && !j["controlnet"].is_null()) {
         params.controlnet = j["controlnet"].get<std::string>();
+    }
+    if (j.contains("motion_module") && !j["motion_module"].is_null()) {
+        params.motion_module = j["motion_module"].get<std::string>();
     }
     if (j.contains("llm") && !j["llm"].is_null()) {
         params.llm = j["llm"].get<std::string>();
@@ -428,6 +436,7 @@ ModelManager::ModelManager(const Config& config)
 ModelManager::~ModelManager() {
     unload_model();
     unload_upscaler();
+    unload_adetailer();
 }
 
 void ModelManager::scan_models() {
@@ -460,6 +469,14 @@ void ModelManager::scan_models() {
 
     if (!config_.paths.taesd.empty() && utils::directory_exists(config_.paths.taesd)) {
         scan_directory(config_.paths.taesd, ModelType::TAESD);
+    }
+
+    if (!config_.paths.motion_module.empty() && utils::directory_exists(config_.paths.motion_module)) {
+        scan_directory(config_.paths.motion_module, ModelType::MotionModule);
+    }
+
+    if (!config_.paths.adetailer.empty() && utils::directory_exists(config_.paths.adetailer)) {
+        scan_directory(config_.paths.adetailer, ModelType::ADetailer);
     }
 
     std::cout << "[ModelManager] Scanned models:" << std::endl;
@@ -512,6 +529,8 @@ std::string ModelManager::get_base_path(ModelType type) const {
         case ModelType::LLM: return config_.paths.llm;
         case ModelType::ESRGAN: return config_.paths.esrgan;
         case ModelType::TAESD: return config_.paths.taesd;
+        case ModelType::MotionModule: return config_.paths.motion_module;
+        case ModelType::ADetailer: return config_.paths.adetailer;
         default: return "";
     }
 }
@@ -575,6 +594,8 @@ nlohmann::json ModelManager::get_models_json(const ModelFilter& filter) const {
     add_models(ModelType::LLM, "llm");
     add_models(ModelType::ESRGAN, "esrgan");
     add_models(ModelType::TAESD, "taesd");
+    add_models(ModelType::MotionModule, "motion_modules");
+    add_models(ModelType::ADetailer, "adetailers");
 
     result["loaded_model"] = loaded_model_name_.empty() ? nullptr : nlohmann::json(loaded_model_name_);
     result["loaded_model_type"] = loaded_model_name_.empty() ? nullptr : nlohmann::json(model_type_to_string(loaded_model_type_));
@@ -698,7 +719,18 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         controlnet_info = get_model(*params.controlnet, ModelType::ControlNet);
         if (!controlnet_info) {
             std::string base_path = get_base_path(ModelType::ControlNet);
-            errors.push_back("ControlNet model not found: '" + *params.controlnet + 
+            errors.push_back("ControlNet model not found: '" + *params.controlnet +
+                           "' (searched in: " + (base_path.empty() ? "<not configured>" : base_path) + ")");
+        }
+    }
+
+    // Validate MotionModule if specified
+    std::optional<ModelInfo> motion_module_info;
+    if (params.motion_module) {
+        motion_module_info = get_model(*params.motion_module, ModelType::MotionModule);
+        if (!motion_module_info) {
+            std::string base_path = get_base_path(ModelType::MotionModule);
+            errors.push_back("Motion module not found: '" + *params.motion_module +
                            "' (searched in: " + (base_path.empty() ? "<not configured>" : base_path) + ")");
         }
     }
@@ -909,6 +941,14 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         ctx_params.control_net_path = controlnet_path.c_str();
         std::cout << "[ModelManager] ControlNet: " << *params.controlnet << std::endl;
     }
+
+    // Set Motion module if specified (AnimateDiff / PiD)
+    std::string motion_module_path;
+    if (motion_module_info) {
+        motion_module_path = motion_module_info->full_path;
+        ctx_params.motion_module_path = motion_module_path.c_str();
+        std::cout << "[ModelManager] MotionModule: " << *params.motion_module << std::endl;
+    }
     
     // Set LLM if specified
     std::string llm_path;
@@ -1051,6 +1091,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         ctx_params.vae_format = SD_VAE_FORMAT_SD3;
     } else if (params.vae_format == "flux2") {
         ctx_params.vae_format = SD_VAE_FORMAT_FLUX2;
+    } else if (params.vae_format == "wan") {
+        ctx_params.vae_format = SD_VAE_FORMAT_WAN;
     } else {
         ctx_params.vae_format = SD_VAE_FORMAT_AUTO;
     }
@@ -1223,6 +1265,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         loaded_clip_g_.clear();
         loaded_t5_.clear();
         loaded_controlnet_.clear();
+        loaded_motion_module_.clear();
         loaded_llm_.clear();
         loaded_llm_vision_.clear();
         clear_loading();
@@ -1250,6 +1293,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_clip_g_ = params.clip_g.value_or("");
     loaded_t5_ = params.t5xxl.value_or("");
     loaded_controlnet_ = params.controlnet.value_or("");
+    loaded_motion_module_ = params.motion_module.value_or("");
     loaded_llm_ = params.llm.value_or("");
     loaded_llm_vision_ = params.llm_vision.value_or("");
 
@@ -1338,6 +1382,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         if (params.clip_vision) persisted["clip_vision"] = *params.clip_vision;
         if (params.t5xxl)       persisted["t5xxl"]       = *params.t5xxl;
         if (params.controlnet)  persisted["controlnet"]  = *params.controlnet;
+        if (params.motion_module) persisted["motion_module"] = *params.motion_module;
         if (params.llm)         persisted["llm"]         = *params.llm;
         if (params.llm_vision)  persisted["llm_vision"]  = *params.llm_vision;
         if (params.taesd)       persisted["taesd"]       = *params.taesd;
@@ -1438,6 +1483,14 @@ void ModelManager::unload_model() {
         fs::remove(fs::path(config_.paths.output) / "last_loaded_model.json", ec);
     }
 
+    // Free any cached ADetailer ctx BEFORE the sd_ctx it inpaints against
+    // goes away — adetail_image binds the base sd_ctx into the pipeline.
+    if (adetailer_context_ != nullptr) {
+        free_adetailer_ctx(adetailer_context_);
+        adetailer_context_ = nullptr;
+        loaded_adetailer_name_.clear();
+    }
+
     if (context_ != nullptr) {
         std::string model_name = loaded_model_name_;  // Capture before clearing
         std::cout << "[ModelManager] Unloading model: " << model_name << std::endl;
@@ -1463,6 +1516,7 @@ void ModelManager::unload_model() {
         loaded_clip_g_.clear();
         loaded_t5_.clear();
         loaded_controlnet_.clear();
+        loaded_motion_module_.clear();
         loaded_llm_.clear();
         loaded_llm_vision_.clear();
 
@@ -1596,6 +1650,9 @@ nlohmann::json ModelManager::get_loaded_models_info() const {
     }
     if (!loaded_controlnet_.empty()) {
         components["controlnet"] = loaded_controlnet_;
+    }
+    if (!loaded_motion_module_.empty()) {
+        components["motion_module"] = loaded_motion_module_;
     }
     if (!loaded_llm_.empty()) {
         components["llm"] = loaded_llm_;
@@ -1758,8 +1815,105 @@ nlohmann::json ModelManager::get_paths_config() const {
         {"controlnet", config_.paths.controlnet},
         {"llm", config_.paths.llm},
         {"esrgan", config_.paths.esrgan},
-        {"taesd", config_.paths.taesd}
+        {"taesd", config_.paths.taesd},
+        {"motion_module", config_.paths.motion_module},
+        {"adetailer", config_.paths.adetailer}
     };
+}
+
+bool ModelManager::hot_load_controlnet(const std::string& name) {
+    std::lock_guard<std::mutex> lock(context_mutex_);
+    if (context_ == nullptr) {
+        return false;
+    }
+    auto info = get_model(name, ModelType::ControlNet);
+    if (!info) {
+        return false;
+    }
+    if (!sd_ctx_load_control_net(context_, info->full_path.c_str())) {
+        return false;
+    }
+    loaded_controlnet_ = name;
+    return true;
+}
+
+bool ModelManager::hot_unload_controlnet() {
+    std::lock_guard<std::mutex> lock(context_mutex_);
+    if (context_ == nullptr) {
+        return false;
+    }
+    if (!sd_ctx_unload_control_net(context_)) {
+        return false;
+    }
+    loaded_controlnet_.clear();
+    return true;
+}
+
+bool ModelManager::has_controlnet() const {
+    std::lock_guard<std::mutex> lock(context_mutex_);
+    if (context_ == nullptr) {
+        return false;
+    }
+    return sd_ctx_has_control_net(context_);
+}
+
+std::string ModelManager::current_controlnet_name() const {
+    std::lock_guard<std::mutex> lock(context_mutex_);
+    return loaded_controlnet_;
+}
+
+adetailer_ctx_t* ModelManager::get_or_create_adetailer(const std::string& detector) {
+    // Assumes context_mutex_ is held by the caller (adetail_image reuses the
+    // sd_ctx). LRU size 1: same detector -> reuse; different -> free + new.
+    if (detector.empty()) {
+        return nullptr;
+    }
+    if (adetailer_context_ != nullptr && loaded_adetailer_name_ == detector) {
+        return adetailer_context_;
+    }
+    auto info = get_model(detector, ModelType::ADetailer);
+    if (!info) {
+        std::cerr << "[ModelManager] ADetailer detector not found: " << detector << std::endl;
+        return nullptr;
+    }
+    if (adetailer_context_ != nullptr) {
+        std::cout << "[ModelManager] Swapping ADetailer detector: "
+                  << loaded_adetailer_name_ << " -> " << detector << std::endl;
+        free_adetailer_ctx(adetailer_context_);
+        adetailer_context_ = nullptr;
+        loaded_adetailer_name_.clear();
+    }
+    int threads = config_.sd_defaults.n_threads > 0
+                      ? config_.sd_defaults.n_threads
+                      : sd_get_num_physical_cores();
+    std::cout << "[ModelManager] Loading ADetailer detector: " << detector
+              << " (" << info->full_path << ")" << std::endl;
+    adetailer_context_ = new_adetailer_ctx(
+        info->full_path.c_str(),
+        threads,
+        nullptr,    // backend (let sd.cpp pick)
+        nullptr     // params_backend
+    );
+    if (adetailer_context_ == nullptr) {
+        std::cerr << "[ModelManager] Failed to create adetailer ctx for " << detector << std::endl;
+        return nullptr;
+    }
+    loaded_adetailer_name_ = detector;
+    return adetailer_context_;
+}
+
+void ModelManager::unload_adetailer() {
+    std::lock_guard<std::mutex> lock(context_mutex_);
+    if (adetailer_context_ != nullptr) {
+        free_adetailer_ctx(adetailer_context_);
+        adetailer_context_ = nullptr;
+        loaded_adetailer_name_.clear();
+    }
+}
+
+std::string ModelManager::current_adetailer_name() const {
+    std::lock_guard<std::mutex> lock(context_mutex_);
+    return loaded_adetailer_name_;
 }
 
 } // namespace sdcpp

@@ -44,6 +44,7 @@ link here for the current field list.
 
 ### Generation
 
+- [`POST /adetailer`](#op-post-/adetailer) - Run ADetailer face-fix pipeline on an input image (YOLOv8 detect + inpaint)
 - [`POST /convert`](#op-post-/convert) - Convert model format (safetensors to GGUF)
 - [`POST /img2img`](#op-post-/img2img) - Generate image from source image and text
 - [`POST /txt2img`](#op-post-/txt2img) - Generate image from text prompt
@@ -52,6 +53,9 @@ link here for the current field list.
 
 ### Models
 
+- [`POST /controlnet/load`](#op-post-/controlnet/load) - Attach or swap a ControlNet on the loaded model without a full reload
+- [`GET /controlnet/status`](#op-get-/controlnet/status) - Report the currently attached ControlNet
+- [`POST /controlnet/unload`](#op-post-/controlnet/unload) - Detach the currently attached ControlNet
 - [`GET /models`](#op-get-/models) - List all available models
 - [`GET /models/hash/{model_type}/{model_name}`](#op-get-/models/hash/{model_type}/{model_name}) - Compute model SHA256 hash
 - [`POST /models/load`](#op-post-/models/load) - Load a model into memory
@@ -413,6 +417,22 @@ Tags: `Files`
 
 #### Generation
 
+### `POST /adetailer` <a id="op-post-/adetailer"></a>
+
+**Run ADetailer face-fix pipeline on an input image (YOLOv8 detect + inpaint)**
+
+Tags: `Generation`
+
+**Request body** (`application/json`): [AdetailerRequest](#schema-adetailerrequest)
+
+**Responses**
+
+| status | description | body |
+|---|---|---|
+| `202` | Accepted (job queued) | `application/json` -> [JobCreatedResponse](#schema-jobcreatedresponse) |
+| `400` | Bad request | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+| `500` | Internal server error | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+
 ### `POST /convert` <a id="op-post-/convert"></a>
 
 **Convert model format (safetensors to GGUF)**
@@ -495,6 +515,50 @@ Tags: `Generation`
 
 #### Models
 
+### `POST /controlnet/load` <a id="op-post-/controlnet/load"></a>
+
+**Attach or swap a ControlNet on the loaded model without a full reload**
+
+Tags: `Models`
+
+**Request body** (`application/json`): [HotloadControlnetRequest](#schema-hotloadcontrolnetrequest)
+
+**Responses**
+
+| status | description | body |
+|---|---|---|
+| `200` | Successful operation | `application/json` -> [SuccessResponse](#schema-successresponse) |
+| `400` | Bad request | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+| `500` | Internal server error | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+
+### `GET /controlnet/status` <a id="op-get-/controlnet/status"></a>
+
+**Report the currently attached ControlNet**
+
+Tags: `Models`
+
+**Responses**
+
+| status | description | body |
+|---|---|---|
+| `200` | Successful operation | `application/json` -> [ControlnetStatusResponse](#schema-controlnetstatusresponse) |
+| `400` | Bad request | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+| `500` | Internal server error | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+
+### `POST /controlnet/unload` <a id="op-post-/controlnet/unload"></a>
+
+**Detach the currently attached ControlNet**
+
+Tags: `Models`
+
+**Responses**
+
+| status | description | body |
+|---|---|---|
+| `200` | Successful operation | `application/json` -> [SuccessResponse](#schema-successresponse) |
+| `400` | Bad request | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+| `500` | Internal server error | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+
 ### `GET /models` <a id="op-get-/models"></a>
 
 **List all available models**
@@ -505,7 +569,7 @@ Tags: `Models`
 
 | in | name | type | required | description |
 |---|---|---|---|---|
-| query | `type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `llm`, `esrgan`, `taesd`) |  | Filter by model type |
+| query | `type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `llm`, `esrgan`, `taesd`, `motion_module`, `adetailer`) |  | Filter by model type |
 | query | `extension` | string |  | Filter by file extension |
 | query | `search` | string |  | Search in model name |
 | query | `name` | string |  | Search alias for 'search' parameter |
@@ -1038,6 +1102,19 @@ Tags: `Upscaler`
 
 ## Schemas
 
+### schema `AdetailerRequest` <a id="schema-adetailerrequest"></a>
+
+Run the ADetailer face-fix pipeline on an input image
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `detector` | string | yes |  | YOLOv8 detector model name (from /models?type=adetailer) |
+| `extra_ad_args` | string |  |  | Comma-separated k=v ADetailer flags (upstream sd.cpp format) |
+| `image_base64` | string | yes |  | Input image (base64-encoded) |
+| `inpaint_params` | object |  |  | Optional subset of GenerationRequestBase for the inpaint pass (steps, cfg_scale, sampler, scheduler, seed, ...) |
+| `negative_prompt` | string |  |  | Negative prompt for the inpaint pass |
+| `prompt` | string | yes |  | Positive prompt for the inpaint pass |
+
 ### schema `ArchitecturesResponse` <a id="schema-architecturesresponse"></a>
 
 Available model architecture presets
@@ -1064,6 +1141,15 @@ Assistant status and model info
 | `model_loaded` | boolean |  |  | Whether LLM is loaded |
 | `model_name` | string |  |  | Loaded LLM model name |
 
+### schema `ControlnetStatusResponse` <a id="schema-controlnetstatusresponse"></a>
+
+Currently attached ControlNet, if any
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `loaded` | boolean | yes |  | Whether a ControlNet is currently attached |
+| `name` | string |  |  | Attached ControlNet name (null if none) |
+
 ### schema `ConvertRequest` <a id="schema-convertrequest"></a>
 
 Model format conversion request
@@ -1071,7 +1157,7 @@ Model format conversion request
 | field | type | required | default | description |
 |---|---|---|---|---|
 | `input_path` | string | yes |  | Input model path or name |
-| `model_type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `llm`, `esrgan`, `taesd`) |  |  | Model type for name resolution |
+| `model_type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `llm`, `esrgan`, `taesd`, `motion_module`, `adetailer`) |  |  | Model type for name resolution |
 | `output_path` | string |  |  | Output path (auto-generated if empty) |
 | `output_type` | string | yes |  | Target quantization type |
 | `title` | string |  |  | Optional display title for the queue job |
@@ -1113,7 +1199,7 @@ Download a model from external source
 |---|---|---|---|---|
 | `filename` | string |  |  | Target filename |
 | `model_id` | string |  |  | CivitAI model ID (format: id or id:version) |
-| `model_type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `llm`, `esrgan`, `taesd`) | yes |  | Target model type category |
+| `model_type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `llm`, `esrgan`, `taesd`, `motion_module`, `adetailer`) | yes |  | Target model type category |
 | `repo_id` | string |  |  | HuggingFace repository ID |
 | `revision` | string |  | main | Git revision for HF repo |
 | `source` | enum (`url`, `civitai`, `huggingface`) |  |  | Download source |
@@ -1145,7 +1231,6 @@ Common generation parameters
 
 | field | type | required | default | description |
 |---|---|---|---|---|
-| `auto_resize_ref_image` | boolean |  | true | Auto-resize reference images to match output |
 | `batch_count` | integer |  | 1 | Number of images to generate |
 | `cache_mode` | string |  |  | Cache acceleration mode: easycache, ucache, dbcache, taylorseer, cache_dit, spectrum (empty = disabled) |
 | `cfg_scale` | number |  |  | Classifier-free guidance scale (sd_guidance_params_t.txt_cfg) (default from model_architectures.json) |
@@ -1174,7 +1259,6 @@ Common generation parameters
 | `hires_upscale_tile_size` | integer |  | 0 | Hires upscaler tile size |
 | `hires_upscaler` | string |  | model | Hires upscaler (sd_hires_upscaler_t): none, latent, latent_nearest, latent_nearest_exact, latent_antialiased, latent_bicubic, latent_bicubic_antialiased, lanczos, nearest, model |
 | `img_cfg_scale` | number |  | -1.0 | Image CFG (sd_guidance_params_t.img_cfg). -1 = inherit cfg_scale. |
-| `increase_ref_index` | boolean |  | false | Increase reference index for multi-ref |
 | `negative_prompt` | string |  |  | Negative prompt |
 | `pm_id_embed_path` | string |  |  | Path to PhotoMaker ID embedding |
 | `pm_id_images` | array<string> |  |  | PhotoMaker identity images as base64 |
@@ -1183,6 +1267,7 @@ Common generation parameters
 | `pulid_id_embedding_path` | string |  |  | PuLID-Flux identity embedding path |
 | `pulid_id_weight` | number |  | 1.0 | PuLID-Flux identity weight |
 | `qwen_image_layers` | integer |  | 0 | Qwen-Image layered rendering (image path only; 0 = disabled) |
+| `ref_image_args` | string |  |  | Comma-separated k=v flags for reference-image processing (e.g. resize_before_vae=0,ref_index_mode=increase). See sd.cpp docs. |
 | `ref_images` | array<string> |  |  | Reference images as base64 strings |
 | `sampler` | enum (`euler`, `euler_a`, `heun`, `dpm2`, `dpm++2s_a`, `dpm++2m`, `dpm++2mv2`, `ipndm`, `ipndm_v`, `lcm`, `ddim_trailing`, `tcd`, `res_multistep`, `res_2s`, `er_sde`, `euler_cfg_pp`, `euler_a_cfg_pp`, `euler_ge`, `dpm++2m_sde`, `dpm++2m_sde_bt`) |  |  | Sampling algorithm (default from model_architectures.json) |
 | `scheduler` | enum (`discrete`, `karras`, `exponential`, `ays`, `gits`, `sgm_uniform`, `simple`, `smoothstep`, `kl_optimal`, `lcm`, `bong_tangent`, `ltx2`, `logit_normal`, `flux`, `flux2`, `beta`, `normal`) |  |  | Noise scheduler (default from model_architectures.json) |
@@ -1240,6 +1325,14 @@ Server health and status information
 | `version` | string | yes |  | Server version string |
 | `ws_enabled` | boolean |  |  | Whether WebSocket is enabled |
 
+### schema `HotloadControlnetRequest` <a id="schema-hotloadcontrolnetrequest"></a>
+
+Swap the ControlNet on the loaded model without a full context reload
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `controlnet` | string | yes |  | ControlNet model name (from /models) |
+
 ### schema `HuggingfaceInfoResponse` <a id="schema-huggingfaceinforesponse"></a>
 
 HuggingFace model file metadata
@@ -1293,6 +1386,7 @@ Load a model into memory
 | `llm_vision` | string |  |  | LLM vision model name |
 | `model_name` | string | yes |  | Name of the model file to load |
 | `model_type` | enum (`checkpoint`, `diffusion`) |  | checkpoint | Type of model |
+| `motion_module` | string |  |  | Motion module for AnimateDiff/PiD (SD1.5) |
 | `options` | [LoadOptions](#schema-loadoptions) |  |  | Model loading options |
 | `photo_maker` | string |  |  | PhotoMaker model name |
 | `pulid_weights` | string |  |  | PuLID-Flux identity-injection weights (leejet PR #1595). Looked up under the checkpoints directory. |
@@ -1338,7 +1432,7 @@ Model loading options
 | `tae_preview_only` | boolean |  | false | Use TAESD for preview only |
 | `tensor_type_rules` | string |  |  | Custom tensor type rules string |
 | `vae_conv_direct` | boolean |  | false | Direct VAE convolution |
-| `vae_format` | enum (`auto`, `flux`, `sd3`, `flux2`) |  | auto | VAE weight format override (auto = sd.cpp detects from the file) |
+| `vae_format` | enum (`auto`, `flux`, `sd3`, `flux2`, `wan`) |  | auto | VAE weight format override (auto = sd.cpp detects from the file) |
 | `weight_type` | enum (`f32`, `f16`, `bf16`, `q8_0`, `q5_0`, `q5_1`, `q4_0`, `q4_1`, `q4_k`, `q5_k`, `q6_k`, `q8_k`, `q3_k`, `q2_k`, `mxfp4`, `nvfp4`, `q1_0`) |  |  | Weight precision type |
 
 ### schema `LoadUpscalerRequest` <a id="schema-loadupscalerrequest"></a>
@@ -1395,6 +1489,7 @@ List of all available models by category
 
 | field | type | required | default | description |
 |---|---|---|---|---|
+| `adetailers` | array<object> |  |  | ADetailer YOLOv8 detectors |
 | `checkpoints` | array<object> |  |  | Checkpoint models |
 | `clip` | array<object> |  |  | CLIP models |
 | `controlnets` | array<object> |  |  | ControlNet models |
@@ -1405,6 +1500,7 @@ List of all available models by category
 | `loaded_model` | string |  |  | Currently loaded model name |
 | `loaded_model_type` | string |  |  | Type of currently loaded model |
 | `loras` | array<object> |  |  | LoRA models |
+| `motion_modules` | array<object> |  |  | AnimateDiff / PiD motion modules |
 | `t5` | array<object> |  |  | T5 models |
 | `taesd` | array<object> |  |  | TAESD preview models |
 | `vae` | array<object> |  |  | VAE models |
@@ -1415,6 +1511,7 @@ Configured model storage paths
 
 | field | type | required | default | description |
 |---|---|---|---|---|
+| `adetailer` | string |  |  | ADetailer YOLOv8 detectors directory |
 | `checkpoints` | string |  |  | Checkpoint models directory |
 | `clip` | string |  |  | CLIP models directory |
 | `controlnet` | string |  |  | ControlNet models directory |
@@ -1423,6 +1520,7 @@ Configured model storage paths
 | `esrgan` | string |  |  | ESRGAN models directory |
 | `llm` | string |  |  | LLM models directory |
 | `lora` | string |  |  | LoRA models directory |
+| `motion_module` | string |  |  | AnimateDiff / PiD motion modules directory |
 | `t5` | string |  |  | T5 models directory |
 | `taesd` | string |  |  | TAESD models directory |
 | `vae` | string |  |  | VAE models directory |

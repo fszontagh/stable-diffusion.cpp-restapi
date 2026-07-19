@@ -843,7 +843,34 @@ ControlNet allows you to guide image generation with control images (edge maps, 
 - You must pre-process your control images before sending them (e.g., apply Canny edge detection, extract depth maps, etc.)
 - The control image will be automatically resized to match the output dimensions
 - `control_strength` controls how much the ControlNet influences the output (0.0 = no influence, 1.0 = full influence)
-- ControlNet must be loaded with the model - it cannot be changed per-request
+- ControlNet can be attached, swapped, or detached at runtime without reloading the base model - see "ControlNet hot-swap" below.
+
+### ControlNet hot-swap
+
+Since the upstream `sd_ctx_load_control_net` API landed, the base model no longer has to be reloaded to change ControlNet. Do not call these while a generation is in flight.
+
+- `POST /controlnet/load` body `{"controlnet": "<name>"}` - attach or swap. Name comes from `/models?type=controlnet`.
+- `POST /controlnet/unload` - detach.
+- `GET /controlnet/status` - `{"loaded": bool, "name": string | null}`.
+
+The `features.controlnet_hotswap` flag in `/health` advertises support.
+
+### AnimateDiff / PiD motion modules
+
+SD 1.5 backbones can be augmented with a motion module (AnimateDiff v2/v3, PiD 1.5) at load time. Pass `motion_module` alongside the base model in `/models/load`:
+
+```json
+{
+  "model_name": "v1-5-pruned.safetensors",
+  "motion_module": "mm_sd15_v3.safetensors"
+}
+```
+
+When a motion module is present, `POST /txt2vid` and `POST /img2img` (`init_image` + `video_frames > 1`) become available for that context.
+
+### ADetailer (face fix)
+
+`POST /adetailer` runs a YOLOv8 detector + inpainting pass over an input image using the currently loaded model. Detector files live under `paths.adetailer` and are listed via `/models?type=adetailer`.
 
 ### LoRA Usage
 
@@ -917,8 +944,7 @@ Generate images from text prompt.
 | `slg_end` | float | No | 0.2 | SLG end percent |
 | `custom_sigmas` | array | No | [] | Custom sigma schedule (overrides scheduler) |
 | `ref_images` | array | No | [] | Array of base64-encoded reference images (Flux Kontext) |
-| `auto_resize_ref_image` | boolean | No | true | Auto-resize reference images |
-| `increase_ref_index` | boolean | No | false | Increase reference index |
+| `ref_image_args` | string | No | "" | Comma-separated `k=v` flags for reference-image processing (e.g. `resize_before_vae=0,ref_index_mode=increase`) - see upstream sd.cpp docs |
 | `control_image_base64` | string | No | - | Base64-encoded pre-processed control image (requires ControlNet) |
 | `control_strength` | float | No | 0.9 | ControlNet influence strength (0.0 - 1.0) |
 | `vae_tiling` | boolean | No | false | Enable VAE tiling for large images |

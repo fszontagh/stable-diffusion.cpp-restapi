@@ -454,6 +454,31 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         "Unload the current model", "Models", 200,
         [this](auto& req, auto& res) { handle_unload_model(req, res); });
 
+    // ── ControlNet hot-swap (sd_ctx_load_control_net / unload / has) ──
+    api.addEndpoint<HotloadControlnetRequest, SuccessResponse>(
+        server, "POST", "/controlnet/load",
+        "Attach or swap a ControlNet on the loaded model without a full reload", "Models", 200,
+        [this](auto& req, auto& res) { handle_controlnet_load(req, res); });
+
+    api.addEndpoint<void, SuccessResponse>(
+        server, "POST", "/controlnet/unload",
+        "Detach the currently attached ControlNet", "Models", 200,
+        [this](auto& req, auto& res) { handle_controlnet_unload(req, res); });
+
+    api.addEndpoint<void, ControlnetStatusResponse>(
+        server, "GET", "/controlnet/status",
+        "Report the currently attached ControlNet", "Models", 200,
+        [this](auto& req, auto& res) { handle_controlnet_status(req, res); });
+
+    // ── ADetailer (face-fix pipeline) ──
+    // Stub endpoint: parameter shape is finalized; the full queue-integrated
+    // pipeline (worker dispatch + progress + saved outputs) is deferred.
+    api.addEndpoint<AdetailerRequest, JobCreatedResponse>(
+        server, "POST", "/adetailer",
+        "Run ADetailer face-fix pipeline on an input image (YOLOv8 detect + inpaint)",
+        "Generation", 202,
+        [this](auto& req, auto& res) { handle_adetailer(req, res); });
+
     api.addEndpointRaw(
         server, "GET", "/models/hash/{model_type}/{model_name}",
         R"(/models/hash/([^/]+)/(.+))",
@@ -1068,6 +1093,7 @@ void RequestHandlers::handle_health(const httplib::Request& req, httplib::Respon
             // Runtime config toggle (not a build flag): whether the MCP `image`
             // tool that returns generated images inline is enabled.
             {"mcp_image_tool", mcp_image_tool_enabled_},
+            {"controlnet_hotswap", true},
             {"auth_required", auth_manager_.enabled()}
         }}
     };
@@ -1410,6 +1436,101 @@ void RequestHandlers::handle_unload_model(const httplib::Request& /*req*/, httpl
         {"success", true},
         {"message", "Model unloaded"}
     });
+}
+
+void RequestHandlers::handle_controlnet_load(const httplib::Request& req, httplib::Response& res) {
+    try {
+        auto body = parse_json_body(req);
+        if (!body.contains("controlnet") || !body["controlnet"].is_string()) {
+            send_error(res, "'controlnet' (string) is required", 400);
+            return;
+        }
+        std::string name = body["controlnet"].get<std::string>();
+        if (name.empty()) {
+            send_error(res, "'controlnet' cannot be empty", 400);
+            return;
+        }
+        if (!model_manager_.is_model_loaded()) {
+            send_error(res, "No base model loaded; load a model first", 409);
+            return;
+        }
+        if (!model_manager_.hot_load_controlnet(name)) {
+            send_error(res, "Failed to load ControlNet '" + name + "' (not found or upstream refused)", 500);
+            return;
+        }
+        send_json(res, {
+            {"success", true},
+            {"message", "ControlNet loaded"}
+        });
+    } catch (const nlohmann::json::exception& e) {
+        send_error(res, std::string("Invalid JSON: ") + e.what(), 400);
+    } catch (const std::exception& e) {
+        send_error(res, e.what(), 500);
+    }
+}
+
+void RequestHandlers::handle_controlnet_unload(const httplib::Request& /*req*/, httplib::Response& res) {
+    if (!model_manager_.is_model_loaded()) {
+        send_error(res, "No base model loaded", 409);
+        return;
+    }
+    if (!model_manager_.hot_unload_controlnet()) {
+        send_error(res, "Failed to unload ControlNet", 500);
+        return;
+    }
+    send_json(res, {
+        {"success", true},
+        {"message", "ControlNet unloaded"}
+    });
+}
+
+void RequestHandlers::handle_controlnet_status(const httplib::Request& /*req*/, httplib::Response& res) {
+    bool loaded = model_manager_.has_controlnet();
+    std::string name = model_manager_.current_controlnet_name();
+    nlohmann::json response = {
+        {"loaded", loaded},
+        {"name", (loaded && !name.empty()) ? nlohmann::json(name) : nlohmann::json(nullptr)}
+    };
+    send_json(res, response);
+}
+
+void RequestHandlers::handle_adetailer(const httplib::Request& req, httplib::Response& res) {
+    try {
+        if (!model_manager_.is_model_loaded()) {
+            send_error(res, "No base model loaded. Load one before running ADetailer.", 400);
+            return;
+        }
+
+        auto body = parse_json_body(req);
+
+        // Optional user-supplied display title — strip before typed validation.
+        std::string title;
+        if (body.contains("title") && body["title"].is_string()) {
+            title = body["title"].get<std::string>();
+        }
+        body.erase("title");
+
+        // Validate body shape at the boundary. The worker re-parses via
+        // AdetailerParams::from_json against the stored body.
+        try {
+            (void) AdetailerParams::from_json(body);
+        } catch (const std::exception& e) {
+            send_error(res, std::string("Invalid request body: ") + e.what(), 400);
+            return;
+        }
+
+        std::string job_id = queue_manager_.add_job(GenerationType::ADetailer, body, title);
+        auto status = queue_manager_.get_status();
+        send_json(res, {
+            {"job_id", job_id},
+            {"status", "pending"},
+            {"position", status["pending_count"]}
+        }, 202);
+    } catch (const nlohmann::json::exception& e) {
+        send_error(res, std::string("Invalid JSON: ") + e.what(), 400);
+    } catch (const std::exception& e) {
+        send_error(res, e.what(), 400);
+    }
 }
 
 void RequestHandlers::handle_get_model_hash(const httplib::Request& req, httplib::Response& res) {

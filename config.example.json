@@ -14,6 +14,8 @@
         "t5": "/path/to/t5xxl",
         "embeddings": "/path/to/embeddings",
         "controlnet": "/path/to/controlnet",
+        "motion_module": "/path/to/motion_modules",
+        "adetailer": "/path/to/adetailers",
         "llm": "/path/to/llm",
         "esrgan": "/path/to/esrgan",
         "taesd": "/path/to/taesd",
@@ -22,10 +24,7 @@
     },
     "sd_defaults": {
         "n_threads": 10,
-        "keep_clip_on_cpu": false,
-        "keep_vae_on_cpu": false,
-        "flash_attn": true,
-        "offload_to_cpu": false
+        "flash_attn": true
     },
     "preview": {
         "enabled": true,

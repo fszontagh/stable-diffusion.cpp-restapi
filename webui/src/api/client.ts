@@ -36,7 +36,7 @@ export interface LoadOptions {
   // key=value string handed to the model parser.
   model_args?: string
   // VAE format override.
-  vae_format?: 'auto' | 'flux' | 'sd3' | 'flux2'
+  vae_format?: 'auto' | 'flux' | 'sd3' | 'flux2' | 'wan'
   // circular_x / circular_y moved to GenerationParams in leejet PR #1748
   // (they now live on sd_img_gen_params_t + sd_vid_gen_params_t).
 
@@ -157,6 +157,8 @@ export interface ModelsResponse {
   llm: ModelInfo[]
   esrgan: ModelInfo[]
   taesd: ModelInfo[]
+  motion_modules: ModelInfo[]
+  adetailers: ModelInfo[]
   embeddings: ModelInfo[]
   loaded_model: string | null
   loaded_model_type: string | null
@@ -167,6 +169,15 @@ export interface ModelsResponse {
   }
 }
 
+export interface AdetailerParams {
+  detector: string
+  image_base64: string
+  prompt: string
+  negative_prompt?: string
+  extra_ad_args?: string
+  inpaint_params?: Record<string, unknown>
+}
+
 export interface LoadModelParams {
   model_name: string
   model_type?: 'checkpoint' | 'diffusion'
@@ -175,7 +186,8 @@ export interface LoadModelParams {
   clip_g?: string
   clip_vision?: string
   t5xxl?: string
-  controlnet?: string
+  controlnet?: string | null
+  motion_module?: string | null
   llm?: string
   llm_vision?: string
   taesd?: string
@@ -212,8 +224,7 @@ export interface GenerationParams {
   slg_end?: number
   custom_sigmas?: number[]
   ref_images?: string[]
-  auto_resize_ref_image?: boolean
-  increase_ref_index?: boolean
+  ref_image_args?: string
   control_image_base64?: string
   control_strength?: number
   vae_tiling?: boolean
@@ -738,6 +749,26 @@ class ApiClient {
 
   async unloadModel(): Promise<{ success: boolean; message: string }> {
     return this.request('POST', '/models/unload', {})
+  }
+
+  // ControlNet hot-swap (sd_ctx_load_control_net upstream). Swap the
+  // attached ControlNet without a full model reload.
+  async hotLoadControlnet(controlnet: string): Promise<{ success: boolean; message: string }> {
+    return this.request('POST', '/controlnet/load', { controlnet })
+  }
+
+  async hotUnloadControlnet(): Promise<{ success: boolean; message: string }> {
+    return this.request('POST', '/controlnet/unload', {})
+  }
+
+  async getControlnetStatus(): Promise<{ loaded: boolean; name: string | null }> {
+    return this.request('GET', '/controlnet/status')
+  }
+
+  // ADetailer face-fix pipeline (endpoint stub as of sd.cpp bump ea4e566;
+  // full worker path pending).
+  async runAdetailer(params: AdetailerParams): Promise<JobSubmitResponse> {
+    return this.request('POST', '/adetailer', params)
   }
 
   async refreshModels(): Promise<{ success: boolean; message: string; models: ModelsResponse }> {
@@ -1366,7 +1397,7 @@ export interface SettingsUpdateSingleModeResponse {
 // Download Types
 export interface DownloadParams {
   source?: 'url' | 'civitai' | 'huggingface'
-  model_type: 'checkpoint' | 'vae' | 'lora' | 'clip' | 't5' | 'embedding' | 'controlnet' | 'llm' | 'esrgan' | 'diffusion' | 'taesd'
+  model_type: 'checkpoint' | 'vae' | 'lora' | 'clip' | 't5' | 'embedding' | 'controlnet' | 'llm' | 'esrgan' | 'diffusion' | 'taesd' | 'motion_module' | 'adetailer'
   subfolder?: string
   url?: string
   model_id?: string  // For CivitAI

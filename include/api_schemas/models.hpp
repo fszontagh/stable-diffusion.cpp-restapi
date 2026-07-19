@@ -17,6 +17,7 @@ struct LoadModelRequest {
             .optional_field("clip_vision", schema::FieldType::String, "CLIP vision model name")
             .optional_field("t5xxl", schema::FieldType::String, "T5-XXL text encoder name")
             .optional_field("controlnet", schema::FieldType::String, "ControlNet model name")
+            .optional_field("motion_module", schema::FieldType::String, "Motion module for AnimateDiff/PiD (SD1.5)")
             .optional_field("llm", schema::FieldType::String, "LLM model name")
             .optional_field("llm_vision", schema::FieldType::String, "LLM vision model name")
             .optional_field("taesd", schema::FieldType::String, "TAESD model for fast preview")
@@ -57,7 +58,7 @@ struct LoadOptions {
             // flags. Format is sd.cpp's own key=value list, e.g.
             // "chroma_use_dit_mask=true,chroma_t5_mask_pad=1,qwen_image_zero_cond_t=false".
             .optional_field("model_args", schema::FieldType::String, "Model-specific args (key=value list) — replaces the old chroma_*/qwen_image_zero_cond_t individual load flags.")
-            .enum_field("vae_format", "VAE weight format override (auto = sd.cpp detects from the file)", {"auto", "flux", "sd3", "flux2"}, "auto")
+            .enum_field("vae_format", "VAE weight format override (auto = sd.cpp detects from the file)", {"auto", "flux", "sd3", "flux2", "wan"}, "auto")
             // circular_x / circular_y moved to per-generation params in
             // leejet PR #1748 — see GenerationRequestBase.
             .optional_field("backend", schema::FieldType::String, "Main compute backend override (empty = sd.cpp picks). Use per-component placement here too — e.g. \"diffusion=cuda0,vae=cpu\" — that's how per-component CPU keeping is expressed now (formerly keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu).")
@@ -112,6 +113,8 @@ struct ModelListResponse {
             .array_field("llm", schema::FieldType::Object, "LLM models")
             .array_field("esrgan", schema::FieldType::Object, "ESRGAN upscaler models")
             .array_field("taesd", schema::FieldType::Object, "TAESD preview models")
+            .array_field("motion_modules", schema::FieldType::Object, "AnimateDiff / PiD motion modules")
+            .array_field("adetailers", schema::FieldType::Object, "ADetailer YOLOv8 detectors")
             .array_field("embeddings", schema::FieldType::Object, "Embedding models")
             .optional_field("loaded_model", schema::FieldType::String, "Currently loaded model name")
             .optional_field("loaded_model_type", schema::FieldType::String, "Type of currently loaded model")
@@ -143,6 +146,8 @@ struct ModelPathsResponse {
             .optional_field("llm", schema::FieldType::String, "LLM models directory")
             .optional_field("esrgan", schema::FieldType::String, "ESRGAN models directory")
             .optional_field("taesd", schema::FieldType::String, "TAESD models directory")
+            .optional_field("motion_module", schema::FieldType::String, "AnimateDiff / PiD motion modules directory")
+            .optional_field("adetailer", schema::FieldType::String, "ADetailer YOLOv8 detectors directory")
             .build();
     }
 };
@@ -230,6 +235,40 @@ struct UploadModelResponse {
             .required_field("size_bytes", schema::FieldType::Integer, "Size of the stored file in bytes")
             .required_field("full_path", schema::FieldType::String, "Absolute path of the stored file on the server")
             .optional_field("subfolder", schema::FieldType::String, "Subfolder under the model_type directory (if any)")
+            .build();
+    }
+};
+
+// ── ControlNet hot-swap (sd_ctx_load_control_net / unload / has) ────────────
+
+struct HotloadControlnetRequest {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("HotloadControlnetRequest", "Swap the ControlNet on the loaded model without a full context reload")
+            .required_field("controlnet", schema::FieldType::String, "ControlNet model name (from /models)")
+            .build();
+    }
+};
+
+struct ControlnetStatusResponse {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("ControlnetStatusResponse", "Currently attached ControlNet, if any")
+            .required_field("loaded", schema::FieldType::Boolean, "Whether a ControlNet is currently attached")
+            .optional_field("name", schema::FieldType::String, "Attached ControlNet name (null if none)")
+            .build();
+    }
+};
+
+// ── ADetailer (face-fix pipeline) ───────────────────────────────────────────
+
+struct AdetailerRequest {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("AdetailerRequest", "Run the ADetailer face-fix pipeline on an input image")
+            .required_field("detector", schema::FieldType::String, "YOLOv8 detector model name (from /models?type=adetailer)")
+            .required_field("image_base64", schema::FieldType::String, "Input image (base64-encoded)")
+            .required_field("prompt", schema::FieldType::String, "Positive prompt for the inpaint pass")
+            .optional_field("negative_prompt", schema::FieldType::String, "Negative prompt for the inpaint pass", "")
+            .optional_field("extra_ad_args", schema::FieldType::String, "Comma-separated k=v ADetailer flags (upstream sd.cpp format)", "")
+            .object_field("inpaint_params", "Optional subset of GenerationRequestBase for the inpaint pass (steps, cfg_scale, sampler, scheduler, seed, ...)")
             .build();
     }
 };

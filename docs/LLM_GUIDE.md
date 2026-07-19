@@ -165,7 +165,9 @@ When a user asks for generation defaults ("what steps should I use for Flux?"), 
 | Longcat-Image | ae.safetensors (Flux VAE), Qwen2.5-VL 7B LLM | 5.0 | 20 | euler | discrete (flow_shift=3) | 1024×1024 |
 | LTXAV (video) | video VAE, audio_vae, Gemma-3 12B LLM, embeddings_connectors | 6.0 | 20 | euler | **ltx2** | 1280×720, 33 frames @ 24fps |
 
-**Full list of architecture keys:** Anima, Chroma, Chroma-Radiance, Flux, Flux Kontext, Flux Schnell, Flux2 Dev, Flux2 Klein 4B, Flux2 Klein 9B, Flux2 Klein Base 4B, Flux2 Klein Base 9B, HiDream-O1, LCM, LCM-SDXL, Longcat-Image, LTXAV, Ovis, Qwen, Qwen Image Edit, SD1, SD2, SD3, SDXL, SDXS-512, SSD-1B, Vega, Wan, Z-Image.
+**Full list of architecture keys:** Anima, AnimateDiff-v2, AnimateDiff-v3, Chroma, Chroma-Radiance, Flux, Flux Kontext, Flux Schnell, Flux2 Dev, Flux2 Klein 4B, Flux2 Klein 9B, Flux2 Klein Base 4B, Flux2 Klein Base 9B, HiDream-O1, HunyuanVideo-1.5, Krea2OstrisEdit, LCM, LCM-SDXL, Lingbot, Longcat-Image, LTXAV, Ovis, PiD-1.5, Qwen, Qwen Image Edit, SD1, SD2, SD3, SDXL, SDXS-512, SeFi-Image-Base, SeFi-Image-RL, SeFi-Image-Turbo, SSD-1B, Vega, Wan, Z-Image.
+
+**Recent additions:** AnimateDiff-v2/v3 and PiD-1.5 use an SD 1.5 base + a `motion_module`; loaded together they enable video generation. HunyuanVideo-1.5, Lingbot, and Wan-family are video-first. Krea2OstrisEdit is a Flux2-family edit variant using `ref_image_args` for reference-image processing.
 
 To read the live preset list from a running server: `GET /architectures` or MCP resource `sdcpp://architectures`.
 
@@ -234,7 +236,7 @@ Submitted to `POST /txt2img`, `/img2img`, `/txt2vid`. Defined in `GenerationRequ
 | `clip_skip` | Skip last N CLIP layers (negative = default) |
 | `slg_scale`, `skip_layers`, `slg_start`, `slg_end` | Skip-Layer Guidance — advanced quality knob |
 | `custom_sigmas` | Provide your own noise schedule instead of sampler+scheduler |
-| `ref_images`, `auto_resize_ref_image`, `increase_ref_index` | Reference-image conditioning (IP-Adapter-like flows) |
+| `ref_images`, `ref_image_args` | Reference-image conditioning (IP-Adapter-like / Flux Kontext / edit models). `ref_image_args` is a comma-separated `k=v` string, e.g. `resize_before_vae=0,ref_index_mode=increase` |
 | `control_image_base64`, `control_strength` | ControlNet input |
 | `vae_tiling`, `vae_tile_size_x/y`, `vae_tile_overlap` | Tile VAE decode **per-generation** (overrides load-time setting) |
 | `cache_mode` | `easycache` / `spectrum` / empty — see [Cache acceleration](#cache-acceleration) |

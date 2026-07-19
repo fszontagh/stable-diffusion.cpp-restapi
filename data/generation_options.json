@@ -203,21 +203,13 @@
       "applies_to": ["txt2img"],
       "recommended": "Use for Flux Kontext or models that accept reference images."
     },
-    "auto_resize_ref_image": {
-      "label": "Auto-resize Ref Images",
-      "description": "Resize each reference image to the output `width × height` before encoding.",
-      "type": "boolean",
-      "default": true,
+    "ref_image_args": {
+      "label": "Reference Image Args",
+      "description": "Comma-separated k=v flags controlling reference-image preprocessing (e.g. `resize_before_vae=0,ref_index_mode=increase`). Replaces the previous auto_resize_ref_image / increase_ref_index bools. See sd.cpp docs.",
+      "type": "string",
+      "default": "",
       "applies_to": ["txt2img"],
-      "recommended": "On unless your refs are already exactly the target size."
-    },
-    "increase_ref_index": {
-      "label": "Increase Ref Index",
-      "description": "Increment the per-ref index counter inside the model's encoder, signaling 'these references should be treated as later in a sequence'. Niche; check your model's docs.",
-      "type": "boolean",
-      "default": false,
-      "applies_to": ["txt2img"],
-      "recommended": "Off unless explicitly required."
+      "recommended": "Leave empty unless you need to override defaults."
     },
     "control_image_base64": {
       "label": "ControlNet Image (base64)",
@@ -624,7 +616,7 @@
     },
     "image_input": {
       "label": "Image Input (img2img / image-edit)",
-      "options": ["init_image_base64", "mask_image_base64", "strength", "img_cfg_scale", "ref_images", "auto_resize_ref_image", "increase_ref_index"]
+      "options": ["init_image_base64", "mask_image_base64", "strength", "img_cfg_scale", "ref_images", "ref_image_args"]
     },
     "controlnet": {
       "label": "ControlNet",

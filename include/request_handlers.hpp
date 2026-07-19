@@ -65,6 +65,14 @@ private:
     void handle_get_model_hash(const httplib::Request& req, httplib::Response& res);
     void handle_upload_model(const httplib::Request& req, httplib::Response& res);
 
+    // ControlNet hot-swap endpoints (sd_ctx_load_control_net / unload / has)
+    void handle_controlnet_load(const httplib::Request& req, httplib::Response& res);
+    void handle_controlnet_unload(const httplib::Request& req, httplib::Response& res);
+    void handle_controlnet_status(const httplib::Request& req, httplib::Response& res);
+
+    // ADetailer standalone endpoint
+    void handle_adetailer(const httplib::Request& req, httplib::Response& res);
+
     // Generation endpoints
     void handle_txt2img(const httplib::Request& req, httplib::Response& res);
     void handle_img2img(const httplib::Request& req, httplib::Response& res);

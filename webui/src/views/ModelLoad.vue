@@ -59,6 +59,7 @@ const loadParams = ref<LoadModelParams>({
   clip_g: '',
   t5xxl: '',
   controlnet: '',
+  motion_module: '',
   llm: '',
   taesd: '',
   options: {
@@ -105,6 +106,7 @@ const vaeModels = computed(() => store.models?.vae || [])
 const clipModels = computed(() => store.models?.clip || [])
 const t5Models = computed(() => store.models?.t5 || [])
 const controlnetModels = computed(() => store.models?.controlnets || [])
+const motionModuleModels = computed(() => store.models?.motion_modules || [])
 const llmModels = computed(() => store.models?.llm || [])
 const taesdModels = computed(() => store.models?.taesd || [])
 
@@ -219,6 +221,7 @@ async function handleLoadModel() {
     if (loadParams.value.clip_g) params.clip_g = loadParams.value.clip_g
     if (loadParams.value.t5xxl) params.t5xxl = loadParams.value.t5xxl
     if (loadParams.value.controlnet) params.controlnet = loadParams.value.controlnet
+    if (loadParams.value.motion_module) params.motion_module = loadParams.value.motion_module
     if (loadParams.value.llm) params.llm = loadParams.value.llm
     if (loadParams.value.taesd) params.taesd = loadParams.value.taesd
     params.options = loadParams.value.options
@@ -301,6 +304,7 @@ onMounted(async () => {
       loadParams.value.clip_g = store.loadedComponents.clip_g || ''
       loadParams.value.t5xxl = store.loadedComponents.t5xxl || ''
       loadParams.value.controlnet = store.loadedComponents.controlnet || ''
+      loadParams.value.motion_module = (store.loadedComponents as Record<string, string | null | undefined>).motion_module || ''
       loadParams.value.llm = store.loadedComponents.llm || ''
 
       // Pre-populate load options from currently loaded model.
@@ -333,6 +337,7 @@ onMounted(async () => {
       loadParams.value.clip_g = last.clip_g || ''
       loadParams.value.t5xxl = last.t5xxl || ''
       loadParams.value.controlnet = last.controlnet || ''
+      loadParams.value.motion_module = (last as unknown as { motion_module?: string | null }).motion_module || ''
       loadParams.value.llm = last.llm || ''
       loadParams.value.taesd = last.taesd || ''
       if (last.options) {
@@ -653,6 +658,16 @@ function onKeepAllInRam(e: Event) {
             </select>
           </div>
 
+          <!-- Motion module (AnimateDiff / PiD, SD1.5 only) -->
+          <div class="form-group">
+            <label class="form-label">Motion Module <span class="optional-badge">Optional</span></label>
+            <select v-model="loadParams.motion_module" class="form-select">
+              <option value="">None</option>
+              <option v-for="m in motionModuleModels" :key="m.name" :value="m.name">{{ m.name }}</option>
+            </select>
+            <small class="form-hint">AnimateDiff / PiD motion module for SD1.5. Attaches at load time; enables short-video output.</small>
+          </div>
+
           <!-- TAESD -->
           <div class="form-group">
             <label class="form-label">TAESD (Preview) <span class="optional-badge">Optional</span></label>
@@ -924,7 +939,8 @@ function onKeepAllInRam(e: Event) {
                 <option value="auto">Auto — detect from VAE weights (default)</option>
                 <option value="flux">Flux — Flux / Z-Image / Ideogram / Lens / Ernie latents</option>
                 <option value="sd3">SD3 — SD3.x latents</option>
-                <option value="flux2">Flux.2 — Flux.2 latents</option>
+                <option value="flux2">Flux.2 - Flux.2 latents</option>
+                <option value="wan">Wan (video) - Wan-family video VAE latents</option>
               </select>
               <small class="form-hint">
                 {{ getOptionDesc('vae_format')?.description || "Leave on Auto. Required for PiD; otherwise sd.cpp detects from the VAE file's metadata." }}

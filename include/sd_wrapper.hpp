@@ -77,8 +77,7 @@ struct Txt2ImgParams {
 
     // Reference images for Flux Kontext
     std::vector<std::string> ref_images_base64;
-    bool auto_resize_ref_image = true;
-    bool increase_ref_index = false;
+    std::string ref_image_args;         // sd.cpp comma-separated k=v flags (e.g. resize_before_vae=0,ref_index_mode=increase)
 
     // ControlNet (optional - requires ControlNet loaded with model)
     std::vector<uint8_t> control_image_data;
@@ -204,8 +203,7 @@ struct Img2ImgParams {
 
     // Reference images for Flux Kontext
     std::vector<std::string> ref_images_base64;
-    bool auto_resize_ref_image = true;
-    bool increase_ref_index = false;
+    std::string ref_image_args;         // sd.cpp comma-separated k=v flags (e.g. resize_before_vae=0,ref_index_mode=increase)
 
     // ControlNet (optional - requires ControlNet loaded with model)
     std::vector<uint8_t> control_image_data;
@@ -291,6 +289,45 @@ struct UpscaleParams {
     int repeats = 1;                    // Run upscaler multiple times
 
     static UpscaleParams from_json(const nlohmann::json& j);
+    nlohmann::json to_json() const;
+};
+
+/**
+ * ADetailer (face-fix) parameters
+ *
+ * Runs sd.cpp's adetail_image pipeline: a YOLOv8-family detector locates
+ * regions of interest, then each region is re-inpainted using the current
+ * loaded sd_ctx_t. `inpaint_params` maps to a minimal sd_img_gen_params_t
+ * — only the subset of fields we surface is honored; everything else keeps
+ * sd_img_gen_params_init defaults.
+ */
+struct AdetailerParams {
+    std::string detector;               // Detector model name (resolved to a path by ModelManager)
+    std::vector<uint8_t> image_data;    // Input image (raw pixels, decoded from image_base64)
+    int image_width = 0;
+    int image_height = 0;
+    int image_channels = 3;
+    std::string prompt;
+    std::string negative_prompt;
+    std::string extra_ad_args;          // sd.cpp k=v flags for sd_adetailer_params_t
+
+    // Inpaint pass overrides — mirror the small subset the request handler
+    // accepts under "inpaint_params". Any field left at its default keeps the
+    // sd_img_gen_params_init value.
+    int steps = 20;
+    float cfg_scale = 7.0f;
+    float distilled_guidance = 3.5f;
+    int64_t seed = -1;
+    std::string sampler = "euler_a";
+    std::string scheduler = "discrete";
+    int clip_skip = -1;
+    float strength = 0.5f;
+    int width = 0;                      // 0 = auto (region size)
+    int height = 0;
+    float eta = 0.0f;
+    float flow_shift = 3.0f;
+
+    static AdetailerParams from_json(const nlohmann::json& j);
     nlohmann::json to_json() const;
 };
 
@@ -505,6 +542,23 @@ public:
         const std::string& job_id
     );
     
+    /**
+     * Run the ADetailer face-fix pipeline on an input image.
+     * @param adetailer_ctx ADetailer context (owns YOLOv8 detector)
+     * @param sd_ctx Base SD context used for the inpaint pass
+     * @param params ADetailer request params
+     * @param output_dir Directory to save output
+     * @param job_id Job ID for output naming
+     * @return List of output file paths (relative to output_dir)
+     */
+    static std::vector<std::string> run_adetailer(
+        adetailer_ctx_t* adetailer_ctx,
+        sd_ctx_t* sd_ctx,
+        const AdetailerParams& params,
+        const std::string& output_dir,
+        const std::string& job_id
+    );
+
     /**
      * Upscale an image
      * @param upscaler_ctx Upscaler context

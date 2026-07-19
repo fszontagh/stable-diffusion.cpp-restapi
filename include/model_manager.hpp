@@ -14,6 +14,7 @@
 // Forward declaration of sd.cpp types
 struct sd_ctx_t;
 struct upscaler_ctx_t;
+struct adetailer_ctx_t;
 
 namespace sdcpp {
 
@@ -31,7 +32,9 @@ enum class ModelType {
     ControlNet,     // ControlNet models
     LLM,            // LLM models for multimodal (Qwen, etc.)
     ESRGAN,         // ESRGAN upscaler models
-    TAESD           // TAESD tiny autoencoder models for preview
+    TAESD,          // TAESD tiny autoencoder models for preview
+    MotionModule,   // AnimateDiff / PiD motion module (SD1.5)
+    ADetailer       // YOLOv8 detector for ADetailer pipeline
 };
 
 /**
@@ -81,6 +84,7 @@ struct ModelLoadParams {
     std::optional<std::string> clip_vision;     // CLIP vision encoder (IP-Adapter)
     std::optional<std::string> t5xxl;
     std::optional<std::string> controlnet;      // ControlNet model (optional)
+    std::optional<std::string> motion_module;   // AnimateDiff / PiD motion module (SD1.5)
     std::optional<std::string> llm;             // LLM for multimodal (e.g., Qwen)
     std::optional<std::string> llm_vision;      // LLM vision model (optional)
     std::optional<std::string> taesd;           // Tiny AutoEncoder for previews
@@ -331,6 +335,25 @@ public:
      * Get the LoRA directory path
      */
     std::string get_lora_dir() const;
+
+    // ==================== ControlNet hot-swap ====================
+    // Load / swap a ControlNet on the currently loaded model without a full
+    // context reload. Uses sd_ctx_load_control_net upstream. Acquires the
+    // same mutex generation uses to avoid races.
+    bool hot_load_controlnet(const std::string& name);
+    bool hot_unload_controlnet();
+    bool has_controlnet() const;
+    std::string current_controlnet_name() const;
+
+    // ==================== ADetailer ctx cache (LRU-1) ====================
+    // Acquire an adetailer_ctx_t for the given detector name (resolved via
+    // ModelType::ADetailer). If the cached ctx already matches `detector`
+    // it's returned as-is; otherwise the cached ctx is freed and a fresh one
+    // is created. Returns nullptr on lookup / creation failure. The caller
+    // must hold get_context_mutex() (adetail_image uses the sd_ctx).
+    adetailer_ctx_t* get_or_create_adetailer(const std::string& detector);
+    void unload_adetailer();
+    std::string current_adetailer_name() const;
     
     // ==================== Upscaler Management ====================
     
@@ -413,6 +436,7 @@ private:
     std::string loaded_clip_g_;
     std::string loaded_t5_;
     std::string loaded_controlnet_;
+    std::string loaded_motion_module_;
     std::string loaded_llm_;
     std::string loaded_llm_vision_;
 
@@ -424,6 +448,12 @@ private:
     upscaler_ctx_t* upscaler_context_ = nullptr;
     std::atomic<bool> upscaler_loaded_{false};  // Lock-free check for is_upscaler_loaded
     std::string loaded_upscaler_name_;
+
+    // ADetailer ctx cache (LRU size 1). Guarded by context_mutex_ since the
+    // ADetailer inpaint pass reuses the loaded sd_ctx_t and callers already
+    // hold the same mutex during generation.
+    adetailer_ctx_t* adetailer_context_ = nullptr;
+    std::string loaded_adetailer_name_;
 };
 
 // String conversions
