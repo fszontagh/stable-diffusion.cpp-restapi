@@ -972,6 +972,84 @@ const presets = [
 
 const hasControlNet = computed(() => store.loadedComponents?.controlnet)
 
+// ControlNet hot-swap (sd_ctx_load_control_net upstream). Lets the user
+// pick a different ControlNet on the loaded model without a full reload.
+const availableControlnets = computed(() => store.models?.controlnets || [])
+const selectedControlnet = ref<string>('')
+const controlnetSwapBusy = ref(false)
+watch(() => store.loadedComponents?.controlnet, (v) => {
+  selectedControlnet.value = v || ''
+}, { immediate: true })
+async function swapControlnet() {
+  if (!selectedControlnet.value) return
+  controlnetSwapBusy.value = true
+  try {
+    await api.hotLoadControlnet(selectedControlnet.value)
+    await store.fetchHealth()
+  } catch (e) {
+    console.error('ControlNet hot-swap failed:', e)
+  } finally {
+    controlnetSwapBusy.value = false
+  }
+}
+async function detachControlnet() {
+  controlnetSwapBusy.value = true
+  try {
+    await api.hotUnloadControlnet()
+    await store.fetchHealth()
+  } catch (e) {
+    console.error('ControlNet unload failed:', e)
+  } finally {
+    controlnetSwapBusy.value = false
+  }
+}
+
+// ── ADetailer (face-fix) panel ─────────────────────────────────────────
+const availableAdetailers = computed(() => (store.models as unknown as { adetailers?: { name: string }[] })?.adetailers || [])
+const adetailerDetector = ref<string>('')
+const adetailerPrompt = ref<string>('')
+const adetailerNegative = ref<string>('')
+const adetailerExtraArgs = ref<string>('')
+const adetailerImage = ref<string>('')
+const adetailerBusy = ref(false)
+const adetailerError = ref<string>('')
+const adetailerJobId = ref<string>('')
+async function runAdetailerJob() {
+  adetailerError.value = ''
+  adetailerJobId.value = ''
+  if (!adetailerDetector.value) {
+    adetailerError.value = 'Pick a detector first.'
+    return
+  }
+  if (!adetailerImage.value) {
+    adetailerError.value = 'Upload an input image.'
+    return
+  }
+  if (!adetailerPrompt.value.trim()) {
+    adetailerError.value = 'Prompt is required.'
+    return
+  }
+  adetailerBusy.value = true
+  try {
+    // ImageUploader stores a data URL; strip the "data:...;base64," prefix
+    // since the server accepts the raw base64 payload.
+    const commaIdx = adetailerImage.value.indexOf(',')
+    const b64 = commaIdx >= 0 ? adetailerImage.value.slice(commaIdx + 1) : adetailerImage.value
+    const resp = await api.runAdetailer({
+      detector: adetailerDetector.value,
+      image_base64: b64,
+      prompt: adetailerPrompt.value,
+      negative_prompt: adetailerNegative.value,
+      extra_ad_args: adetailerExtraArgs.value,
+    })
+    adetailerJobId.value = resp.job_id || (resp.job_ids && resp.job_ids[0]) || ''
+  } catch (e) {
+    adetailerError.value = String((e as Error)?.message || e)
+  } finally {
+    adetailerBusy.value = false
+  }
+}
+
 // Handle assistant setting changes
 function handleAssistantSettingChange(event: Event) {
   const customEvent = event as CustomEvent<{ field: string; value: unknown }>
@@ -2541,7 +2619,21 @@ async function handleSubmit() {
           </div>
           <div v-if="!hasControlNet" class="info-hint">
             No ControlNet loaded. Load a ControlNet component with the model
-            (Model Load page) to enable this input.
+            (Model Load page) or attach one live below.
+          </div>
+          <div class="form-group">
+            <label class="form-label">Attached ControlNet (hot-swap)</label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <select v-model="selectedControlnet" class="form-select" style="flex:1;">
+                <option value="">Select a ControlNet...</option>
+                <option v-for="m in availableControlnets" :key="m.name" :value="m.name">{{ m.name }}</option>
+              </select>
+              <button type="button" class="btn btn-sm" :disabled="!selectedControlnet || controlnetSwapBusy || selectedControlnet === (store.loadedComponents?.controlnet || '')" @click="swapControlnet">
+                {{ hasControlNet ? 'Swap' : 'Attach' }}
+              </button>
+              <button v-if="hasControlNet" type="button" class="btn btn-sm" :disabled="controlnetSwapBusy" @click="detachControlnet">Detach</button>
+            </div>
+            <small class="form-hint">Attach or swap the ControlNet on the loaded model without a full reload (sd.cpp sd_ctx_load_control_net).</small>
           </div>
           <ImageUploader v-model="controlImage" label="Control Image" :disabled="!hasControlNet" />
           <div class="form-group">
@@ -2555,6 +2647,48 @@ async function handleSubmit() {
               step="0.05"
               :disabled="!hasControlNet"
             />
+          </div>
+        </div>
+
+        <!-- ADetailer (face fix) — stand-alone pipeline. Uses a YOLOv8
+             detector to locate regions and re-inpaints each via the loaded
+             sd_ctx. Submits an "adetailer" queue job; results land in
+             /queue/{id} like any other generation output. -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">ADetailer (face fix)</h3>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Detector</label>
+            <select v-model="adetailerDetector" class="form-select">
+              <option value="">Select a detector...</option>
+              <option v-for="m in availableAdetailers" :key="m.name" :value="m.name">{{ m.name }}</option>
+            </select>
+            <small class="form-hint">YOLOv8-family detector file placed under paths.adetailer.</small>
+          </div>
+          <ImageUploader v-model="adetailerImage" label="Input Image" />
+          <div class="form-group">
+            <label class="form-label">Prompt</label>
+            <input v-model="adetailerPrompt" type="text" class="form-input" placeholder="e.g. detailed face, sharp eyes" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Negative Prompt</label>
+            <input v-model="adetailerNegative" type="text" class="form-input" placeholder="Optional" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Extra ADetailer Args</label>
+            <input v-model="adetailerExtraArgs" type="text" class="form-input" placeholder="k=v,k=v (sd.cpp adetailer flags)" />
+          </div>
+          <div class="form-group">
+            <button type="button" class="btn btn-primary" :disabled="adetailerBusy" @click="runAdetailerJob">
+              {{ adetailerBusy ? 'Submitting...' : 'Run ADetailer' }}
+            </button>
+          </div>
+          <div v-if="adetailerError" class="info-hint" style="color: var(--color-danger, #b33);">
+            {{ adetailerError }}
+          </div>
+          <div v-if="adetailerJobId" class="info-hint">
+            Job queued: <code>{{ adetailerJobId }}</code>. Watch the Queue page for progress.
           </div>
         </div>
       </div>

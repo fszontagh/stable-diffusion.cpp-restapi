@@ -747,7 +747,7 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
         "extra_sample_args",
         "slg_scale", "skip_layers", "slg_start", "slg_end",
         "custom_sigmas",
-        "ref_images", "auto_resize_ref_image", "increase_ref_index",
+        "ref_images", "ref_image_args",
         // Accepted-but-ignored: backend writes ref_images_count into stored
         // job params (sd_wrapper.cpp:803 to_json()) so the WebUI / queue view
         // can detect that a job had ref images without storing the base64
@@ -816,8 +816,7 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
 
     // Reference images for Flux Kontext
     p.ref_images_base64 = parse_string_array(j, "ref_images");
-    p.auto_resize_ref_image = parse_bool(j, "auto_resize_ref_image", true);
-    p.increase_ref_index = parse_bool(j, "increase_ref_index", false);
+    p.ref_image_args = parse_string(j, "ref_image_args", "");
 
     // ControlNet support
     p.control_strength = parse_float(j, "control_strength", 0.9f);
@@ -926,8 +925,9 @@ nlohmann::json Txt2ImgParams::to_json() const {
     // Reference images
     if (!ref_images_base64.empty()) {
         j["ref_images_count"] = ref_images_base64.size();
-        j["auto_resize_ref_image"] = auto_resize_ref_image;
-        j["increase_ref_index"] = increase_ref_index;
+        if (!ref_image_args.empty()) {
+            j["ref_image_args"] = ref_image_args;
+        }
     }
 
     // Include control_strength if control image was provided
@@ -991,7 +991,7 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
         "slg_scale", "skip_layers", "slg_start", "slg_end",
         "custom_sigmas",
         "init_image_base64", "mask_image_base64",
-        "ref_images", "auto_resize_ref_image", "increase_ref_index",
+        "ref_images", "ref_image_args",
         // Same accepted-but-ignored round-trip field as /txt2img — see comment
         // above the txt2img KNOWN block.
         "ref_images_count",
@@ -1076,8 +1076,7 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
 
     // Reference images for Flux Kontext
     p.ref_images_base64 = parse_string_array(j, "ref_images");
-    p.auto_resize_ref_image = parse_bool(j, "auto_resize_ref_image", true);
-    p.increase_ref_index = parse_bool(j, "increase_ref_index", false);
+    p.ref_image_args = parse_string(j, "ref_image_args", "");
 
     // ControlNet support
     p.control_strength = parse_float(j, "control_strength", 0.9f);
@@ -1193,8 +1192,9 @@ nlohmann::json Img2ImgParams::to_json() const {
     // Reference images
     if (!ref_images_base64.empty()) {
         j["ref_images_count"] = ref_images_base64.size();
-        j["auto_resize_ref_image"] = auto_resize_ref_image;
-        j["increase_ref_index"] = increase_ref_index;
+        if (!ref_image_args.empty()) {
+            j["ref_image_args"] = ref_image_args;
+        }
     }
 
     // Include control_strength if control image was provided
@@ -1549,6 +1549,173 @@ nlohmann::json UpscaleParams::to_json() const {
     };
 }
 
+AdetailerParams AdetailerParams::from_json(const nlohmann::json& j) {
+    AdetailerParams p;
+
+    static const std::unordered_set<std::string> KNOWN = {
+        "detector", "image_base64", "prompt", "negative_prompt",
+        "extra_ad_args", "inpaint_params",
+    };
+    reject_unknown_keys("/adetailer body", j, KNOWN);
+
+    p.detector = parse_string(j, "detector", "");
+    p.prompt = parse_string(j, "prompt", "");
+    p.negative_prompt = parse_string(j, "negative_prompt", "");
+    p.extra_ad_args = parse_string(j, "extra_ad_args", "");
+
+    if (j.contains("image_base64") && !j["image_base64"].is_null()) {
+        std::string base64 = parse_string(j, "image_base64", "");
+        if (!base64.empty()) {
+            p.image_data = SDWrapper::decode_base64_image(
+                base64, p.image_width, p.image_height, p.image_channels
+            );
+        }
+    }
+
+    if (j.contains("inpaint_params") && j["inpaint_params"].is_object()) {
+        const auto& ip = j["inpaint_params"];
+        static const std::unordered_set<std::string> KNOWN_IP = {
+            "steps", "cfg_scale", "distilled_guidance", "seed",
+            "sampler", "scheduler", "clip_skip", "strength",
+            "width", "height", "eta", "flow_shift",
+        };
+        reject_unknown_keys("/adetailer.inpaint_params", ip, KNOWN_IP);
+
+        p.steps = parse_int(ip, "steps", p.steps);
+        p.cfg_scale = parse_float(ip, "cfg_scale", p.cfg_scale);
+        p.distilled_guidance = parse_float(ip, "distilled_guidance", p.distilled_guidance);
+        p.seed = parse_int64(ip, "seed", p.seed);
+        p.sampler = parse_string(ip, "sampler", p.sampler);
+        p.scheduler = parse_string(ip, "scheduler", p.scheduler);
+        p.clip_skip = parse_int(ip, "clip_skip", p.clip_skip);
+        p.strength = parse_float(ip, "strength", p.strength);
+        p.width = parse_int(ip, "width", p.width);
+        p.height = parse_int(ip, "height", p.height);
+        p.eta = parse_float(ip, "eta", p.eta);
+        p.flow_shift = parse_float(ip, "flow_shift", p.flow_shift);
+    }
+
+    return p;
+}
+
+nlohmann::json AdetailerParams::to_json() const {
+    nlohmann::json j;
+    j["detector"] = detector;
+    j["prompt"] = prompt;
+    j["negative_prompt"] = negative_prompt;
+    if (!extra_ad_args.empty()) j["extra_ad_args"] = extra_ad_args;
+    j["image_width"] = image_width;
+    j["image_height"] = image_height;
+    j["inpaint_params"] = {
+        {"steps", steps},
+        {"cfg_scale", cfg_scale},
+        {"distilled_guidance", distilled_guidance},
+        {"seed", seed},
+        {"sampler", sampler},
+        {"scheduler", scheduler},
+        {"clip_skip", clip_skip},
+        {"strength", strength},
+        {"width", width},
+        {"height", height},
+        {"eta", eta},
+        {"flow_shift", flow_shift},
+    };
+    return j;
+}
+
+std::vector<std::string> SDWrapper::run_adetailer(
+    adetailer_ctx_t* adetailer_ctx,
+    sd_ctx_t* sd_ctx,
+    const AdetailerParams& params,
+    const std::string& output_dir,
+    const std::string& job_id
+) {
+    std::vector<std::string> outputs;
+
+    if (adetailer_ctx == nullptr) {
+        throw std::runtime_error("ADetailer context is null (detector not loaded)");
+    }
+    if (sd_ctx == nullptr) {
+        throw std::runtime_error("No base SD model loaded for ADetailer inpaint pass");
+    }
+    if (params.image_data.empty()) {
+        throw std::runtime_error("No input image provided for ADetailer");
+    }
+
+    // Create output directory
+    std::string job_output_dir = (fs::path(output_dir) / job_id).string();
+    utils::create_directory(job_output_dir);
+
+    // Persist input image alongside outputs (mirrors upscale / img2img flow)
+    std::string source_filepath = (fs::path(job_output_dir) / "source.png").string();
+    if (!save_image(source_filepath,
+                    params.image_data.data(),
+                    params.image_width, params.image_height, params.image_channels)) {
+        std::cerr << "[SDWrapper] ADetailer: failed to save source image to "
+                  << source_filepath << std::endl;
+    }
+
+    // Build input image handle
+    sd_image_t input_image;
+    input_image.width = params.image_width;
+    input_image.height = params.image_height;
+    input_image.channel = params.image_channels;
+    input_image.data = const_cast<uint8_t*>(params.image_data.data());
+
+    // ADetailer params
+    sd_adetailer_params_t ad_params;
+    ad_params.prompt = params.prompt.empty() ? nullptr : params.prompt.c_str();
+    ad_params.negative_prompt = params.negative_prompt.empty() ? nullptr : params.negative_prompt.c_str();
+    ad_params.extra_ad_args = params.extra_ad_args.empty() ? nullptr : params.extra_ad_args.c_str();
+
+    // Minimal inpaint params — start from sd.cpp defaults, then apply the
+    // subset the caller sent. Everything else stays at sd_img_gen_params_init
+    // values (no ref images, no ControlNet, no cache, etc.).
+    sd_img_gen_params_t gen_params;
+    sd_img_gen_params_init(&gen_params);
+    gen_params.prompt = params.prompt.empty() ? nullptr : params.prompt.c_str();
+    gen_params.negative_prompt = params.negative_prompt.empty() ? nullptr : params.negative_prompt.c_str();
+    gen_params.clip_skip = params.clip_skip;
+    gen_params.width = params.width;
+    gen_params.height = params.height;
+    gen_params.strength = params.strength;
+    gen_params.seed = params.seed;
+    gen_params.batch_count = 1;
+    gen_params.sample_params.sample_method = str_to_sample_method(params.sampler.c_str());
+    gen_params.sample_params.scheduler = str_to_scheduler(params.scheduler.c_str());
+    gen_params.sample_params.sample_steps = params.steps;
+    gen_params.sample_params.eta = params.eta;
+    gen_params.sample_params.flow_shift = params.flow_shift;
+    gen_params.sample_params.guidance.txt_cfg = params.cfg_scale;
+    gen_params.sample_params.guidance.img_cfg = params.cfg_scale;
+    gen_params.sample_params.guidance.distilled_guidance = params.distilled_guidance;
+
+    // Run pipeline
+    sd_image_t* result_arr = nullptr;
+    int num_results = 0;
+    bool ok = adetail_image(adetailer_ctx, sd_ctx, input_image,
+                            &ad_params, &gen_params,
+                            &result_arr, &num_results);
+    if (!ok || result_arr == nullptr || num_results == 0) {
+        throw std::runtime_error(build_error_message("ADetailer pipeline failed"));
+    }
+
+    for (int i = 0; i < num_results; ++i) {
+        const sd_image_t& img = result_arr[i];
+        if (img.data == nullptr) continue;
+        std::string filename = "adetailer_" + std::to_string(i) + ".png";
+        std::string filepath = (fs::path(job_output_dir) / filename).string();
+        if (!save_image(filepath, img.data, img.width, img.height, img.channel)) {
+            std::cerr << "[SDWrapper] ADetailer: failed to save output " << i << std::endl;
+            continue;
+        }
+        outputs.push_back(job_id + "/" + filename);
+    }
+
+    free_sd_images(result_arr, num_results);
+    return outputs;
+}
+
 std::vector<std::string> SDWrapper::upscale_image(
     upscaler_ctx_t* upscaler_ctx,
     const UpscaleParams& params,
@@ -1744,8 +1911,7 @@ std::vector<std::string> SDWrapper::generate_txt2img(
         }
         gen_params.ref_images = ref_images.data();
         gen_params.ref_images_count = static_cast<uint32_t>(ref_images.size());
-        gen_params.auto_resize_ref_image = params.auto_resize_ref_image;
-        gen_params.increase_ref_index = params.increase_ref_index;
+        gen_params.ref_image_args = params.ref_image_args.empty() ? nullptr : params.ref_image_args.c_str();
 
         // Persist every reference image to disk. The first goes to
         // source.png (Queue view's primary thumbnail slot); extras get
@@ -2120,8 +2286,7 @@ std::vector<std::string> SDWrapper::generate_img2img(
         }
         gen_params.ref_images = ref_images.data();
         gen_params.ref_images_count = static_cast<uint32_t>(ref_images.size());
-        gen_params.auto_resize_ref_image = params.auto_resize_ref_image;
-        gen_params.increase_ref_index = params.increase_ref_index;
+        gen_params.ref_image_args = params.ref_image_args.empty() ? nullptr : params.ref_image_args.c_str();
     }
 
     // ControlNet support

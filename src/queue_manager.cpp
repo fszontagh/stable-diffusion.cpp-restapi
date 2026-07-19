@@ -48,6 +48,7 @@ std::string generation_type_to_string(GenerationType type) {
         case GenerationType::Convert: return "convert";
         case GenerationType::ModelDownload: return "model_download";
         case GenerationType::ModelHash: return "model_hash";
+        case GenerationType::ADetailer: return "adetailer";
         default: return "unknown";
     }
 }
@@ -60,6 +61,7 @@ GenerationType string_to_generation_type(const std::string& str) {
     if (str == "convert") return GenerationType::Convert;
     if (str == "model_download") return GenerationType::ModelDownload;
     if (str == "model_hash") return GenerationType::ModelHash;
+    if (str == "adetailer") return GenerationType::ADetailer;
     return GenerationType::Text2Image;
 }
 
@@ -1091,6 +1093,13 @@ std::vector<std::string> QueueManager::process_job_unlocked(
         expected_steps = int_or(params, "steps", 20);
     } else if (type == GenerationType::Text2Video) {
         expected_steps = int_or(params, "steps", 30);
+    } else if (type == GenerationType::ADetailer) {
+        // Inpaint pass steps live under the nested inpaint_params block.
+        if (params.contains("inpaint_params") && params["inpaint_params"].is_object()) {
+            expected_steps = int_or(params["inpaint_params"], "steps", 20);
+        } else {
+            expected_steps = 20;
+        }
     }
 
     // Set up progress callback with expected steps for phase detection
@@ -1142,6 +1151,9 @@ std::vector<std::string> QueueManager::process_job_unlocked(
                 break;
             case GenerationType::ModelHash:
                 outputs = process_model_hash_unlocked(params, job_id);
+                break;
+            case GenerationType::ADetailer:
+                outputs = process_adetailer_unlocked(params, job_id);
                 break;
         }
     } catch (...) {
@@ -1457,6 +1469,47 @@ std::vector<std::string> QueueManager::process_upscale_unlocked(
         // Actually, let's handle this differently - we'll mark it and let the worker handle it
     }
 
+    return outputs;
+}
+
+std::vector<std::string> QueueManager::process_adetailer_unlocked(
+    const nlohmann::json& job_params,
+    const std::string& job_id
+) {
+    auto params = AdetailerParams::from_json(job_params);
+
+    if (params.detector.empty()) {
+        throw std::runtime_error("detector is required");
+    }
+    if (params.image_data.empty()) {
+        throw std::runtime_error("image_base64 is required for adetailer");
+    }
+
+    // Persist typed params back onto the job for /queue/{id} display.
+    nlohmann::json full_params = params.to_json();
+    update_job_params(job_id, full_params);
+
+    set_batch_info(1);
+
+    std::lock_guard<std::mutex> ctx_lock(model_manager_.get_context_mutex());
+    auto* ctx = model_manager_.get_context();
+    if (!ctx) {
+        throw std::runtime_error("No base model loaded — load one before running ADetailer");
+    }
+
+    // Lazy-create / reuse the adetailer_ctx_t (LRU size 1).
+    auto* ad_ctx = model_manager_.get_or_create_adetailer(params.detector);
+    if (ad_ctx == nullptr) {
+        throw std::runtime_error("Failed to load ADetailer detector: " + params.detector);
+    }
+
+    auto outputs = SDWrapper::run_adetailer(
+        ad_ctx, ctx, params,
+        output_dir_,
+        resolve_job_subpath(job_id, job_params)
+    );
+
+    save_job_config(job_id, GenerationType::ADetailer, full_params);
     return outputs;
 }
 

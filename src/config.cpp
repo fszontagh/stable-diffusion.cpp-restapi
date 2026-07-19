@@ -49,6 +49,8 @@ void to_json(nlohmann::json& j, const PathsConfig& c) {
         {"llm", c.llm},
         {"esrgan", c.esrgan},
         {"taesd", c.taesd},
+        {"motion_module", c.motion_module},
+        {"adetailer", c.adetailer},
         {"output", c.output},
         {"webui", c.webui}
     };
@@ -66,6 +68,8 @@ void from_json(const nlohmann::json& j, PathsConfig& c) {
     c.llm = j.value("llm", "");
     c.esrgan = j.value("esrgan", "");
     c.taesd = j.value("taesd", "");
+    c.motion_module = j.value("motion_module", "");
+    c.adetailer = j.value("adetailer", "");
     c.output = j.value("output", "");
     c.webui = j.value("webui", "");
 }

@@ -43,6 +43,8 @@ struct PathsConfig {
     std::string llm;                // LLM models for multimodal (Qwen, etc.)
     std::string esrgan;             // ESRGAN upscaler models
     std::string taesd;              // TAESD tiny autoencoder models for preview
+    std::string motion_module;      // AnimateDiff / PiD motion modules (SD1.5)
+    std::string adetailer;          // YOLOv8 detectors for ADetailer pipeline
     std::string output;             // Generated output directory
     std::string webui;              // Web UI directory (optional)
 };

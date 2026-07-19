@@ -44,7 +44,8 @@ enum class GenerationType {
     Upscale,
     Convert,
     ModelDownload,
-    ModelHash
+    ModelHash,
+    ADetailer
 };
 
 /**
@@ -398,6 +399,7 @@ private:
     std::vector<std::string> process_img2img_unlocked(const nlohmann::json& params, const std::string& job_id);
     std::vector<std::string> process_txt2vid_unlocked(const nlohmann::json& params, const std::string& job_id);
     std::vector<std::string> process_upscale_unlocked(const nlohmann::json& params, const std::string& job_id);
+    std::vector<std::string> process_adetailer_unlocked(const nlohmann::json& params, const std::string& job_id);
     std::vector<std::string> process_convert_unlocked(const nlohmann::json& params, const std::string& job_id);
     std::vector<std::string> process_model_download_unlocked(const nlohmann::json& params, const std::string& job_id);
     std::vector<std::string> process_model_hash_unlocked(const nlohmann::json& params, const std::string& job_id);

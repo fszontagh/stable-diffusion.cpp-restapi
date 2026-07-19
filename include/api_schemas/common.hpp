@@ -27,7 +27,8 @@ inline const std::vector<std::string> SCHEDULER_VALUES = {
 
 inline const std::vector<std::string> MODEL_TYPE_VALUES = {
     "checkpoint", "diffusion", "vae", "lora", "clip", "t5",
-    "embedding", "controlnet", "llm", "esrgan", "taesd"
+    "embedding", "controlnet", "llm", "esrgan", "taesd",
+    "motion_module", "adetailer"
 };
 
 inline const std::vector<std::string> WEIGHT_TYPE_VALUES = {
