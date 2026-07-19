@@ -2,7 +2,9 @@
 
 sdcpp-restapi ships an optional **Model Context Protocol** server so any MCP-compatible client (Claude Desktop, mcp-cli, custom agents) can drive image/video generation, model management, and queue inspection.
 
-The MCP server is a thin JSON-RPC 2.0 adapter over the existing `ModelManager` and `QueueManager` — it exposes the same capabilities as the REST API through a single endpoint.
+The MCP server is a thin JSON-RPC 2.0 adapter over the existing `ModelManager` and `QueueManager` - it exposes the same capabilities as the REST API through a single endpoint.
+
+> **For REST-side field details** (load options, generation params, etc.) referenced from MCP tool arguments, see [`API_REFERENCE.md`](API_REFERENCE.md) - auto-generated from `/openapi.json`.
 
 ---
 
@@ -163,12 +165,17 @@ Manage the currently loaded diffusion model.
 `model_type`, `vae`, `clip_l`, `clip_g`, `clip_vision`, `t5xxl`, `controlnet`, `llm`, `llm_vision`, `taesd`, `high_noise_diffusion_model`, `photo_maker`.
 
 *Common load options:*
-`flash_attn`, `n_threads`, `keep_clip_on_cpu`, `keep_vae_on_cpu`, `keep_controlnet_on_cpu`, `offload_to_cpu`, `enable_mmap`, `vae_decode_only`, `vae_tiling`, `vae_tile_size_x`, `vae_tile_size_y`, `vae_tile_overlap`, `weight_type`, `tensor_type_rules`, `flow_shift`, `rng_type`, `prediction`, `lora_apply_mode`, `free_params_immediately`.
+`flash_attn`, `diffusion_flash_attn`, `diffusion_conv_direct`, `vae_conv_direct`, `n_threads`, `enable_mmap`, `weight_type`, `vae_format`, `tensor_type_rules`, `rng_type`, `sampler_rng_type`, `prediction`, `lora_apply_mode`, `tae_preview_only`, `eager_load`, `rpc_servers`.
 
-*Experimental VRAM offloading* (only when server is built with `SD_EXPERIMENTAL_OFFLOAD=ON`; check `features.experimental_offload`):
-`offload_mode` (enum: `none` / `cond_only` / `cond_diffusion` / `aggressive` / `layer_streaming`), `vram_estimation` (`dryrun` / `formula`), `offload_cond_stage`, `offload_diffusion`, `reload_cond_stage`, `reload_diffusion`, `target_free_vram_mb`, `min_offload_size_mb`, `streaming_prefetch_layers`, `streaming_keep_layers_behind`, `streaming_min_free_vram_mb`.
+*CPU placement and per-model tuning:*
+- `backend` (string): comma-separated per-component overrides, e.g. `"te=cpu,vae=cpu,controlnet=cpu"` to keep specific components on CPU RAM.
+- `params_backend` (string): global param placement, e.g. `"*=cpu"` to hold model params on CPU RAM.
+- `model_args` (string): comma-separated architecture-specific `key=value` knobs (Chroma DiT/T5 masking, Qwen-Image conditioning, etc.); see `/openapi.json` for the current set.
 
-> Note: setting `offload_mode = "layer_streaming"` is enough to enable per-layer streaming inside sd.cpp — the `streaming_*` fields above only tune behavior, they don't gate it.
+*Streaming (for models larger than VRAM):*
+`stream_layers` (bool), `max_vram` (GiB budget). Set `stream_layers: true` together with `max_vram` to enable per-layer streaming; the streaming planner handles prefetch and eviction internally.
+
+The authoritative list of load fields is `LoadOptions` in `GET /openapi.json`.
 
 > **Schema note:** The tool's `inputSchema` is **flat** — pass all fields at the top level of `arguments`. The MCP handler partitions them correctly for the underlying parser. Any field not explicitly listed above that matches a `ModelLoadParams` key (see `include/model_manager.hpp`) is passed through as well.
 
@@ -186,10 +193,9 @@ Manage the currently loaded diffusion model.
       "vae": "ae.safetensors",
       "llm": "Qwen3-4b-Z-Engineer-V2.gguf",
       "flash_attn": true,
-      "offload_mode": "layer_streaming",
-      "streaming_prefetch_layers": 1,
-      "keep_clip_on_cpu": true,
-      "vae_tiling": true
+      "stream_layers": true,
+      "max_vram": 8,
+      "backend": "te=cpu,vae=cpu"
     }
   }
 }

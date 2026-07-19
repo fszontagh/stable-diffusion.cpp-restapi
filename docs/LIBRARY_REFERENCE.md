@@ -98,15 +98,15 @@ typedef struct {
     const char* diffusion_model_path;     // Separate diffusion model (DiT/UNet)
     const char* vae_path;                 // VAE path
     const char* lora_model_dir;           // Directory for LoRA models
-    bool vae_decode_only;                 // Only load VAE decoder
     int n_threads;                        // Number of CPU threads
     enum sd_type_t wtype;                 // Weight type override
     enum rng_type_t rng_type;             // RNG type
-    bool keep_clip_on_cpu;                // Keep CLIP on CPU
-    bool keep_vae_on_cpu;                 // Keep VAE on CPU
+    const char* backend;                  // Per-component placement, e.g. "te=cpu,vae=cpu"
+    const char* params_backend;           // Global params placement, e.g. "*=cpu"
+    const char* model_args;               // Architecture-specific key=value knobs
     bool diffusion_flash_attn;            // Enable flash attention
-    bool offload_params_to_cpu;           // Offload to CPU when not in use
-    float flow_shift;                     // Flow shift parameter
+    bool stream_layers;                   // Stream diffusion layers when model exceeds VRAM
+    float max_vram;                       // Streaming VRAM budget in GiB
 } sd_ctx_params_t;
 ```
 
@@ -217,7 +217,6 @@ sd_ctx_params_init(&params);
 params.model_path = "/path/to/model.safetensors";
 params.vae_path = "/path/to/vae.safetensors";  // Optional, may be bundled
 params.n_threads = sd_get_num_physical_cores();
-params.vae_decode_only = true;  // txt2img only needs decoder
 
 sd_ctx_t* ctx = new_sd_ctx(&params);
 if (!ctx) {
@@ -234,7 +233,7 @@ params.diffusion_model_path = "/path/to/flux1-dev.gguf";
 params.vae_path = "/path/to/ae.safetensors";
 params.clip_l_path = "/path/to/clip_l.safetensors";
 params.t5xxl_path = "/path/to/t5xxl_fp16.safetensors";
-params.keep_clip_on_cpu = true;
+params.backend = "te=cpu";
 params.diffusion_flash_attn = true;
 params.n_threads = sd_get_num_physical_cores();
 
