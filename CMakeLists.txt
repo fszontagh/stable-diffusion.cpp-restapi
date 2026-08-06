@@ -405,6 +405,7 @@ set(SDCPP_SOURCES
     src/request_handlers.cpp
     src/api_registry.cpp
     src/stb_impl.cpp
+    src/dr_wav_impl.cpp
     src/memory_utils.cpp
     src/architecture_manager.cpp
     src/download_manager.cpp

@@ -401,8 +401,20 @@ struct Txt2VidParams {
     std::vector<std::string> control_frames_base64;  // Multiple control frames
 
     // Reference images for video (Hunyuan / minimax-h3 chain).
-    // TODO: expose ref_videos/ref_audios once we have video/audio upload support.
     std::vector<std::string> ref_images_base64;
+
+    // Reference videos (Hunyuan/minimax-h3 chain). Each ref video is a set of
+    // frames + optional audio. Frames are base64-encoded PNG/JPEG. Audio is a
+    // base64-encoded WAV file (mono/stereo, i16/i24/i32/f32 PCM).
+    struct RefVideoParam {
+        std::vector<std::string> frames_base64;
+        int fps = 24;
+        std::string audio_wav_base64;
+    };
+    std::vector<RefVideoParam> ref_videos;
+
+    // Reference audios (standalone). Each entry is a base64-encoded WAV file.
+    std::vector<std::string> ref_audios_wav_base64;
 
     // High-noise phase parameters (MoE models like Wan2.2). Aligned with
     // upstream's full sd_sample_params_t — the previous version only mirrored
@@ -629,6 +641,23 @@ public:
         int& channels
     );
     
+    /**
+     * Decode a WAV byte buffer into raw f32 mono/stereo interleaved samples.
+     * @param data Pointer to raw WAV file bytes.
+     * @param len Length of data buffer in bytes.
+     * @param sample_rate Output sample rate.
+     * @param channels Output channel count.
+     * @param samples Output interleaved f32 sample buffer.
+     * @return true on success.
+     */
+    static bool decode_wav_bytes(
+        const uint8_t* data,
+        size_t len,
+        uint32_t& sample_rate,
+        uint32_t& channels,
+        std::vector<float>& samples
+    );
+
     /**
      * Decode base64 image data and load
      * @param base64_data Base64 encoded image

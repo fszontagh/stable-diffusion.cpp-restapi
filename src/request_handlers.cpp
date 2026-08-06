@@ -1098,6 +1098,8 @@ void RequestHandlers::handle_health(const httplib::Request& req, httplib::Respon
             // and Plus/Resampler variants supported by the underlying sd.cpp.
             {"ip_adapter", true},
             {"ip_adapter_plus", true},
+            {"ref_video", true},
+            {"ref_audio", true},
             {"auth_required", auth_manager_.enabled()}
         }}
     };

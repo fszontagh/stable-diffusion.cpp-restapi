@@ -103,6 +103,66 @@ const ipAdapterStrength = ref(1.0)
 // Single-slot for now; can be extended to array if models want it.
 const videoRefImage = ref<string | undefined>()
 
+// Txt2Vid reference videos: array of { frames (base64[]), fps, audio_wav_base64? }
+interface RefVideoSlot {
+  frames: string[]
+  fps: number
+  audio_wav_base64: string
+}
+const refVideoSlots = ref<RefVideoSlot[]>([])
+
+// Txt2Vid reference audios: array of base64 WAV strings, wrapped in slots.
+interface RefAudioSlot {
+  audio_wav_base64: string
+}
+const refAudioSlots = ref<RefAudioSlot[]>([])
+
+function stripBase64Prefix(dataUrl: string): string {
+  const idx = dataUrl.indexOf(',')
+  return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(stripBase64Prefix(String(r.result || '')))
+    r.onerror = () => reject(r.error || new Error('read failed'))
+    r.readAsDataURL(file)
+  })
+}
+
+function addRefVideoSlot() {
+  refVideoSlots.value.push({ frames: [], fps: 24, audio_wav_base64: '' })
+}
+function removeRefVideoSlot(idx: number) {
+  refVideoSlots.value.splice(idx, 1)
+}
+async function onRefVideoFramesSelected(idx: number, e: Event) {
+  const files = (e.target as HTMLInputElement).files
+  if (!files || files.length === 0) return
+  const encoded: string[] = []
+  for (const f of Array.from(files)) {
+    encoded.push(await readFileAsBase64(f))
+  }
+  refVideoSlots.value[idx].frames = encoded
+}
+async function onRefVideoAudioSelected(idx: number, e: Event) {
+  const files = (e.target as HTMLInputElement).files
+  if (!files || files.length === 0) return
+  refVideoSlots.value[idx].audio_wav_base64 = await readFileAsBase64(files[0])
+}
+function addRefAudioSlot() {
+  refAudioSlots.value.push({ audio_wav_base64: '' })
+}
+function removeRefAudioSlot(idx: number) {
+  refAudioSlots.value.splice(idx, 1)
+}
+async function onRefAudioSelected(idx: number, e: Event) {
+  const files = (e.target as HTMLInputElement).files
+  if (!files || files.length === 0) return
+  refAudioSlots.value[idx].audio_wav_base64 = await readFileAsBase64(files[0])
+}
+
 // txt2vid params
 const videoFrames = ref(33)
 const fps = ref(16)
@@ -1844,6 +1904,27 @@ async function handleSubmit() {
       if (videoRefImage.value) {
         params.ref_images = [stripDataUrlPrefix(videoRefImage.value)]
       }
+      // Reference videos: only include slots with at least one frame.
+      const builtRefVideos = refVideoSlots.value
+        .filter(s => s.frames.length > 0)
+        .map(s => {
+          const entry: { frames: string[]; fps: number; audio_wav_base64?: string } = {
+            frames: s.frames,
+            fps: s.fps
+          }
+          if (s.audio_wav_base64) entry.audio_wav_base64 = s.audio_wav_base64
+          return entry
+        })
+      if (builtRefVideos.length > 0) {
+        params.ref_videos = builtRefVideos
+      }
+      // Reference audios: only slots with a payload.
+      const builtRefAudios = refAudioSlots.value
+        .map(s => s.audio_wav_base64)
+        .filter(s => !!s)
+      if (builtRefAudios.length > 0) {
+        params.ref_audios = builtRefAudios
+      }
       // High-noise MoE pass extras. Only emit overrides; -1/0/"" mean inherit.
       if (highNoiseImgCfg.value !== -1) {
         params.high_noise_img_cfg = highNoiseImgCfg.value
@@ -2706,8 +2787,7 @@ async function handleSubmit() {
         </div>
 
         <!-- Video reference image (Hunyuan / minimax-h3 chain). Shown only in
-             txt2vid mode. ref_videos / ref_audios not yet wired - need file
-             upload plumbing first (see the sd_wrapper TODO). -->
+             txt2vid mode. -->
         <div v-if="mode === 'txt2vid'" class="card">
           <div class="card-header">
             <h3 class="card-title">Reference Image</h3>
@@ -2716,6 +2796,64 @@ async function handleSubmit() {
             Optional reference image for Hunyuan-family / minimax-h3 video models.
           </div>
           <ImageUploader v-model="videoRefImage" label="Reference Image" />
+        </div>
+
+        <!-- Reference videos: array of { frames, fps, audio_wav_base64 }. -->
+        <div v-if="mode === 'txt2vid'" class="card">
+          <div class="card-header">
+            <h3 class="card-title">Reference Videos</h3>
+            <button type="button" class="btn btn-sm" @click="addRefVideoSlot">Add reference video</button>
+          </div>
+          <div class="info-hint">
+            Each slot: pick multiple image frames, set fps, and optionally attach a WAV audio track.
+          </div>
+          <div v-if="refVideoSlots.length === 0" class="info-hint">No reference videos.</div>
+          <div v-for="(slot, idx) in refVideoSlots" :key="'refvid-' + idx" class="form-group">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong>Video #{{ idx + 1 }}</strong>
+              <button type="button" class="btn btn-sm" @click="removeRefVideoSlot(idx)">Remove</button>
+            </div>
+            <label class="form-label">Frames ({{ slot.frames.length }} loaded)</label>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              class="form-input"
+              @change="(e) => onRefVideoFramesSelected(idx, e)"
+            />
+            <label class="form-label">FPS</label>
+            <input v-model.number="slot.fps" type="number" min="1" max="120" class="form-input" />
+            <label class="form-label">Audio (WAV, optional)</label>
+            <input
+              type="file"
+              accept="audio/wav,.wav"
+              class="form-input"
+              @change="(e) => onRefVideoAudioSelected(idx, e)"
+            />
+            <small v-if="slot.audio_wav_base64" class="form-hint">Audio attached.</small>
+          </div>
+        </div>
+
+        <!-- Reference audios: array of base64 WAV files. -->
+        <div v-if="mode === 'txt2vid'" class="card">
+          <div class="card-header">
+            <h3 class="card-title">Reference Audios</h3>
+            <button type="button" class="btn btn-sm" @click="addRefAudioSlot">Add reference audio</button>
+          </div>
+          <div v-if="refAudioSlots.length === 0" class="info-hint">No reference audios.</div>
+          <div v-for="(slot, idx) in refAudioSlots" :key="'refaud-' + idx" class="form-group">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong>Audio #{{ idx + 1 }}</strong>
+              <button type="button" class="btn btn-sm" @click="removeRefAudioSlot(idx)">Remove</button>
+            </div>
+            <input
+              type="file"
+              accept="audio/wav,.wav"
+              class="form-input"
+              @change="(e) => onRefAudioSelected(idx, e)"
+            />
+            <small v-if="slot.audio_wav_base64" class="form-hint">Audio loaded.</small>
+          </div>
         </div>
 
         <!-- ADetailer (face fix) — stand-alone pipeline. Uses a YOLOv8

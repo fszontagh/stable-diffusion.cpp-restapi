@@ -18,6 +18,7 @@
 #include "stable-diffusion.h"
 #include "stb_image.h"
 #include "stb_image_write.h"
+#include "dr_wav.h"
 
 namespace fs = std::filesystem;
 
@@ -1296,7 +1297,8 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
         "clip_skip",
         "slg_scale", "skip_layers", "slg_start", "slg_end",
         "init_image_base64", "end_image_base64",
-        "control_image_base64", "control_frames", "ref_images", "vace_strength",
+        "control_image_base64", "control_frames", "ref_images",
+        "ref_videos", "ref_audios", "vace_strength",
         "strength",
         // High-noise (MoE) variants — full sample_params parity
         "high_noise_steps", "high_noise_cfg_scale", "high_noise_img_cfg",
@@ -1397,6 +1399,21 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
 
     // Reference images (Hunyuan / minimax-h3 chain). Parse always; empty = none.
     p.ref_images_base64 = parse_string_array(j, "ref_images");
+
+    // Reference videos: array of { frames: [base64], fps: int, audio_wav_base64?: string }
+    if (j.contains("ref_videos") && j["ref_videos"].is_array()) {
+        for (const auto& item : j["ref_videos"]) {
+            if (!item.is_object()) continue;
+            Txt2VidParams::RefVideoParam rv;
+            rv.frames_base64 = parse_string_array(item, "frames");
+            rv.fps = parse_int(item, "fps", 24);
+            rv.audio_wav_base64 = parse_string(item, "audio_wav_base64", "");
+            p.ref_videos.push_back(std::move(rv));
+        }
+    }
+
+    // Reference audios: array of base64 WAV strings.
+    p.ref_audios_wav_base64 = parse_string_array(j, "ref_audios");
 
     // High-noise phase parameters (MoE models) — full sample_params parity
     p.high_noise_steps = parse_int(j, "high_noise_steps", -1);
@@ -1505,6 +1522,25 @@ nlohmann::json Txt2VidParams::to_json() const {
     }
     if (!control_frames_base64.empty()) {
         j["control_frames_count"] = control_frames_base64.size();
+    }
+
+    // Reference videos / audios round-trip (sentinels; payload persisted on disk).
+    if (!ref_videos.empty()) {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& rv : ref_videos) {
+            nlohmann::json entry = {
+                {"frames_count", rv.frames_base64.size()},
+                {"fps", rv.fps},
+            };
+            if (!rv.audio_wav_base64.empty()) {
+                entry["has_audio"] = true;
+            }
+            arr.push_back(entry);
+        }
+        j["ref_videos"] = arr;
+    }
+    if (!ref_audios_wav_base64.empty()) {
+        j["ref_audios_count"] = ref_audios_wav_base64.size();
     }
 
     // High-noise params (MoE)
@@ -2647,11 +2683,136 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
         vid_params.ref_images = nullptr;
         vid_params.ref_images_count = 0;
     }
-    // TODO: expose ref_videos/ref_audios once we have video/audio upload support.
-    vid_params.ref_videos = nullptr;
-    vid_params.ref_videos_count = 0;
-    vid_params.ref_audios = nullptr;
-    vid_params.ref_audios_count = 0;
+    // Reference videos: decode frames + optional audio for each. Keep buffers
+    // alive on the stack until generate_video returns.
+    std::vector<std::vector<std::vector<uint8_t>>> ref_video_frame_buffers;   // [i][j] = frame pixel buffer
+    std::vector<std::vector<sd_image_t>>            ref_video_frame_arrays;   // [i] = sd_image_t array for video i
+    std::vector<std::vector<float>>                 ref_video_audio_samples;  // [i] = decoded audio samples
+    std::vector<sd_ref_video_t>                     ref_videos_vec;
+    ref_video_frame_buffers.reserve(params.ref_videos.size());
+    ref_video_frame_arrays.reserve(params.ref_videos.size());
+    ref_video_audio_samples.reserve(params.ref_videos.size());
+    ref_videos_vec.reserve(params.ref_videos.size());
+
+    for (size_t i = 0; i < params.ref_videos.size(); ++i) {
+        const auto& rv = params.ref_videos[i];
+        std::vector<std::vector<uint8_t>> frame_buffers;
+        std::vector<sd_image_t> frame_array;
+        frame_buffers.reserve(rv.frames_base64.size());
+        frame_array.reserve(rv.frames_base64.size());
+        for (const auto& b64 : rv.frames_base64) {
+            int w = 0, h = 0, c = 0;
+            auto data = SDWrapper::decode_base64_image(b64, w, h, c);
+            frame_buffers.push_back(std::move(data));
+            sd_image_t img{};
+            img.width = w;
+            img.height = h;
+            img.channel = c;
+            img.data = frame_buffers.back().data();
+            frame_array.push_back(img);
+        }
+
+        std::vector<float> audio_samples;
+        uint32_t sr = 0;
+        uint32_t ch = 0;
+        if (!rv.audio_wav_base64.empty()) {
+            auto wav_bytes = utils::base64_decode(rv.audio_wav_base64);
+            if (!SDWrapper::decode_wav_bytes(wav_bytes.data(), wav_bytes.size(), sr, ch, audio_samples)) {
+                throw std::runtime_error("Failed to decode ref_video[" + std::to_string(i) + "].audio_wav_base64");
+            }
+        }
+
+        // Persist inputs alongside outputs.
+        for (size_t f = 0; f < frame_array.size(); ++f) {
+            char fname[96];
+            snprintf(fname, sizeof(fname), "ref_video_%zu_frame_%04zu.png", i, f);
+            std::string path = (fs::path(job_output_dir) / fname).string();
+            if (!save_image(path, frame_array[f].data,
+                            frame_array[f].width, frame_array[f].height, frame_array[f].channel)) {
+                std::cerr << "[SDWrapper] Failed to save ref video frame " << path << std::endl;
+            }
+        }
+        if (!rv.audio_wav_base64.empty()) {
+            char aname[64];
+            snprintf(aname, sizeof(aname), "ref_video_%zu_audio.wav", i);
+            std::string apath = (fs::path(job_output_dir) / aname).string();
+            auto wav_bytes = utils::base64_decode(rv.audio_wav_base64);
+            std::ofstream ofs(apath, std::ios::binary);
+            if (ofs) {
+                ofs.write(reinterpret_cast<const char*>(wav_bytes.data()),
+                          static_cast<std::streamsize>(wav_bytes.size()));
+            } else {
+                std::cerr << "[SDWrapper] Failed to save ref video audio " << apath << std::endl;
+            }
+        }
+
+        ref_video_frame_buffers.push_back(std::move(frame_buffers));
+        ref_video_frame_arrays.push_back(std::move(frame_array));
+        ref_video_audio_samples.push_back(std::move(audio_samples));
+
+        sd_ref_video_t rvid{};
+        rvid.frames = ref_video_frame_arrays.back().empty()
+                          ? nullptr
+                          : ref_video_frame_arrays.back().data();
+        rvid.frame_count = static_cast<int>(ref_video_frame_arrays.back().size());
+        rvid.fps = rv.fps;
+        rvid.audio.sample_rate = sr;
+        rvid.audio.channels = ch;
+        rvid.audio.sample_count = ref_video_audio_samples.back().size();
+        rvid.audio.data = ref_video_audio_samples.back().empty()
+                              ? nullptr
+                              : ref_video_audio_samples.back().data();
+        ref_videos_vec.push_back(rvid);
+    }
+    if (!ref_videos_vec.empty()) {
+        vid_params.ref_videos = ref_videos_vec.data();
+        vid_params.ref_videos_count = static_cast<int>(ref_videos_vec.size());
+    } else {
+        vid_params.ref_videos = nullptr;
+        vid_params.ref_videos_count = 0;
+    }
+
+    // Reference audios (standalone WAV files).
+    std::vector<std::vector<float>> ref_audio_samples;
+    std::vector<sd_audio_t>         ref_audios_vec;
+    ref_audio_samples.reserve(params.ref_audios_wav_base64.size());
+    ref_audios_vec.reserve(params.ref_audios_wav_base64.size());
+    for (size_t i = 0; i < params.ref_audios_wav_base64.size(); ++i) {
+        const auto& b64 = params.ref_audios_wav_base64[i];
+        auto wav_bytes = utils::base64_decode(b64);
+        std::vector<float> samples;
+        uint32_t sr = 0;
+        uint32_t ch = 0;
+        if (!SDWrapper::decode_wav_bytes(wav_bytes.data(), wav_bytes.size(), sr, ch, samples)) {
+            throw std::runtime_error("Failed to decode ref_audios[" + std::to_string(i) + "]");
+        }
+        ref_audio_samples.push_back(std::move(samples));
+
+        char aname[64];
+        snprintf(aname, sizeof(aname), "ref_audio_%zu.wav", i);
+        std::string apath = (fs::path(job_output_dir) / aname).string();
+        std::ofstream ofs(apath, std::ios::binary);
+        if (ofs) {
+            ofs.write(reinterpret_cast<const char*>(wav_bytes.data()),
+                      static_cast<std::streamsize>(wav_bytes.size()));
+        } else {
+            std::cerr << "[SDWrapper] Failed to save ref audio " << apath << std::endl;
+        }
+
+        sd_audio_t a{};
+        a.sample_rate = sr;
+        a.channels = ch;
+        a.sample_count = ref_audio_samples.back().size();
+        a.data = ref_audio_samples.back().empty() ? nullptr : ref_audio_samples.back().data();
+        ref_audios_vec.push_back(a);
+    }
+    if (!ref_audios_vec.empty()) {
+        vid_params.ref_audios = ref_audios_vec.data();
+        vid_params.ref_audios_count = static_cast<int>(ref_audios_vec.size());
+    } else {
+        vid_params.ref_audios = nullptr;
+        vid_params.ref_audios_count = 0;
+    }
 
     // ControlNet support for video uses control_frames array
     // Support single control image or multiple control frames
@@ -2810,6 +2971,36 @@ std::vector<uint8_t> SDWrapper::decode_base64_image(
     stbi_image_free(data);
 
     return result;
+}
+
+bool SDWrapper::decode_wav_bytes(
+    const uint8_t* data,
+    size_t len,
+    uint32_t& sample_rate,
+    uint32_t& channels,
+    std::vector<float>& samples
+) {
+    if (data == nullptr || len == 0) {
+        return false;
+    }
+
+    drwav wav;
+    if (!drwav_init_memory(&wav, data, len, nullptr)) {
+        return false;
+    }
+
+    sample_rate = wav.sampleRate;
+    channels    = wav.channels;
+    const uint64_t frame_count = wav.totalPCMFrameCount;
+    samples.assign(static_cast<size_t>(frame_count) * channels, 0.0f);
+
+    uint64_t decoded = drwav_read_pcm_frames_f32(&wav, frame_count, samples.data());
+    drwav_uninit(&wav);
+
+    if (decoded != frame_count) {
+        samples.resize(static_cast<size_t>(decoded) * channels);
+    }
+    return decoded > 0;
 }
 
 bool SDWrapper::save_image(

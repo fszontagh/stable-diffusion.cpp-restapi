@@ -132,8 +132,11 @@ struct Txt2VidRequest {
             .optional_field("strength", schema::FieldType::Number, "Denoising strength for init image", 0.75)
             .array_field("control_frames", schema::FieldType::String, "Control frames as base64 strings")
             // Reference images for the video path (Hunyuan / minimax-h3 chain).
-            // ref_videos / ref_audios are TODO - need upload plumbing first.
             .array_field("ref_images", schema::FieldType::String, "Reference images as base64 strings (Hunyuan-family video models)")
+            // Reference videos: array of { frames: [base64], fps, audio_wav_base64? }
+            .array_field("ref_videos", schema::FieldType::Object, "Reference videos: each entry is an object with frames (array of base64 image strings), fps (int, default 24), and optional audio_wav_base64 (base64-encoded WAV, mono/stereo PCM).")
+            // Reference audios: base64-encoded WAV files.
+            .array_field("ref_audios", schema::FieldType::String, "Reference audios as base64-encoded WAV strings (mono/stereo PCM, i16/i24/i32/f32).")
             // High-noise pass (MoE models like Wan2.2) - full sd_sample_params_t parity
             .optional_field("high_noise_steps", schema::FieldType::Integer, "High-noise sampling steps (-1 for auto)", -1)
             .optional_field("high_noise_cfg_scale", schema::FieldType::Number, "CFG scale for high-noise phase", 7.0)

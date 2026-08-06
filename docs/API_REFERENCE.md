@@ -1663,7 +1663,9 @@ Extends: [GenerationRequestBase](#schema-generationrequestbase)
 | `high_noise_steps` | integer |  | -1 | High-noise sampling steps (-1 for auto) |
 | `init_image_base64` | string |  |  | Starting frame image as base64 |
 | `moe_boundary` | number |  | 0.875 | MoE boundary for WAN models |
+| `ref_audios` | array<string> |  |  | Reference audios as base64-encoded WAV strings (mono/stereo PCM, i16/i24/i32/f32). |
 | `ref_images` | array<string> |  |  | Reference images as base64 strings (Hunyuan-family video models) |
+| `ref_videos` | array<object> |  |  | Reference videos: each entry is an object with frames (array of base64 image strings), fps (int, default 24), and optional audio_wav_base64 (base64-encoded WAV, mono/stereo PCM). |
 | `strength` | number |  | 0.75 | Denoising strength for init image |
 | `vace_strength` | number |  | 1.0 | VACE control strength |
 | `video_frames` | integer |  | 33 | Number of video frames to generate |

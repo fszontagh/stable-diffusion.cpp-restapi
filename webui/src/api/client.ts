@@ -308,6 +308,15 @@ export interface Img2ImgParams extends GenerationParams {
   mask_image_base64?: string
 }
 
+export interface RefVideoParam {
+  /** Reference video frames as base64-encoded image strings. */
+  frames: string[]
+  /** Frames per second (default 24). */
+  fps: number
+  /** Optional base64-encoded WAV audio track (mono/stereo PCM). */
+  audio_wav_base64?: string
+}
+
 export interface Txt2VidParams extends GenerationParams {
   video_frames?: number
   fps?: number
@@ -318,6 +327,10 @@ export interface Txt2VidParams extends GenerationParams {
   control_frames?: string[]
   /** Reference images (Hunyuan-family video models) as base64 strings. */
   ref_images?: string[]
+  /** Reference videos - each entry is { frames: base64[], fps, audio_wav_base64? } */
+  ref_videos?: RefVideoParam[]
+  /** Reference audios - each entry is a base64-encoded WAV file. */
+  ref_audios?: string[]
   // High-noise pass (MoE models like Wan2.2) — full sd_sample_params_t parity
   high_noise_steps?: number
   high_noise_cfg_scale?: number
