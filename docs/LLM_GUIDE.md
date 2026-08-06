@@ -165,9 +165,11 @@ When a user asks for generation defaults ("what steps should I use for Flux?"), 
 | Longcat-Image | ae.safetensors (Flux VAE), Qwen2.5-VL 7B LLM | 5.0 | 20 | euler | discrete (flow_shift=3) | 1024×1024 |
 | LTXAV (video) | video VAE, audio_vae, Gemma-3 12B LLM, embeddings_connectors | 6.0 | 20 | euler | **ltx2** | 1280×720, 33 frames @ 24fps |
 
-**Full list of architecture keys:** Anima, AnimateDiff-v2, AnimateDiff-v3, Chroma, Chroma-Radiance, Flux, Flux Kontext, Flux Schnell, Flux2 Dev, Flux2 Klein 4B, Flux2 Klein 9B, Flux2 Klein Base 4B, Flux2 Klein Base 9B, HiDream-O1, HunyuanVideo-1.5, Krea2OstrisEdit, LCM, LCM-SDXL, Lingbot, Longcat-Image, LTXAV, Ovis, PiD-1.5, Qwen, Qwen Image Edit, SD1, SD2, SD3, SDXL, SDXS-512, SeFi-Image-Base, SeFi-Image-RL, SeFi-Image-Turbo, SSD-1B, Vega, Wan, Z-Image.
+**Full list of architecture keys:** Anima, AnimateDiff-v2, AnimateDiff-v3, Chroma, Chroma-Radiance, Flux, Flux Kontext, Flux Schnell, Flux2 Dev, Flux2 Klein 4B, Flux2 Klein 9B, Flux2 Klein Base 4B, Flux2 Klein Base 9B, HiDream-O1, HunyuanVideo-1.5, Krea2OstrisEdit, LCM, LCM-SDXL, Lingbot, Longcat-Image, LTXAV, Mage-Flow, Minimax-H3, Ovis, PiD-1.5, Qwen, Qwen Image Edit, SD1, SD2, SD3, SDXL, SDXS-512, SeFi-Image-Base, SeFi-Image-RL, SeFi-Image-Turbo, SSD-1B, Vega, Wan, Z-Image.
 
-**Recent additions:** AnimateDiff-v2/v3 and PiD-1.5 use an SD 1.5 base + a `motion_module`; loaded together they enable video generation. HunyuanVideo-1.5, Lingbot, and Wan-family are video-first. Krea2OstrisEdit is a Flux2-family edit variant using `ref_image_args` for reference-image processing.
+**Recent additions:** AnimateDiff-v2/v3 and PiD-1.5 use an SD 1.5 base + a `motion_module`; loaded together they enable video generation. HunyuanVideo-1.5, Lingbot, and Wan-family are video-first. Krea2OstrisEdit is a Flux2-family edit variant using `ref_image_args` for reference-image processing. Mage-Flow is a Flux-family flow model. Minimax-H3 is an image model that ships with a trained VAE latent2rgb projection so previews look decent by default.
+
+**IP-Adapter (SD 1.5 / SDXL):** load an IP-Adapter file alongside the base model (`ip_adapter` in `POST /models/load`), then send `ip_adapter_image_base64` + `ip_adapter_strength` (default `1.0`) per generation. Supports IP-Adapter Plus / Resampler variants. Advertised via `features.ip_adapter` and `features.ip_adapter_plus`.
 
 To read the live preset list from a running server: `GET /architectures` or MCP resource `sdcpp://architectures`.
 

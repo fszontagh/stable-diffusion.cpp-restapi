@@ -93,6 +93,7 @@ std::string model_type_to_string(ModelType type) {
         case ModelType::T5: return "t5";
         case ModelType::Embedding: return "embedding";
         case ModelType::ControlNet: return "controlnet";
+        case ModelType::IPAdapter: return "ip_adapter";
         case ModelType::LLM: return "llm";
         case ModelType::ESRGAN: return "esrgan";
         case ModelType::TAESD: return "taesd";
@@ -111,6 +112,7 @@ ModelType string_to_model_type(const std::string& str) {
     if (str == "t5") return ModelType::T5;
     if (str == "embedding") return ModelType::Embedding;
     if (str == "controlnet") return ModelType::ControlNet;
+    if (str == "ip_adapter" || str == "ipadapter") return ModelType::IPAdapter;
     if (str == "llm") return ModelType::LLM;
     if (str == "esrgan") return ModelType::ESRGAN;
     if (str == "taesd") return ModelType::TAESD;
@@ -214,6 +216,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         "model_name", "model_type",
         // Component model paths
         "vae", "clip_l", "clip_g", "clip_vision", "t5xxl", "controlnet",
+        "ip_adapter",
         "motion_module",
         "llm", "llm_vision", "taesd",
         "high_noise_diffusion_model", "uncond_diffusion_model", "photo_maker",
@@ -248,6 +251,9 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
     }
     if (j.contains("controlnet") && !j["controlnet"].is_null()) {
         params.controlnet = j["controlnet"].get<std::string>();
+    }
+    if (j.contains("ip_adapter") && !j["ip_adapter"].is_null()) {
+        params.ip_adapter = j["ip_adapter"].get<std::string>();
     }
     if (j.contains("motion_module") && !j["motion_module"].is_null()) {
         params.motion_module = j["motion_module"].get<std::string>();
@@ -458,6 +464,10 @@ void ModelManager::scan_models() {
     if (!config_.paths.controlnet.empty() && utils::directory_exists(config_.paths.controlnet)) {
         scan_directory(config_.paths.controlnet, ModelType::ControlNet);
     }
+
+    if (!config_.paths.ip_adapter.empty() && utils::directory_exists(config_.paths.ip_adapter)) {
+        scan_directory(config_.paths.ip_adapter, ModelType::IPAdapter);
+    }
     
     if (!config_.paths.llm.empty() && utils::directory_exists(config_.paths.llm)) {
         scan_directory(config_.paths.llm, ModelType::LLM);
@@ -526,6 +536,7 @@ std::string ModelManager::get_base_path(ModelType type) const {
         case ModelType::T5: return config_.paths.t5;
         case ModelType::Embedding: return config_.paths.embeddings;
         case ModelType::ControlNet: return config_.paths.controlnet;
+        case ModelType::IPAdapter: return config_.paths.ip_adapter;
         case ModelType::LLM: return config_.paths.llm;
         case ModelType::ESRGAN: return config_.paths.esrgan;
         case ModelType::TAESD: return config_.paths.taesd;
@@ -591,6 +602,7 @@ nlohmann::json ModelManager::get_models_json(const ModelFilter& filter) const {
     add_models(ModelType::CLIP, "clip");
     add_models(ModelType::T5, "t5");
     add_models(ModelType::ControlNet, "controlnets");
+    add_models(ModelType::IPAdapter, "ip_adapters");
     add_models(ModelType::LLM, "llm");
     add_models(ModelType::ESRGAN, "esrgan");
     add_models(ModelType::TAESD, "taesd");
@@ -720,6 +732,17 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         if (!controlnet_info) {
             std::string base_path = get_base_path(ModelType::ControlNet);
             errors.push_back("ControlNet model not found: '" + *params.controlnet +
+                           "' (searched in: " + (base_path.empty() ? "<not configured>" : base_path) + ")");
+        }
+    }
+
+    // Validate IP-Adapter if specified
+    std::optional<ModelInfo> ip_adapter_info;
+    if (params.ip_adapter) {
+        ip_adapter_info = get_model(*params.ip_adapter, ModelType::IPAdapter);
+        if (!ip_adapter_info) {
+            std::string base_path = get_base_path(ModelType::IPAdapter);
+            errors.push_back("IP-Adapter model not found: '" + *params.ip_adapter +
                            "' (searched in: " + (base_path.empty() ? "<not configured>" : base_path) + ")");
         }
     }
@@ -940,6 +963,14 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         controlnet_path = controlnet_info->full_path;
         ctx_params.control_net_path = controlnet_path.c_str();
         std::cout << "[ModelManager] ControlNet: " << *params.controlnet << std::endl;
+    }
+
+    // Set IP-Adapter if specified (leejet PR #1803/#1815/#1824/#1839)
+    std::string ip_adapter_path;
+    if (ip_adapter_info) {
+        ip_adapter_path = ip_adapter_info->full_path;
+        ctx_params.ip_adapter_path = ip_adapter_path.c_str();
+        std::cout << "[ModelManager] IP-Adapter: " << *params.ip_adapter << std::endl;
     }
 
     // Set Motion module if specified (AnimateDiff / PiD)
@@ -1265,6 +1296,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         loaded_clip_g_.clear();
         loaded_t5_.clear();
         loaded_controlnet_.clear();
+        loaded_ip_adapter_.clear();
         loaded_motion_module_.clear();
         loaded_llm_.clear();
         loaded_llm_vision_.clear();
@@ -1293,6 +1325,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_clip_g_ = params.clip_g.value_or("");
     loaded_t5_ = params.t5xxl.value_or("");
     loaded_controlnet_ = params.controlnet.value_or("");
+    loaded_ip_adapter_ = params.ip_adapter.value_or("");
     loaded_motion_module_ = params.motion_module.value_or("");
     loaded_llm_ = params.llm.value_or("");
     loaded_llm_vision_ = params.llm_vision.value_or("");
@@ -1382,6 +1415,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         if (params.clip_vision) persisted["clip_vision"] = *params.clip_vision;
         if (params.t5xxl)       persisted["t5xxl"]       = *params.t5xxl;
         if (params.controlnet)  persisted["controlnet"]  = *params.controlnet;
+        if (params.ip_adapter)  persisted["ip_adapter"]  = *params.ip_adapter;
         if (params.motion_module) persisted["motion_module"] = *params.motion_module;
         if (params.llm)         persisted["llm"]         = *params.llm;
         if (params.llm_vision)  persisted["llm_vision"]  = *params.llm_vision;
@@ -1516,6 +1550,7 @@ void ModelManager::unload_model() {
         loaded_clip_g_.clear();
         loaded_t5_.clear();
         loaded_controlnet_.clear();
+        loaded_ip_adapter_.clear();
         loaded_motion_module_.clear();
         loaded_llm_.clear();
         loaded_llm_vision_.clear();
@@ -1650,6 +1685,9 @@ nlohmann::json ModelManager::get_loaded_models_info() const {
     }
     if (!loaded_controlnet_.empty()) {
         components["controlnet"] = loaded_controlnet_;
+    }
+    if (!loaded_ip_adapter_.empty()) {
+        components["ip_adapter"] = loaded_ip_adapter_;
     }
     if (!loaded_motion_module_.empty()) {
         components["motion_module"] = loaded_motion_module_;
@@ -1813,6 +1851,7 @@ nlohmann::json ModelManager::get_paths_config() const {
         {"t5", config_.paths.t5},
         {"embeddings", config_.paths.embeddings},
         {"controlnet", config_.paths.controlnet},
+        {"ip_adapter", config_.paths.ip_adapter},
         {"llm", config_.paths.llm},
         {"esrgan", config_.paths.esrgan},
         {"taesd", config_.paths.taesd},

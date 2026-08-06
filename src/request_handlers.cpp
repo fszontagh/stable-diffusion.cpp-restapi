@@ -1094,6 +1094,10 @@ void RequestHandlers::handle_health(const httplib::Request& req, httplib::Respon
             // tool that returns generated images inline is enabled.
             {"mcp_image_tool", mcp_image_tool_enabled_},
             {"controlnet_hotswap", true},
+            // IP-Adapter support (leejet PR #1803/#1815/#1824/#1839). Both classic
+            // and Plus/Resampler variants supported by the underlying sd.cpp.
+            {"ip_adapter", true},
+            {"ip_adapter_plus", true},
             {"auth_required", auth_manager_.enabled()}
         }}
     };
@@ -1129,7 +1133,8 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             "euler_a_cfg_pp",
             "euler_ge",
             "dpm++2m_sde",      // leejet PR #1742
-            "dpm++2m_sde_bt"    // leejet PR #1743 — Brownian-tree variant
+            "dpm++2m_sde_bt",   // leejet PR #1743 - Brownian-tree variant
+            "lms"               // leejet PR #1819 / #1843
         }},
         {"schedulers", {
             "discrete",
@@ -1184,7 +1189,8 @@ void RequestHandlers::handle_get_models(const httplib::Request& req, httplib::Re
         if (type_str == "checkpoint" || type_str == "diffusion" ||
             type_str == "vae" || type_str == "lora" ||
             type_str == "clip" || type_str == "t5" || type_str == "embedding" ||
-            type_str == "controlnet" || type_str == "llm" || type_str == "esrgan") {
+            type_str == "controlnet" || type_str == "ip_adapter" ||
+            type_str == "llm" || type_str == "esrgan") {
             filter.type = string_to_model_type(type_str);
         }
     }
@@ -4004,14 +4010,14 @@ void RequestHandlers::handle_download_model(const httplib::Request& req, httplib
         // Required parameter: model_type
         std::string model_type = body.value("model_type", "");
         if (model_type.empty()) {
-            send_error(res, "model_type is required (checkpoint, vae, lora, clip, t5, embedding, controlnet, llm, esrgan, diffusion, taesd)", 400);
+            send_error(res, "model_type is required (checkpoint, vae, lora, clip, t5, embedding, controlnet, ip_adapter, llm, esrgan, diffusion, taesd)", 400);
             return;
         }
 
         // Validate model_type
         const std::vector<std::string> valid_types = {
             "checkpoint", "vae", "lora", "clip", "t5", "embedding",
-            "controlnet", "llm", "esrgan", "diffusion", "taesd"
+            "controlnet", "ip_adapter", "llm", "esrgan", "diffusion", "taesd"
         };
         bool valid_type = false;
         for (const auto& t : valid_types) {
@@ -4021,7 +4027,7 @@ void RequestHandlers::handle_download_model(const httplib::Request& req, httplib
             }
         }
         if (!valid_type) {
-            send_error(res, "Invalid model_type. Valid types: checkpoint, vae, lora, clip, t5, embedding, controlnet, llm, esrgan, diffusion, taesd", 400);
+            send_error(res, "Invalid model_type. Valid types: checkpoint, vae, lora, clip, t5, embedding, controlnet, ip_adapter, llm, esrgan, diffusion, taesd", 400);
             return;
         }
 
@@ -4275,10 +4281,10 @@ void RequestHandlers::handle_upload_model(const httplib::Request& req, httplib::
     // unknown values to Checkpoint, so we validate explicitly first.
     static const std::vector<std::string> kValidTypes = {
         "checkpoint", "diffusion", "vae", "lora", "clip", "t5",
-        "embedding", "controlnet", "llm", "esrgan", "taesd"
+        "embedding", "controlnet", "ip_adapter", "llm", "esrgan", "taesd"
     };
     if (std::find(kValidTypes.begin(), kValidTypes.end(), model_type) == kValidTypes.end()) {
-        send_error(res, "Invalid model_type. Valid: checkpoint, diffusion, vae, lora, clip, t5, embedding, controlnet, llm, esrgan, taesd", 400);
+        send_error(res, "Invalid model_type. Valid: checkpoint, diffusion, vae, lora, clip, t5, embedding, controlnet, ip_adapter, llm, esrgan, taesd", 400);
         return;
     }
 
@@ -4351,6 +4357,7 @@ void RequestHandlers::handle_upload_model(const httplib::Request& req, httplib::
         {"t5",         "t5"},
         {"embedding",  "embeddings"},
         {"controlnet", "controlnet"},
+        {"ip_adapter", "ip_adapter"},
         {"llm",        "llm"},
         {"esrgan",     "esrgan"},
         {"taesd",      "taesd"},
@@ -4851,6 +4858,7 @@ RequestHandlers::resolve_webdav_path(const std::string& url_path,
         else if (type == "clip")              dir = &paths_config_.clip;
         else if (type == "t5")                dir = &paths_config_.t5;
         else if (type == "controlnet")        dir = &paths_config_.controlnet;
+        else if (type == "ip_adapter" || type == "ip_adapters") dir = &paths_config_.ip_adapter;
         else if (type == "llm")               dir = &paths_config_.llm;
         else if (type == "esrgan")            dir = &paths_config_.esrgan;
         else if (type == "taesd")             dir = &paths_config_.taesd;
@@ -5089,6 +5097,7 @@ RequestHandlers::handle_webdav_propfind(const httplib::Request& req, httplib::Re
                 {"clip",             &paths_config_.clip},
                 {"t5",               &paths_config_.t5},
                 {"controlnet",       &paths_config_.controlnet},
+                {"ip_adapter",       &paths_config_.ip_adapter},
                 {"llm",              &paths_config_.llm},
                 {"esrgan",           &paths_config_.esrgan},
                 {"taesd",            &paths_config_.taesd},

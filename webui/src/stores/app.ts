@@ -915,6 +915,7 @@ export const useAppStore = defineStore('app', () => {
               clip_g: data.loaded_components.clip_g ?? null,
               t5xxl: data.loaded_components.t5xxl ?? null,
               controlnet: data.loaded_components.controlnet ?? null,
+              ip_adapter: data.loaded_components.ip_adapter ?? null,
               llm: data.loaded_components.llm ?? null,
               llm_vision: data.loaded_components.llm_vision ?? null
             }
@@ -946,6 +947,7 @@ export const useAppStore = defineStore('app', () => {
               clip_g: data.loaded_components.clip_g ?? null,
               t5xxl: data.loaded_components.t5xxl ?? null,
               controlnet: data.loaded_components.controlnet ?? null,
+              ip_adapter: data.loaded_components.ip_adapter ?? null,
               llm: data.loaded_components.llm ?? null,
               llm_vision: data.loaded_components.llm_vision ?? null
             } : {
@@ -954,6 +956,7 @@ export const useAppStore = defineStore('app', () => {
               clip_g: null,
               t5xxl: null,
               controlnet: null,
+              ip_adapter: null,
               llm: null,
               llm_vision: null
             },

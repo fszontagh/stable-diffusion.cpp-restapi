@@ -30,6 +30,7 @@ enum class ModelType {
     T5,
     Embedding,
     ControlNet,     // ControlNet models
+    IPAdapter,      // IP-Adapter models (classic + Plus/Resampler variants)
     LLM,            // LLM models for multimodal (Qwen, etc.)
     ESRGAN,         // ESRGAN upscaler models
     TAESD,          // TAESD tiny autoencoder models for preview
@@ -84,6 +85,7 @@ struct ModelLoadParams {
     std::optional<std::string> clip_vision;     // CLIP vision encoder (IP-Adapter)
     std::optional<std::string> t5xxl;
     std::optional<std::string> controlnet;      // ControlNet model (optional)
+    std::optional<std::string> ip_adapter;      // IP-Adapter model (optional) - leejet PR #1803 etc.
     std::optional<std::string> motion_module;   // AnimateDiff / PiD motion module (SD1.5)
     std::optional<std::string> llm;             // LLM for multimodal (e.g., Qwen)
     std::optional<std::string> llm_vision;      // LLM vision model (optional)
@@ -436,6 +438,7 @@ private:
     std::string loaded_clip_g_;
     std::string loaded_t5_;
     std::string loaded_controlnet_;
+    std::string loaded_ip_adapter_;
     std::string loaded_motion_module_;
     std::string loaded_llm_;
     std::string loaded_llm_vision_;

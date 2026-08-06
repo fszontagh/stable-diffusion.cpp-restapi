@@ -110,6 +110,7 @@ export interface ServerStatusData {
     clip_g?: string | null
     t5xxl?: string | null
     controlnet?: string | null
+    ip_adapter?: string | null
     llm?: string | null
     llm_vision?: string | null
   }

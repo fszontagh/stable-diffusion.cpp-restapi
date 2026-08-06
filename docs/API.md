@@ -872,6 +872,29 @@ When a motion module is present, `POST /txt2vid` and `POST /img2img` (`init_imag
 
 `POST /adetailer` runs a YOLOv8 detector + inpainting pass over an input image using the currently loaded model. Detector files live under `paths.adetailer` and are listed via `/models?type=adetailer`.
 
+### IP-Adapter (SD 1.5 / SDXL)
+
+IP-Adapter (including IP-Adapter Plus / Resampler variants) lets a reference image influence generation without training a LoRA. Load the adapter with the base model:
+
+```json
+{
+  "model_name": "sd_xl_base_1.0.safetensors",
+  "ip_adapter": "ip-adapter-plus_sdxl_vit-h.safetensors"
+}
+```
+
+Then include a reference image in each generation request:
+
+```json
+{
+  "prompt": "portrait in this style",
+  "ip_adapter_image_base64": "<base64-encoded reference image>",
+  "ip_adapter_strength": 1.0
+}
+```
+
+`ip_adapter_strength` default is `1.0`; `0.0` disables the adapter for that request. The `features.ip_adapter` and `features.ip_adapter_plus` flags in `/health` advertise support.
+
 ### LoRA Usage
 
 LoRAs are specified directly in the prompt using the sd.cpp syntax:

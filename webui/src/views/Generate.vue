@@ -95,6 +95,14 @@ const refImage = ref<string | undefined>()
 const controlImage = ref<string | undefined>()
 const controlStrength = ref(0.9)
 
+// IP-Adapter params (leejet PR #1803/#1815/#1824/#1839). Reference image + strength.
+const ipAdapterImage = ref<string | undefined>()
+const ipAdapterStrength = ref(1.0)
+
+// Txt2Vid reference images (Hunyuan / minimax-h3 chain).
+// Single-slot for now; can be extended to array if models want it.
+const videoRefImage = ref<string | undefined>()
+
 // txt2vid params
 const videoFrames = ref(33)
 const fps = ref(16)
@@ -971,6 +979,10 @@ const presets = [
 ]
 
 const hasControlNet = computed(() => store.loadedComponents?.controlnet)
+// IP-Adapter is available when the model was loaded with an ip_adapter component.
+const hasIpAdapter = computed(() =>
+  Boolean((store.loadedComponents as Record<string, string | null | undefined> | null | undefined)?.ip_adapter)
+)
 
 // ControlNet hot-swap (sd_ctx_load_control_net upstream). Lets the user
 // pick a different ControlNet on the loaded model without a full reload.
@@ -1347,6 +1359,13 @@ onMounted(async () => {
             () => { controlImage.value = undefined }
           )
         }
+        if (p.ip_adapter_image_base64 !== undefined) {
+          await restoreImageFromDisk(
+            `/output/${data.job_id}/ip_adapter.png`,
+            (v) => { ipAdapterImage.value = v },
+            () => { ipAdapterImage.value = undefined }
+          )
+        }
         if (p.mask_image_base64 !== undefined) {
           await restoreImageFromDisk(
             `/output/${data.job_id}/mask.png`,
@@ -1540,6 +1559,7 @@ function loadJobParams(
     if (params.strength !== undefined) strength.value = params.strength as number
     // Note: init_image_base64 and mask_image_base64 are not reloaded as they may be too large
     if (params.control_strength !== undefined) controlStrength.value = params.control_strength as number
+    if (params.ip_adapter_strength !== undefined) ipAdapterStrength.value = params.ip_adapter_strength as number
     if (params.slg_scale !== undefined) slgScale.value = params.slg_scale as number
     if (params.cache_mode !== undefined) cacheMode.value = params.cache_mode as string
     if (params.easycache !== undefined && params.cache_mode === undefined) {
@@ -1607,15 +1627,11 @@ function openPreviewLightbox() {
   }
 }
 
-// Show sidebar for any image-generating mode. The ControlNet upload
-// card is always rendered (disabled when no ControlNet is loaded), so
-// the sidebar always has something to show on txt2img / img2img /
-// img_edit. Only txt2vid hides it unless a generation is in flight.
-const showSidebar = computed(() => {
-  if (mode.value !== 'txt2vid') return true
-  if (isCurrentJobProcessing.value) return true
-  return false
-})
+// Show sidebar in every mode. Image modes always render ControlNet +
+// IP-Adapter cards (disabled when the component isn't loaded). Video
+// mode shows the reference-image uploader (Hunyuan-family / minimax-h3)
+// and the preview panel when a generation is in flight.
+const showSidebar = computed(() => true)
 
 
 // Computed property to check if there's a processing job for our last submission
@@ -1755,6 +1771,13 @@ async function handleSubmit() {
       baseParams.control_image_base64 = stripDataUrlPrefix(controlImage.value)
       baseParams.control_strength = controlStrength.value
     }
+    // IP-Adapter reference image (leejet PR #1803 etc.). Only ship when a
+    // reference image is provided AND an IP-Adapter component was loaded on
+    // the model - otherwise sd.cpp silently ignores it.
+    if (ipAdapterImage.value && hasIpAdapter.value) {
+      baseParams.ip_adapter_image_base64 = stripDataUrlPrefix(ipAdapterImage.value)
+      baseParams.ip_adapter_strength = ipAdapterStrength.value
+    }
 
     // If the user enabled expand_prompt and the prompt actually has template
     // syntax, run the confirmation modal first. The modal also handles parse
@@ -1815,6 +1838,11 @@ async function handleSubmit() {
         video_frames: videoFrames.value,
         fps: fps.value,
         flow_shift: flowShift.value
+      }
+      // Video reference image (Hunyuan / minimax-h3 chain). Single slot for
+      // now; wrap into an array so backend receives ref_images[].
+      if (videoRefImage.value) {
+        params.ref_images = [stripDataUrlPrefix(videoRefImage.value)]
       }
       // High-noise MoE pass extras. Only emit overrides; -1/0/"" mean inherit.
       if (highNoiseImgCfg.value !== -1) {
@@ -2648,6 +2676,46 @@ async function handleSubmit() {
               :disabled="!hasControlNet"
             />
           </div>
+        </div>
+
+        <!-- IP-Adapter (leejet PR #1803/#1815/#1824/#1839). Reference-image
+             conditioning that mirrors the ControlNet card pattern: always
+             rendered on image modes so the layout stays stable, disabled
+             when no IP-Adapter is loaded. -->
+        <div v-if="mode !== 'txt2vid'" :class="['card', { 'card-disabled': !hasIpAdapter }]">
+          <div class="card-header">
+            <h3 class="card-title">IP-Adapter</h3>
+          </div>
+          <div v-if="!hasIpAdapter" class="info-hint">
+            No IP-Adapter loaded. Attach one via the Model Load page (IP-Adapter
+            component) to enable reference-image conditioning.
+          </div>
+          <ImageUploader v-model="ipAdapterImage" label="Reference Image" :disabled="!hasIpAdapter" />
+          <div class="form-group">
+            <label class="form-label">IP-Adapter Strength: {{ ipAdapterStrength.toFixed(2) }}</label>
+            <input
+              v-model.number="ipAdapterStrength"
+              type="range"
+              class="form-range"
+              min="0"
+              max="2"
+              step="0.05"
+              :disabled="!hasIpAdapter"
+            />
+          </div>
+        </div>
+
+        <!-- Video reference image (Hunyuan / minimax-h3 chain). Shown only in
+             txt2vid mode. ref_videos / ref_audios not yet wired - need file
+             upload plumbing first (see the sd_wrapper TODO). -->
+        <div v-if="mode === 'txt2vid'" class="card">
+          <div class="card-header">
+            <h3 class="card-title">Reference Image</h3>
+          </div>
+          <div class="info-hint">
+            Optional reference image for Hunyuan-family / minimax-h3 video models.
+          </div>
+          <ImageUploader v-model="videoRefImage" label="Reference Image" />
         </div>
 
         <!-- ADetailer (face fix) — stand-alone pipeline. Uses a YOLOv8

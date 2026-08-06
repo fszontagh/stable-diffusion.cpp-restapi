@@ -40,6 +40,7 @@ struct PathsConfig {
     std::string t5;                 // T5 text encoder models
     std::string embeddings;         // Textual inversion embeddings
     std::string controlnet;         // ControlNet models
+    std::string ip_adapter;         // IP-Adapter models (leejet PR #1803/#1815/#1824/#1839)
     std::string llm;                // LLM models for multimodal (Qwen, etc.)
     std::string esrgan;             // ESRGAN upscaler models
     std::string taesd;              // TAESD tiny autoencoder models for preview

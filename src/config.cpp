@@ -46,6 +46,7 @@ void to_json(nlohmann::json& j, const PathsConfig& c) {
         {"t5", c.t5},
         {"embeddings", c.embeddings},
         {"controlnet", c.controlnet},
+        {"ip_adapter", c.ip_adapter},
         {"llm", c.llm},
         {"esrgan", c.esrgan},
         {"taesd", c.taesd},
@@ -65,6 +66,7 @@ void from_json(const nlohmann::json& j, PathsConfig& c) {
     c.t5 = j.value("t5", "");
     c.embeddings = j.value("embeddings", "");
     c.controlnet = j.value("controlnet", "");
+    c.ip_adapter = j.value("ip_adapter", "");
     c.llm = j.value("llm", "");
     c.esrgan = j.value("esrgan", "");
     c.taesd = j.value("taesd", "");

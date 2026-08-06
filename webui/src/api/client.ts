@@ -106,6 +106,7 @@ export interface HealthResponse {
     clip_g: string | null
     t5xxl: string | null
     controlnet: string | null
+    ip_adapter: string | null
     llm: string | null
     llm_vision: string | null
   }
@@ -133,6 +134,9 @@ export interface HealthResponse {
      * this is true. Local-test only until the PR merges upstream.
      */
     sefi_image?: boolean
+    /** IP-Adapter (leejet PR #1803/#1815/#1824/#1839). Both classic + Plus/Resampler variants. */
+    ip_adapter?: boolean
+    ip_adapter_plus?: boolean
     auth_required?: boolean
   }
 }
@@ -154,6 +158,7 @@ export interface ModelsResponse {
   clip: ModelInfo[]
   t5: ModelInfo[]
   controlnets: ModelInfo[]
+  ip_adapters: ModelInfo[]
   llm: ModelInfo[]
   esrgan: ModelInfo[]
   taesd: ModelInfo[]
@@ -187,6 +192,7 @@ export interface LoadModelParams {
   clip_vision?: string
   t5xxl?: string
   controlnet?: string | null
+  ip_adapter?: string | null
   motion_module?: string | null
   llm?: string
   llm_vision?: string
@@ -227,6 +233,9 @@ export interface GenerationParams {
   ref_image_args?: string
   control_image_base64?: string
   control_strength?: number
+  /** IP-Adapter reference image (leejet PR #1803 etc.). Requires ip_adapter loaded on the model. */
+  ip_adapter_image_base64?: string
+  ip_adapter_strength?: number
   vae_tiling?: boolean
   vae_tile_size_x?: number
   vae_tile_size_y?: number
@@ -307,6 +316,8 @@ export interface Txt2VidParams extends GenerationParams {
   end_image_base64?: string
   strength?: number
   control_frames?: string[]
+  /** Reference images (Hunyuan-family video models) as base64 strings. */
+  ref_images?: string[]
   // High-noise pass (MoE models like Wan2.2) — full sd_sample_params_t parity
   high_noise_steps?: number
   high_noise_cfg_scale?: number
@@ -375,6 +386,7 @@ export interface JobModelSettings {
     clip_g: string | null
     t5xxl: string | null
     controlnet: string | null
+    ip_adapter: string | null
     llm: string | null
     llm_vision: string | null
   }
@@ -1397,7 +1409,7 @@ export interface SettingsUpdateSingleModeResponse {
 // Download Types
 export interface DownloadParams {
   source?: 'url' | 'civitai' | 'huggingface'
-  model_type: 'checkpoint' | 'vae' | 'lora' | 'clip' | 't5' | 'embedding' | 'controlnet' | 'llm' | 'esrgan' | 'diffusion' | 'taesd' | 'motion_module' | 'adetailer'
+  model_type: 'checkpoint' | 'vae' | 'lora' | 'clip' | 't5' | 'embedding' | 'controlnet' | 'ip_adapter' | 'llm' | 'esrgan' | 'diffusion' | 'taesd' | 'motion_module' | 'adetailer'
   subfolder?: string
   url?: string
   model_id?: string  // For CivitAI

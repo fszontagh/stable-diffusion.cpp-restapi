@@ -59,6 +59,7 @@ const loadParams = ref<LoadModelParams>({
   clip_g: '',
   t5xxl: '',
   controlnet: '',
+  ip_adapter: '',
   motion_module: '',
   llm: '',
   taesd: '',
@@ -106,6 +107,7 @@ const vaeModels = computed(() => store.models?.vae || [])
 const clipModels = computed(() => store.models?.clip || [])
 const t5Models = computed(() => store.models?.t5 || [])
 const controlnetModels = computed(() => store.models?.controlnets || [])
+const ipAdapterModels = computed(() => store.models?.ip_adapters || [])
 const motionModuleModels = computed(() => store.models?.motion_modules || [])
 const llmModels = computed(() => store.models?.llm || [])
 const taesdModels = computed(() => store.models?.taesd || [])
@@ -221,6 +223,7 @@ async function handleLoadModel() {
     if (loadParams.value.clip_g) params.clip_g = loadParams.value.clip_g
     if (loadParams.value.t5xxl) params.t5xxl = loadParams.value.t5xxl
     if (loadParams.value.controlnet) params.controlnet = loadParams.value.controlnet
+    if (loadParams.value.ip_adapter) params.ip_adapter = loadParams.value.ip_adapter
     if (loadParams.value.motion_module) params.motion_module = loadParams.value.motion_module
     if (loadParams.value.llm) params.llm = loadParams.value.llm
     if (loadParams.value.taesd) params.taesd = loadParams.value.taesd
@@ -304,6 +307,7 @@ onMounted(async () => {
       loadParams.value.clip_g = store.loadedComponents.clip_g || ''
       loadParams.value.t5xxl = store.loadedComponents.t5xxl || ''
       loadParams.value.controlnet = store.loadedComponents.controlnet || ''
+      loadParams.value.ip_adapter = (store.loadedComponents as Record<string, string | null | undefined>).ip_adapter || ''
       loadParams.value.motion_module = (store.loadedComponents as Record<string, string | null | undefined>).motion_module || ''
       loadParams.value.llm = store.loadedComponents.llm || ''
 
@@ -337,6 +341,7 @@ onMounted(async () => {
       loadParams.value.clip_g = last.clip_g || ''
       loadParams.value.t5xxl = last.t5xxl || ''
       loadParams.value.controlnet = last.controlnet || ''
+      loadParams.value.ip_adapter = (last as unknown as { ip_adapter?: string | null }).ip_adapter || ''
       loadParams.value.motion_module = (last as unknown as { motion_module?: string | null }).motion_module || ''
       loadParams.value.llm = last.llm || ''
       loadParams.value.taesd = last.taesd || ''
@@ -656,6 +661,16 @@ function onKeepAllInRam(e: Event) {
               <option value="">None</option>
               <option v-for="m in controlnetModels" :key="m.name" :value="m.name">{{ m.name }}</option>
             </select>
+          </div>
+
+          <!-- IP-Adapter (leejet PR #1803/#1815/#1824/#1839). Classic + Plus/Resampler variants. -->
+          <div class="form-group">
+            <label class="form-label">IP-Adapter <span class="optional-badge">Optional</span></label>
+            <select v-model="loadParams.ip_adapter" class="form-select">
+              <option value="">None</option>
+              <option v-for="m in ipAdapterModels" :key="m.name" :value="m.name">{{ m.name }}</option>
+            </select>
+            <small class="form-hint">Reference-image conditioning. Enables the IP-Adapter card on the Generate page.</small>
           </div>
 
           <!-- Motion module (AnimateDiff / PiD, SD1.5 only) -->

@@ -21,7 +21,7 @@ struct GenerationRequestBase {
             .optional_field("distilled_guidance", schema::FieldType::Number, "Distilled guidance scale (Flux/distilled models)", 3.5)
             .optional_field("eta", schema::FieldType::Number, "Eta for DDIM-like samplers", 0.0)
             .optional_field("shifted_timestep", schema::FieldType::Integer, "Shifted timestep value (NitroFusion: 250-500)", 0)
-            .optional_field("extra_sample_args", schema::FieldType::String, "Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs)")
+            .optional_field("extra_sample_args", schema::FieldType::String, "Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs). When scheduler=beta, accepts beta_alpha=X,beta_beta=Y for custom beta-distribution parameters (leejet PR #1834).")
             .optional_field("seed", schema::FieldType::Integer, "RNG seed (-1 for random)", -1)
             .arch_default_enum("sampler", "Sampling algorithm", SAMPLER_VALUES)
             .arch_default_enum("scheduler", "Noise scheduler", SCHEDULER_VALUES)
@@ -36,6 +36,10 @@ struct GenerationRequestBase {
             .optional_field("ref_image_args", schema::FieldType::String, "Comma-separated k=v flags for reference-image processing (e.g. resize_before_vae=0,ref_index_mode=increase). See sd.cpp docs.", "")
             .optional_field("control_image_base64", schema::FieldType::String, "ControlNet input image as base64")
             .optional_field("control_strength", schema::FieldType::Number, "ControlNet guidance strength", 0.9)
+            // IP-Adapter reference image (leejet PR #1803/#1815/#1824/#1839).
+            // Requires ip_adapter loaded on the model. Image path only (txt2img/img2img).
+            .optional_field("ip_adapter_image_base64", schema::FieldType::String, "IP-Adapter reference image as base64. Requires an IP-Adapter loaded on the model.")
+            .optional_field("ip_adapter_strength", schema::FieldType::Number, "IP-Adapter guidance strength (upstream default 1.0)", 1.0)
             // VAE tiling (per-generation sd_tiling_params_t)
             .optional_field("vae_tiling", schema::FieldType::Boolean, "Enable VAE tiling for large images", false)
             .optional_field("vae_tile_size_x", schema::FieldType::Integer, "VAE tile width (0 for auto)", 0)
@@ -43,9 +47,9 @@ struct GenerationRequestBase {
             .optional_field("vae_tile_overlap", schema::FieldType::Number, "VAE tile overlap ratio", 0.5)
             .optional_field("vae_tile_rel_size_x", schema::FieldType::Number, "VAE tile width as fraction of image (0 = use absolute tile_size_x)", 0.0)
             .optional_field("vae_tile_rel_size_y", schema::FieldType::Number, "VAE tile height as fraction of image", 0.0)
-            .optional_field("temporal_tiling", schema::FieldType::Boolean, "Enable temporal VAE tiling (LTX video models — splits the time axis into tiles to reduce memory pressure during decode)", false)
+            .optional_field("temporal_tiling", schema::FieldType::Boolean, "Enable temporal VAE tiling (LTX video models - splits the time axis into tiles to reduce memory pressure during decode)", false)
             .optional_field("extra_tiling_args", schema::FieldType::String, "Extra key=value tiling args (passed through to sd.cpp's tiling parser, model-specific)")
-            // Cache acceleration (sd_cache_params_t) — 6 upstream modes
+            // Cache acceleration (sd_cache_params_t) - 6 upstream modes
             .optional_field("cache_mode", schema::FieldType::String, "Cache acceleration mode: easycache, ucache, dbcache, taylorseer, cache_dit, spectrum (empty = disabled)")
             .optional_field("easycache", schema::FieldType::Boolean, "Enable EasyCache (deprecated alias for cache_mode='easycache')", false)
             .optional_field("easycache_threshold", schema::FieldType::Number, "Reuse threshold for similarity-based caches (EasyCache/UCache/DBCache)", 0.2)
@@ -64,10 +68,10 @@ struct GenerationRequestBase {
             .array_field("pm_id_images", schema::FieldType::String, "PhotoMaker identity images as base64")
             .optional_field("pm_id_embed_path", schema::FieldType::String, "Path to PhotoMaker ID embedding")
             .optional_field("pm_style_strength", schema::FieldType::Number, "PhotoMaker style strength", 20.0)
-            // PuLID-Flux per-gen (sd_pulid_params_t) — requires pulid_weights loaded on the model
+            // PuLID-Flux per-gen (sd_pulid_params_t) - requires pulid_weights loaded on the model
             .optional_field("pulid_id_embedding_path", schema::FieldType::String, "PuLID-Flux identity embedding path")
             .optional_field("pulid_id_weight", schema::FieldType::Number, "PuLID-Flux identity weight", 1.0)
-            // Built-in hi-res-fix (sd_hires_params_t) — distinct from the post-gen ESRGAN upscale flag below
+            // Built-in hi-res-fix (sd_hires_params_t) - distinct from the post-gen ESRGAN upscale flag below
             .optional_field("hires_enabled", schema::FieldType::Boolean, "Enable sd.cpp's native two-pass hi-res-fix refine", false)
             .optional_field("hires_upscaler", schema::FieldType::String, "Hires upscaler (sd_hires_upscaler_t): none, latent, latent_nearest, latent_nearest_exact, latent_antialiased, latent_bicubic, latent_bicubic_antialiased, lanczos, nearest, model", "model")
             .optional_field("hires_model_path", schema::FieldType::String, "Upscaler model path (when hires_upscaler='model')")
@@ -78,14 +82,14 @@ struct GenerationRequestBase {
             .optional_field("hires_denoising_strength", schema::FieldType::Number, "Hires denoising strength", 0.4)
             .optional_field("hires_upscale_tile_size", schema::FieldType::Integer, "Hires upscaler tile size", 0)
             // Circular RoPE / tileable position embeddings. Per-generation
-            // since leejet PR #1748 — before that it was a load-time option
+            // since leejet PR #1748 - before that it was a load-time option
             // requiring an unload+reload cycle to toggle.
-            .optional_field("circular_x", schema::FieldType::Boolean, "Circular RoPE on the X axis — seamless/tileable output across the horizontal seam. Required for Ideogram4-style tileable-texture workflows.", false)
-            .optional_field("circular_y", schema::FieldType::Boolean, "Circular RoPE on the Y axis — seamless/tileable output across the vertical seam.", false)
+            .optional_field("circular_x", schema::FieldType::Boolean, "Circular RoPE on the X axis - seamless/tileable output across the horizontal seam. Required for Ideogram4-style tileable-texture workflows.", false)
+            .optional_field("circular_y", schema::FieldType::Boolean, "Circular RoPE on the Y axis - seamless/tileable output across the vertical seam.", false)
             // Qwen-Image layered rendering (PR #1119, exposed on sd_img_gen_params_t
             // after #1748). 0 = no layered rendering. Image path only.
             .optional_field("qwen_image_layers", schema::FieldType::Integer, "Qwen-Image layered rendering (image path only; 0 = disabled)", 0)
-            // Post-gen ESRGAN upscale — restapi orchestration on top of sd.cpp, NOT the same as hires_*
+            // Post-gen ESRGAN upscale - restapi orchestration on top of sd.cpp, NOT the same as hires_*
             .optional_field("upscale", schema::FieldType::Boolean, "Auto-run a loaded ESRGAN upscaler after generation (post-gen, distinct from hires_enabled)", false)
             .optional_field("upscale_repeats", schema::FieldType::Integer, "Number of upscale passes", 1)
             .optional_field("upscale_auto_unload", schema::FieldType::Boolean, "Unload upscaler after use", true);
@@ -127,7 +131,10 @@ struct Txt2VidRequest {
             .optional_field("end_image_base64", schema::FieldType::String, "Ending frame image as base64")
             .optional_field("strength", schema::FieldType::Number, "Denoising strength for init image", 0.75)
             .array_field("control_frames", schema::FieldType::String, "Control frames as base64 strings")
-            // High-noise pass (MoE models like Wan2.2) — full sd_sample_params_t parity
+            // Reference images for the video path (Hunyuan / minimax-h3 chain).
+            // ref_videos / ref_audios are TODO - need upload plumbing first.
+            .array_field("ref_images", schema::FieldType::String, "Reference images as base64 strings (Hunyuan-family video models)")
+            // High-noise pass (MoE models like Wan2.2) - full sd_sample_params_t parity
             .optional_field("high_noise_steps", schema::FieldType::Integer, "High-noise sampling steps (-1 for auto)", -1)
             .optional_field("high_noise_cfg_scale", schema::FieldType::Number, "CFG scale for high-noise phase", 7.0)
             .optional_field("high_noise_img_cfg", schema::FieldType::Number, "Image CFG for high-noise phase (-1 = inherit high_noise_cfg_scale)", -1.0)

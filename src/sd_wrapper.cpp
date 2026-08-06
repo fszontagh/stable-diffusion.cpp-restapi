@@ -756,6 +756,8 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
         // The actual count comes from ref_images.size() at line 1517.
         "ref_images_count",
         "control_strength", "control_image_base64",
+        // IP-Adapter reference image (leejet PR #1803 etc.)
+        "ip_adapter_image_base64", "ip_adapter_strength",
         "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
         "vae_tile_rel_size_x", "vae_tile_rel_size_y",
         "temporal_tiling", "extra_tiling_args",
@@ -825,6 +827,17 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
         if (!base64.empty()) {
             p.control_image_data = SDWrapper::decode_base64_image(
                 base64, p.control_image_width, p.control_image_height, p.control_image_channels
+            );
+        }
+    }
+
+    // IP-Adapter reference image (leejet PR #1803/#1815/#1824/#1839)
+    p.ip_adapter_strength = parse_float(j, "ip_adapter_strength", 1.0f);
+    if (j.contains("ip_adapter_image_base64") && !j["ip_adapter_image_base64"].is_null()) {
+        std::string base64 = parse_string(j, "ip_adapter_image_base64", "");
+        if (!base64.empty()) {
+            p.ip_adapter_image_data = SDWrapper::decode_base64_image(
+                base64, p.ip_adapter_image_width, p.ip_adapter_image_height, p.ip_adapter_image_channels
             );
         }
     }
@@ -935,6 +948,12 @@ nlohmann::json Txt2ImgParams::to_json() const {
         j["control_strength"] = control_strength;
     }
 
+    // IP-Adapter round-trip marker (image payload not stored — like ref_images)
+    if (!ip_adapter_image_data.empty()) {
+        j["ip_adapter_image_base64"] = "<binary>";  // sentinel; used by WebUI reload to detect the widget
+        j["ip_adapter_strength"] = ip_adapter_strength;
+    }
+
     // VAE tiling
     if (vae_tiling) {
         j["vae_tiling"] = true;
@@ -996,6 +1015,8 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
         // above the txt2img KNOWN block.
         "ref_images_count",
         "control_strength", "control_image_base64",
+        // IP-Adapter reference image (leejet PR #1803 etc.)
+        "ip_adapter_image_base64", "ip_adapter_strength",
         "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap",
         "vae_tile_rel_size_x", "vae_tile_rel_size_y",
         "temporal_tiling", "extra_tiling_args",
@@ -1085,6 +1106,17 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
         if (!base64.empty()) {
             p.control_image_data = SDWrapper::decode_base64_image(
                 base64, p.control_image_width, p.control_image_height, p.control_image_channels
+            );
+        }
+    }
+
+    // IP-Adapter reference image (leejet PR #1803 etc.)
+    p.ip_adapter_strength = parse_float(j, "ip_adapter_strength", 1.0f);
+    if (j.contains("ip_adapter_image_base64") && !j["ip_adapter_image_base64"].is_null()) {
+        std::string base64 = parse_string(j, "ip_adapter_image_base64", "");
+        if (!base64.empty()) {
+            p.ip_adapter_image_data = SDWrapper::decode_base64_image(
+                base64, p.ip_adapter_image_width, p.ip_adapter_image_height, p.ip_adapter_image_channels
             );
         }
     }
@@ -1202,6 +1234,12 @@ nlohmann::json Img2ImgParams::to_json() const {
         j["control_strength"] = control_strength;
     }
 
+    // IP-Adapter round-trip marker
+    if (!ip_adapter_image_data.empty()) {
+        j["ip_adapter_image_base64"] = "<binary>";
+        j["ip_adapter_strength"] = ip_adapter_strength;
+    }
+
     // VAE tiling
     if (vae_tiling) {
         j["vae_tiling"] = true;
@@ -1258,7 +1296,7 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
         "clip_skip",
         "slg_scale", "skip_layers", "slg_start", "slg_end",
         "init_image_base64", "end_image_base64",
-        "control_image_base64", "control_frames", "vace_strength",
+        "control_image_base64", "control_frames", "ref_images", "vace_strength",
         "strength",
         // High-noise (MoE) variants — full sample_params parity
         "high_noise_steps", "high_noise_cfg_scale", "high_noise_img_cfg",
@@ -1356,6 +1394,9 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
 
     // Multiple control frames
     p.control_frames_base64 = parse_string_array(j, "control_frames");
+
+    // Reference images (Hunyuan / minimax-h3 chain). Parse always; empty = none.
+    p.ref_images_base64 = parse_string_array(j, "ref_images");
 
     // High-noise phase parameters (MoE models) — full sample_params parity
     p.high_noise_steps = parse_int(j, "high_noise_steps", -1);
@@ -1958,6 +1999,26 @@ std::vector<std::string> SDWrapper::generate_txt2img(
         gen_params.control_image.data = nullptr;
     }
 
+    // IP-Adapter reference image (leejet PR #1803/#1815/#1824/#1839).
+    // Requires ip_adapter loaded on the model.
+    if (!params.ip_adapter_image_data.empty()) {
+        gen_params.ip_adapter_image.width = params.ip_adapter_image_width;
+        gen_params.ip_adapter_image.height = params.ip_adapter_image_height;
+        gen_params.ip_adapter_image.channel = params.ip_adapter_image_channels;
+        gen_params.ip_adapter_image.data = const_cast<uint8_t*>(params.ip_adapter_image_data.data());
+        gen_params.ip_adapter_strength = params.ip_adapter_strength;
+        std::string ip_filepath = (fs::path(job_output_dir) / "ip_adapter.png").string();
+        if (!save_image(ip_filepath,
+                        params.ip_adapter_image_data.data(),
+                        params.ip_adapter_image_width,
+                        params.ip_adapter_image_height,
+                        params.ip_adapter_image_channels)) {
+            std::cerr << "[SDWrapper] Failed to save ip_adapter image to " << ip_filepath << std::endl;
+        }
+    } else {
+        gen_params.ip_adapter_image.data = nullptr;
+    }
+
     // Cache acceleration for DiT models — all 6 upstream modes via helper
     apply_cache_params(gen_params.cache, params);
 
@@ -2316,6 +2377,25 @@ std::vector<std::string> SDWrapper::generate_img2img(
         gen_params.control_image.data = nullptr;
     }
 
+    // IP-Adapter reference image (leejet PR #1803/#1815/#1824/#1839).
+    if (!params.ip_adapter_image_data.empty()) {
+        gen_params.ip_adapter_image.width = params.ip_adapter_image_width;
+        gen_params.ip_adapter_image.height = params.ip_adapter_image_height;
+        gen_params.ip_adapter_image.channel = params.ip_adapter_image_channels;
+        gen_params.ip_adapter_image.data = const_cast<uint8_t*>(params.ip_adapter_image_data.data());
+        gen_params.ip_adapter_strength = params.ip_adapter_strength;
+        std::string ip_filepath = (fs::path(job_output_dir) / "ip_adapter.png").string();
+        if (!save_image(ip_filepath,
+                        params.ip_adapter_image_data.data(),
+                        params.ip_adapter_image_width,
+                        params.ip_adapter_image_height,
+                        params.ip_adapter_image_channels)) {
+            std::cerr << "[SDWrapper] Failed to save ip_adapter image to " << ip_filepath << std::endl;
+        }
+    } else {
+        gen_params.ip_adapter_image.data = nullptr;
+    }
+
     // Cache acceleration for DiT models — all 6 upstream modes via helper
     apply_cache_params(gen_params.cache, params);
 
@@ -2542,6 +2622,36 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
     } else {
         vid_params.end_image.data = nullptr;
     }
+
+    // Reference images (Hunyuan / minimax-h3 chain). ref_videos/ref_audios
+    // are not yet wired — see the header TODO.
+    std::vector<sd_image_t> vid_ref_images;
+    std::vector<std::vector<uint8_t>> vid_ref_image_buffers;
+    if (!params.ref_images_base64.empty()) {
+        vid_ref_image_buffers.reserve(params.ref_images_base64.size());
+        vid_ref_images.reserve(params.ref_images_base64.size());
+        for (const auto& base64 : params.ref_images_base64) {
+            int w, h, c;
+            auto data = SDWrapper::decode_base64_image(base64, w, h, c);
+            vid_ref_image_buffers.push_back(std::move(data));
+            sd_image_t img;
+            img.width = w;
+            img.height = h;
+            img.channel = c;
+            img.data = vid_ref_image_buffers.back().data();
+            vid_ref_images.push_back(img);
+        }
+        vid_params.ref_images = vid_ref_images.data();
+        vid_params.ref_images_count = static_cast<int>(vid_ref_images.size());
+    } else {
+        vid_params.ref_images = nullptr;
+        vid_params.ref_images_count = 0;
+    }
+    // TODO: expose ref_videos/ref_audios once we have video/audio upload support.
+    vid_params.ref_videos = nullptr;
+    vid_params.ref_videos_count = 0;
+    vid_params.ref_audios = nullptr;
+    vid_params.ref_audios_count = 0;
 
     // ControlNet support for video uses control_frames array
     // Support single control image or multiple control frames

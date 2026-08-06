@@ -17,6 +17,7 @@ struct LoadModelRequest {
             .optional_field("clip_vision", schema::FieldType::String, "CLIP vision model name")
             .optional_field("t5xxl", schema::FieldType::String, "T5-XXL text encoder name")
             .optional_field("controlnet", schema::FieldType::String, "ControlNet model name")
+            .optional_field("ip_adapter", schema::FieldType::String, "IP-Adapter model name (leejet PR #1803/#1815/#1824/#1839). Both classic and Plus/Resampler variants supported.")
             .optional_field("motion_module", schema::FieldType::String, "Motion module for AnimateDiff/PiD (SD1.5)")
             .optional_field("llm", schema::FieldType::String, "LLM model name")
             .optional_field("llm_vision", schema::FieldType::String, "LLM vision model name")
@@ -25,7 +26,7 @@ struct LoadModelRequest {
             .optional_field("uncond_diffusion_model", schema::FieldType::String, "Unconditional diffusion model (leejet master post-1ceb5bd)")
             .optional_field("photo_maker", schema::FieldType::String, "PhotoMaker model name")
             .optional_field("pulid_weights", schema::FieldType::String, "PuLID-Flux identity-injection weights (leejet PR #1595). Looked up under the checkpoints directory.")
-            .optional_field("audio_vae", schema::FieldType::String, "Audio VAE (LTXAV / LTX 2.3 — for video models that produce sound)")
+            .optional_field("audio_vae", schema::FieldType::String, "Audio VAE (LTXAV / LTX 2.3 - for video models that produce sound)")
             .optional_field("embeddings_connectors", schema::FieldType::String, "Embeddings connectors (LTXAV / LTX 2.3)")
             .ref_field("options", "LoadOptions", "Model loading options");
         return builder.build();
@@ -48,20 +49,20 @@ struct LoadOptions {
             .optional_field("tensor_type_rules", schema::FieldType::String, "Custom tensor type rules string")
             .enum_field("rng_type", "Random number generator type", RNG_TYPE_VALUES, "cuda")
             .optional_field("sampler_rng_type", schema::FieldType::String, "Sampler-specific RNG type")
-            // "flux2_flow" is a legacy alias — upstream removed FLUX2_FLOW_PRED,
+            // "flux2_flow" is a legacy alias - upstream removed FLUX2_FLOW_PRED,
             // Flux2 now uses FLUX_FLOW_PRED. Kept for compat.
             .enum_field("prediction", "Prediction type", {"eps", "v", "edm_v", "sd3_flow", "flux_flow", "flux2_flow", "sefi_flow", "minit2i_flow", ""})
             .enum_field("lora_apply_mode", "LoRA application mode", {"auto", "immediately", "at_runtime"}, "auto")
-            // Model-specific args (leejet PR #1757) — one opaque string that
+            // Model-specific args (leejet PR #1757) - one opaque string that
             // replaces the previous chroma_use_dit_mask / chroma_use_t5_mask /
             // chroma_t5_mask_pad / qwen_image_zero_cond_t individual load
             // flags. Format is sd.cpp's own key=value list, e.g.
             // "chroma_use_dit_mask=true,chroma_t5_mask_pad=1,qwen_image_zero_cond_t=false".
-            .optional_field("model_args", schema::FieldType::String, "Model-specific args (key=value list) — replaces the old chroma_*/qwen_image_zero_cond_t individual load flags.")
+            .optional_field("model_args", schema::FieldType::String, "Model-specific args (key=value list) - replaces the old chroma_*/qwen_image_zero_cond_t individual load flags.")
             .enum_field("vae_format", "VAE weight format override (auto = sd.cpp detects from the file)", {"auto", "flux", "sd3", "flux2", "wan"}, "auto")
             // circular_x / circular_y moved to per-generation params in
-            // leejet PR #1748 — see GenerationRequestBase.
-            .optional_field("backend", schema::FieldType::String, "Main compute backend override (empty = sd.cpp picks). Use per-component placement here too — e.g. \"diffusion=cuda0,vae=cpu\" — that's how per-component CPU keeping is expressed now (formerly keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu).")
+            // leejet PR #1748 - see GenerationRequestBase.
+            .optional_field("backend", schema::FieldType::String, "Main compute backend override (empty = sd.cpp picks). Use per-component placement here too - e.g. \"diffusion=cuda0,vae=cpu\" - that's how per-component CPU keeping is expressed now (formerly keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu).")
             .optional_field("params_backend", schema::FieldType::String, "Parameter storage backend override (empty = same as backend). Set to \"*=cpu\" for the global \"keep all weights in RAM\" mode that was previously offload_to_cpu.")
             .optional_field("rpc_servers", schema::FieldType::String, "RPC distributed-backend node list, comma-separated host:port pairs (leejet PR #1629). Empty = no RPC.")
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
@@ -82,7 +83,7 @@ struct LoadOptions {
             // ── feature/unified-streaming field (new minimal API) ──────────
             .optional_field("stream_layers", schema::FieldType::Boolean, "Engage residency+async-prefetch streaming on top of max_vram. Requires max_vram > 0; no effect when max_vram == 0. sd.cpp's planner picks the residency split automatically and overlaps next-segment H2D with current-segment compute.", false)
 #endif
-            .optional_field("eager_load", schema::FieldType::Boolean, "Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs naturally with stream_layers on a CPU params backend — the first generation no longer pays for lazy fault-in. Restapi defaults to true (long-lived server: first request after load should be fast); upstream sd-cli defaults to false (one-shot tool).", true)
+            .optional_field("eager_load", schema::FieldType::Boolean, "Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs naturally with stream_layers on a CPU params backend - the first generation no longer pays for lazy fault-in. Restapi defaults to true (long-lived server: first request after load should be fast); upstream sd-cli defaults to false (one-shot tool).", true)
             ;
         return builder.build();
     }
@@ -110,6 +111,7 @@ struct ModelListResponse {
             .array_field("clip", schema::FieldType::Object, "CLIP models")
             .array_field("t5", schema::FieldType::Object, "T5 models")
             .array_field("controlnets", schema::FieldType::Object, "ControlNet models")
+            .array_field("ip_adapters", schema::FieldType::Object, "IP-Adapter models")
             .array_field("llm", schema::FieldType::Object, "LLM models")
             .array_field("esrgan", schema::FieldType::Object, "ESRGAN upscaler models")
             .array_field("taesd", schema::FieldType::Object, "TAESD preview models")
@@ -143,6 +145,7 @@ struct ModelPathsResponse {
             .optional_field("t5", schema::FieldType::String, "T5 models directory")
             .optional_field("embeddings", schema::FieldType::String, "Embeddings directory")
             .optional_field("controlnet", schema::FieldType::String, "ControlNet models directory")
+            .optional_field("ip_adapter", schema::FieldType::String, "IP-Adapter models directory")
             .optional_field("llm", schema::FieldType::String, "LLM models directory")
             .optional_field("esrgan", schema::FieldType::String, "ESRGAN models directory")
             .optional_field("taesd", schema::FieldType::String, "TAESD models directory")
@@ -223,7 +226,7 @@ struct LoadUpscalerRequest {
 
 // Response for POST /models/upload (multipart/form-data).
 // NOTE: The request itself is multipart and is registered without a JSON
-// body schema — the OpenAPI spec currently only documents this response.
+// body schema - the OpenAPI spec currently only documents this response.
 // TODO: enrich the OpenAPI registration to declare a multipart/form-data
 // request body once SchemaBuilder grows multipart support.
 struct UploadModelResponse {

@@ -258,6 +258,7 @@ json McpServer::handle_list_tools() {
         {"clip_vision", {{"type", "string"}, {"description", "CLIP vision encoder (IP-Adapter)"}}},
         {"t5xxl", {{"type", "string"}, {"description", "T5-XXL text encoder"}}},
         {"controlnet", {{"type", "string"}, {"description", "ControlNet model"}}},
+        {"ip_adapter", {{"type", "string"}, {"description", "IP-Adapter model (leejet PR #1803/#1815/#1824/#1839)"}}},
         {"llm", {{"type", "string"}, {"description", "LLM for multimodal architectures (Qwen, Anima, Z-Image)"}}},
         {"llm_vision", {{"type", "string"}, {"description", "LLM vision model"}}},
         {"taesd", {{"type", "string"}, {"description", "TAESD tiny autoencoder (for previews)"}}},
@@ -595,6 +596,7 @@ json McpServer::tool_model(const json& args) {
             static const std::set<std::string> kLoadTopLevel = {
                 "model_name", "model_type",
                 "vae", "clip_l", "clip_g", "clip_vision", "t5xxl", "controlnet",
+                "ip_adapter",
                 "llm", "llm_vision", "taesd", "high_noise_diffusion_model", "photo_maker"
             };
             json load_args = json::object();

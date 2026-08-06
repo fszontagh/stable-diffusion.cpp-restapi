@@ -67,7 +67,9 @@ function formatOptionLabel(key: string): string {
     params_backend: 'Params Backend',
     rpc_servers: 'RPC Servers',
     qwen_image_zero_cond_t: 'Qwen-Image Zero Cond t',
-    stream_layers: 'Stream Layers'
+    stream_layers: 'Stream Layers',
+    ip_adapter: 'IP-Adapter',
+    ip_adapter_strength: 'IP-Adapter Strength'
   }
   return labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
 }
@@ -203,6 +205,12 @@ const importantSettings = [
           <span class="component-label">ControlNet</span>
           <span :class="['component-value', { loaded: store.loadedComponents.controlnet }]">
             {{ formatComponentValue(store.loadedComponents.controlnet) }}
+          </span>
+        </div>
+        <div class="component-item">
+          <span class="component-label">IP-Adapter</span>
+          <span :class="['component-value', { loaded: store.loadedComponents.ip_adapter }]">
+            {{ formatComponentValue(store.loadedComponents.ip_adapter) }}
           </span>
         </div>
         <div class="component-item">

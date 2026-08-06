@@ -1373,6 +1373,63 @@
       "match": {
         "nameRegex": "hunyuan.*video.*1\\.?5|hunyuanvideo[_.\\-]?1[_.\\-]?5"
       }
+    },
+    "Mage-Flow": {
+      "name": "Mage-Flow",
+      "description": "Mage-Flow flow-matching model (leejet PR #1808). Flux-family: requires VAE (ae.safetensors), CLIP-L, and T5-XXL.",
+      "aliases": [
+        "Mage Flow",
+        "mage_flow",
+        "mageflow"
+      ],
+      "requiredComponents": {
+        "vae": "ae.safetensors or ae.gguf",
+        "clip_l": "CLIP-L text encoder",
+        "t5xxl": "T5-XXL text encoder"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 4.0,
+        "steps": 28,
+        "sampler": "euler",
+        "scheduler": "flux",
+        "prediction": "flow",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "nameRegex": "mage.?flow"
+      }
+    },
+    "Minimax-H3": {
+      "name": "Minimax-H3",
+      "description": "Minimax-H3 image model (leejet PR #1854). Ships with a trained latent2rgb projection on the VAE (PR #1856) for higher-quality live previews.",
+      "aliases": [
+        "minimax_h3",
+        "minimax-h3"
+      ],
+      "requiredComponents": {
+        "vae": "Minimax-H3 VAE"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 5.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "prediction": "eps",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "nameRegex": "minimax.?h3|minimax_h3"
+      }
     }
   },
   "version": 2,

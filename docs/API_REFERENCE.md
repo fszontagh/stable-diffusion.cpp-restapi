@@ -569,7 +569,7 @@ Tags: `Models`
 
 | in | name | type | required | description |
 |---|---|---|---|---|
-| query | `type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `llm`, `esrgan`, `taesd`, `motion_module`, `adetailer`) |  | Filter by model type |
+| query | `type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `ip_adapter`, `llm`, `esrgan`, `taesd`, `motion_module`, `adetailer`) |  | Filter by model type |
 | query | `extension` | string |  | Filter by file extension |
 | query | `search` | string |  | Search in model name |
 | query | `name` | string |  | Search alias for 'search' parameter |
@@ -1157,7 +1157,7 @@ Model format conversion request
 | field | type | required | default | description |
 |---|---|---|---|---|
 | `input_path` | string | yes |  | Input model path or name |
-| `model_type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `llm`, `esrgan`, `taesd`, `motion_module`, `adetailer`) |  |  | Model type for name resolution |
+| `model_type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `ip_adapter`, `llm`, `esrgan`, `taesd`, `motion_module`, `adetailer`) |  |  | Model type for name resolution |
 | `output_path` | string |  |  | Output path (auto-generated if empty) |
 | `output_type` | string | yes |  | Target quantization type |
 | `title` | string |  |  | Optional display title for the queue job |
@@ -1199,7 +1199,7 @@ Download a model from external source
 |---|---|---|---|---|
 | `filename` | string |  |  | Target filename |
 | `model_id` | string |  |  | CivitAI model ID (format: id or id:version) |
-| `model_type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `llm`, `esrgan`, `taesd`, `motion_module`, `adetailer`) | yes |  | Target model type category |
+| `model_type` | enum (`checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `embedding`, `controlnet`, `ip_adapter`, `llm`, `esrgan`, `taesd`, `motion_module`, `adetailer`) | yes |  | Target model type category |
 | `repo_id` | string |  |  | HuggingFace repository ID |
 | `revision` | string |  | main | Git revision for HF repo |
 | `source` | enum (`url`, `civitai`, `huggingface`) |  |  | Download source |
@@ -1234,8 +1234,8 @@ Common generation parameters
 | `batch_count` | integer |  | 1 | Number of images to generate |
 | `cache_mode` | string |  |  | Cache acceleration mode: easycache, ucache, dbcache, taylorseer, cache_dit, spectrum (empty = disabled) |
 | `cfg_scale` | number |  |  | Classifier-free guidance scale (sd_guidance_params_t.txt_cfg) (default from model_architectures.json) |
-| `circular_x` | boolean |  | false | Circular RoPE on the X axis — seamless/tileable output across the horizontal seam. Required for Ideogram4-style tileable-texture workflows. |
-| `circular_y` | boolean |  | false | Circular RoPE on the Y axis — seamless/tileable output across the vertical seam. |
+| `circular_x` | boolean |  | false | Circular RoPE on the X axis - seamless/tileable output across the horizontal seam. Required for Ideogram4-style tileable-texture workflows. |
+| `circular_y` | boolean |  | false | Circular RoPE on the Y axis - seamless/tileable output across the vertical seam. |
 | `clip_skip` | integer |  | -1 | CLIP layers to skip (-1 for default) |
 | `control_image_base64` | string |  |  | ControlNet input image as base64 |
 | `control_strength` | number |  | 0.9 | ControlNet guidance strength |
@@ -1246,7 +1246,7 @@ Common generation parameters
 | `easycache_start` | number |  | 0.15 | Cache start percentage (shared across modes) |
 | `easycache_threshold` | number |  | 0.2 | Reuse threshold for similarity-based caches (EasyCache/UCache/DBCache) |
 | `eta` | number |  | 0.0 | Eta for DDIM-like samplers |
-| `extra_sample_args` | string |  |  | Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs) |
+| `extra_sample_args` | string |  |  | Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs). When scheduler=beta, accepts beta_alpha=X,beta_beta=Y for custom beta-distribution parameters (leejet PR #1834). |
 | `extra_tiling_args` | string |  |  | Extra key=value tiling args (passed through to sd.cpp's tiling parser, model-specific) |
 | `height` | integer |  |  | Image height in pixels (default from model_architectures.json) |
 | `hires_denoising_strength` | number |  | 0.4 | Hires denoising strength |
@@ -1259,6 +1259,8 @@ Common generation parameters
 | `hires_upscale_tile_size` | integer |  | 0 | Hires upscaler tile size |
 | `hires_upscaler` | string |  | model | Hires upscaler (sd_hires_upscaler_t): none, latent, latent_nearest, latent_nearest_exact, latent_antialiased, latent_bicubic, latent_bicubic_antialiased, lanczos, nearest, model |
 | `img_cfg_scale` | number |  | -1.0 | Image CFG (sd_guidance_params_t.img_cfg). -1 = inherit cfg_scale. |
+| `ip_adapter_image_base64` | string |  |  | IP-Adapter reference image as base64. Requires an IP-Adapter loaded on the model. |
+| `ip_adapter_strength` | number |  | 1.0 | IP-Adapter guidance strength (upstream default 1.0) |
 | `negative_prompt` | string |  |  | Negative prompt |
 | `pm_id_embed_path` | string |  |  | Path to PhotoMaker ID embedding |
 | `pm_id_images` | array<string> |  |  | PhotoMaker identity images as base64 |
@@ -1269,7 +1271,7 @@ Common generation parameters
 | `qwen_image_layers` | integer |  | 0 | Qwen-Image layered rendering (image path only; 0 = disabled) |
 | `ref_image_args` | string |  |  | Comma-separated k=v flags for reference-image processing (e.g. resize_before_vae=0,ref_index_mode=increase). See sd.cpp docs. |
 | `ref_images` | array<string> |  |  | Reference images as base64 strings |
-| `sampler` | enum (`euler`, `euler_a`, `heun`, `dpm2`, `dpm++2s_a`, `dpm++2m`, `dpm++2mv2`, `ipndm`, `ipndm_v`, `lcm`, `ddim_trailing`, `tcd`, `res_multistep`, `res_2s`, `er_sde`, `euler_cfg_pp`, `euler_a_cfg_pp`, `euler_ge`, `dpm++2m_sde`, `dpm++2m_sde_bt`) |  |  | Sampling algorithm (default from model_architectures.json) |
+| `sampler` | enum (`euler`, `euler_a`, `heun`, `dpm2`, `dpm++2s_a`, `dpm++2m`, `dpm++2mv2`, `ipndm`, `ipndm_v`, `lcm`, `ddim_trailing`, `tcd`, `res_multistep`, `res_2s`, `er_sde`, `euler_cfg_pp`, `euler_a_cfg_pp`, `euler_ge`, `dpm++2m_sde`, `dpm++2m_sde_bt`, `lms`) |  |  | Sampling algorithm (default from model_architectures.json) |
 | `scheduler` | enum (`discrete`, `karras`, `exponential`, `ays`, `gits`, `sgm_uniform`, `simple`, `smoothstep`, `kl_optimal`, `lcm`, `bong_tangent`, `ltx2`, `logit_normal`, `flux`, `flux2`, `beta`, `normal`) |  |  | Noise scheduler (default from model_architectures.json) |
 | `seed` | integer |  | -1 | RNG seed (-1 for random) |
 | `shifted_timestep` | integer |  | 0 | Shifted timestep value (NitroFusion: 250-500) |
@@ -1287,7 +1289,7 @@ Common generation parameters
 | `steps` | integer |  |  | Number of sampling steps (default from model_architectures.json) |
 | `taylorseer_n_derivatives` | integer |  | 2 | TaylorSeer: derivative order (typically 2-4) |
 | `taylorseer_skip_interval` | integer |  | 0 | TaylorSeer: predict-every-N-steps interval (0 = adaptive) |
-| `temporal_tiling` | boolean |  | false | Enable temporal VAE tiling (LTX video models — splits the time axis into tiles to reduce memory pressure during decode) |
+| `temporal_tiling` | boolean |  | false | Enable temporal VAE tiling (LTX video models - splits the time axis into tiles to reduce memory pressure during decode) |
 | `title` | string |  |  | Optional display title for the queue job (free-form, shown next to the type label in the WebUI) |
 | `upscale` | boolean |  | false | Auto-run a loaded ESRGAN upscaler after generation (post-gen, distinct from hires_enabled) |
 | `upscale_auto_unload` | boolean |  | true | Unload upscaler after use |
@@ -1375,13 +1377,14 @@ Load a model into memory
 
 | field | type | required | default | description |
 |---|---|---|---|---|
-| `audio_vae` | string |  |  | Audio VAE (LTXAV / LTX 2.3 — for video models that produce sound) |
+| `audio_vae` | string |  |  | Audio VAE (LTXAV / LTX 2.3 - for video models that produce sound) |
 | `clip_g` | string |  |  | CLIP-G text encoder name |
 | `clip_l` | string |  |  | CLIP-L text encoder name |
 | `clip_vision` | string |  |  | CLIP vision model name |
 | `controlnet` | string |  |  | ControlNet model name |
 | `embeddings_connectors` | string |  |  | Embeddings connectors (LTXAV / LTX 2.3) |
 | `high_noise_diffusion_model` | string |  |  | High-noise diffusion model (for dual-stage) |
+| `ip_adapter` | string |  |  | IP-Adapter model name (leejet PR #1803/#1815/#1824/#1839). Both classic and Plus/Resampler variants supported. |
 | `llm` | string |  |  | LLM model name |
 | `llm_vision` | string |  |  | LLM vision model name |
 | `model_name` | string | yes |  | Name of the model file to load |
@@ -1413,15 +1416,15 @@ Model loading options
 
 | field | type | required | default | description |
 |---|---|---|---|---|
-| `backend` | string |  |  | Main compute backend override (empty = sd.cpp picks). Use per-component placement here too — e.g. "diffusion=cuda0,vae=cpu" — that's how per-component CPU keeping is expressed now (formerly keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu). |
+| `backend` | string |  |  | Main compute backend override (empty = sd.cpp picks). Use per-component placement here too - e.g. "diffusion=cuda0,vae=cpu" - that's how per-component CPU keeping is expressed now (formerly keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu). |
 | `diffusion_conv_direct` | boolean |  | false | Direct diffusion convolution |
 | `diffusion_flash_attn` | boolean |  | false | Enable flash attention specifically for the diffusion model (UNet/DiT/Flux) |
-| `eager_load` | boolean |  | true | Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs naturally with stream_layers on a CPU params backend — the first generation no longer pays for lazy fault-in. Restapi defaults to true (long-lived server: first request after load should be fast); upstream sd-cli defaults to false (one-shot tool). |
+| `eager_load` | boolean |  | true | Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs naturally with stream_layers on a CPU params backend - the first generation no longer pays for lazy fault-in. Restapi defaults to true (long-lived server: first request after load should be fast); upstream sd-cli defaults to false (one-shot tool). |
 | `enable_mmap` | boolean |  | true | Enable memory-mapped file access |
 | `flash_attn` | boolean |  | true | Enable flash attention for CLIP/T5/conditioner |
 | `lora_apply_mode` | enum (`auto`, `immediately`, `at_runtime`) |  | auto | LoRA application mode |
 | `max_vram` | number |  | 0 | GiB budget for graph-cut segmented param offload (0 = disabled) |
-| `model_args` | string |  |  | Model-specific args (key=value list) — replaces the old chroma_*/qwen_image_zero_cond_t individual load flags. |
+| `model_args` | string |  |  | Model-specific args (key=value list) - replaces the old chroma_*/qwen_image_zero_cond_t individual load flags. |
 | `n_threads` | integer |  | -1 | Number of CPU threads (-1 for auto) |
 | `params_backend` | string |  |  | Parameter storage backend override (empty = same as backend). Set to "*=cpu" for the global "keep all weights in RAM" mode that was previously offload_to_cpu. |
 | `prediction` | enum (`eps`, `v`, `edm_v`, `sd3_flow`, `flux_flow`, `flux2_flow`, `sefi_flow`, `minit2i_flow`, ``) |  |  | Prediction type |
@@ -1462,7 +1465,7 @@ Issued bearer token plus its absolute expiration time
 |---|---|---|---|---|
 | `expires_at` | integer | yes |  | Token expiration as Unix epoch seconds |
 | `token` | string | yes |  | Opaque bearer token (~43 base64url characters) |
-| `token_type` | string | yes |  | Always "Bearer" — included to match common OAuth-style clients |
+| `token_type` | string | yes |  | Always "Bearer" - included to match common OAuth-style clients |
 
 ### schema `LogoutResponse` <a id="schema-logoutresponse"></a>
 
@@ -1496,6 +1499,7 @@ List of all available models by category
 | `diffusion_models` | array<object> |  |  | Diffusion models |
 | `embeddings` | array<object> |  |  | Embedding models |
 | `esrgan` | array<object> |  |  | ESRGAN upscaler models |
+| `ip_adapters` | array<object> |  |  | IP-Adapter models |
 | `llm` | array<object> |  |  | LLM models |
 | `loaded_model` | string |  |  | Currently loaded model name |
 | `loaded_model_type` | string |  |  | Type of currently loaded model |
@@ -1518,6 +1522,7 @@ Configured model storage paths
 | `diffusion_models` | string |  |  | Diffusion models directory |
 | `embeddings` | string |  |  | Embeddings directory |
 | `esrgan` | string |  |  | ESRGAN models directory |
+| `ip_adapter` | string |  |  | IP-Adapter models directory |
 | `llm` | string |  |  | LLM models directory |
 | `lora` | string |  |  | LoRA models directory |
 | `motion_module` | string |  |  | AnimateDiff / PiD motion modules directory |
@@ -1658,6 +1663,7 @@ Extends: [GenerationRequestBase](#schema-generationrequestbase)
 | `high_noise_steps` | integer |  | -1 | High-noise sampling steps (-1 for auto) |
 | `init_image_base64` | string |  |  | Starting frame image as base64 |
 | `moe_boundary` | number |  | 0.875 | MoE boundary for WAN models |
+| `ref_images` | array<string> |  |  | Reference images as base64 strings (Hunyuan-family video models) |
 | `strength` | number |  | 0.75 | Denoising strength for init image |
 | `vace_strength` | number |  | 1.0 | VACE control strength |
 | `video_frames` | integer |  | 33 | Number of video frames to generate |

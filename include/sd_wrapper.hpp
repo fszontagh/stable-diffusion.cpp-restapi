@@ -86,6 +86,14 @@ struct Txt2ImgParams {
     int control_image_channels = 3;
     float control_strength = 0.9f;
 
+    // IP-Adapter reference image (leejet PR #1803/#1815/#1824/#1839)
+    // Requires ip_adapter loaded on the model.
+    std::vector<uint8_t> ip_adapter_image_data;
+    int ip_adapter_image_width = 0;
+    int ip_adapter_image_height = 0;
+    int ip_adapter_image_channels = 3;
+    float ip_adapter_strength = 1.0f;
+
     // VAE tiling for large images
     bool vae_tiling = false;
     int vae_tile_size_x = 0;            // 0 = auto
@@ -211,6 +219,13 @@ struct Img2ImgParams {
     int control_image_height = 0;
     int control_image_channels = 3;
     float control_strength = 0.9f;
+
+    // IP-Adapter reference image (leejet PR #1803/#1815/#1824/#1839)
+    std::vector<uint8_t> ip_adapter_image_data;
+    int ip_adapter_image_width = 0;
+    int ip_adapter_image_height = 0;
+    int ip_adapter_image_channels = 3;
+    float ip_adapter_strength = 1.0f;
 
     // VAE tiling for large images
     bool vae_tiling = false;
@@ -384,6 +399,10 @@ struct Txt2VidParams {
     int control_image_height = 0;
     int control_image_channels = 3;
     std::vector<std::string> control_frames_base64;  // Multiple control frames
+
+    // Reference images for video (Hunyuan / minimax-h3 chain).
+    // TODO: expose ref_videos/ref_audios once we have video/audio upload support.
+    std::vector<std::string> ref_images_base64;
 
     // High-noise phase parameters (MoE models like Wan2.2). Aligned with
     // upstream's full sd_sample_params_t — the previous version only mirrored

@@ -11,7 +11,9 @@ inline const std::vector<std::string> SAMPLER_VALUES = {
     "ipndm", "ipndm_v", "lcm", "ddim_trailing", "tcd", "res_multistep", "res_2s",
     "er_sde", "euler_cfg_pp", "euler_a_cfg_pp", "euler_ge",
     // leejet PR #1742 (DPM++ 2M SDE) and #1743 (Brownian-tree variant).
-    "dpm++2m_sde", "dpm++2m_sde_bt"
+    "dpm++2m_sde", "dpm++2m_sde_bt",
+    // leejet PR #1819 / #1843 - LMS sampler.
+    "lms"
 };
 
 inline const std::vector<std::string> SCHEDULER_VALUES = {
@@ -22,12 +24,12 @@ inline const std::vector<std::string> SCHEDULER_VALUES = {
     "flux",         // PR #1723
     "flux2",        // PR #1722
     "beta",         // PR #811
-    "normal"        // PR #1724 — alias for "discrete"
+    "normal"        // PR #1724 - alias for "discrete"
 };
 
 inline const std::vector<std::string> MODEL_TYPE_VALUES = {
     "checkpoint", "diffusion", "vae", "lora", "clip", "t5",
-    "embedding", "controlnet", "llm", "esrgan", "taesd",
+    "embedding", "controlnet", "ip_adapter", "llm", "esrgan", "taesd",
     "motion_module", "adetailer"
 };
 
@@ -104,7 +106,7 @@ struct LoginResponse {
             .required_field("expires_at", schema::FieldType::Integer,
                 "Token expiration as Unix epoch seconds")
             .required_field("token_type", schema::FieldType::String,
-                "Always \"Bearer\" — included to match common OAuth-style clients")
+                "Always \"Bearer\" - included to match common OAuth-style clients")
             .build();
     }
 };
