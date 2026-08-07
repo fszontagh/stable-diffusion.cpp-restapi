@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
 import { useAppStore } from '../stores/app'
-import { api, type ModelCapabilitiesResponse } from '../api/client'
+import { api, type ModelCapabilitiesResponse, type AutoUnloadSettings } from '../api/client'
 import { useSettingsExport } from '../composables/useSettingsExport'
 import ThemeSelector from '../components/ThemeSelector.vue'
 import SettingField from '../components/settings/SettingField.vue'
@@ -62,6 +62,19 @@ const genFlowShift = ref(3.0)
 // Advanced section collapsed state
 const showAdvanced = ref(false)
 
+// Auto-unload (Ollama-style idle timeout) settings
+const autoUnloadSettings = ref<AutoUnloadSettings>({
+  main:      { enabled: false, timeout_minutes: 30 },
+  upscaler:  { enabled: false, timeout_minutes: 30 },
+  adetailer: { enabled: false, timeout_minutes: 30 }
+})
+const autoUnloadStatus = ref<{
+  main: { is_loaded: boolean; last_used_unix: number };
+  upscaler: { is_loaded: boolean; last_used_unix: number };
+  adetailer: { is_loaded: boolean; last_used_unix: number };
+} | null>(null)
+let autoUnloadPollTimer: ReturnType<typeof setInterval> | null = null
+
 // Preview settings
 const previewSettings = ref({
   enabled: true,
@@ -96,6 +109,7 @@ const tabs = [
   { id: 'general', label: 'General', icon: '⚙️' },
   { id: 'generation', label: 'Generation', icon: '🎯' },
   { id: 'preview', label: 'Preview', icon: '👁️' },
+  { id: 'auto-unload', label: 'Auto-unload', icon: '⏱️' },
   { id: 'assistant', label: 'Assistant', icon: '🧠' },
   { id: 'themes', label: 'Themes', icon: '🎨' },
   { id: 'import-export', label: 'Import/Export', icon: '📦' }
@@ -165,6 +179,8 @@ async function loadSettings() {
       loadUIPreferences(),
       loadGenerationDefaults(),
       loadPreviewSettings(),
+      loadAutoUnloadSettings(),
+      refreshAutoUnloadStatus(),
       loadAssistantSettings(),
       loadOutputSettings()
     ])
@@ -336,6 +352,70 @@ async function loadPreviewSettings() {
   const settings = await api.getPreviewSettings()
   previewSettings.value = settings
 }
+
+async function loadAutoUnloadSettings() {
+  try {
+    const settings = await api.getAutoUnloadSettings()
+    autoUnloadSettings.value = settings
+  } catch (e) {
+    console.error('Failed to load auto-unload settings:', e)
+  }
+}
+
+async function refreshAutoUnloadStatus() {
+  try {
+    const health = await api.getHealth() as any
+    if (health && health.auto_unload) {
+      autoUnloadStatus.value = {
+        main:      health.auto_unload.main,
+        upscaler:  health.auto_unload.upscaler,
+        adetailer: health.auto_unload.adetailer
+      }
+    }
+  } catch (e) {
+    // silent - health may transiently fail
+  }
+}
+
+async function saveAutoUnloadSettings() {
+  try {
+    const clamp = (v: number) => Math.min(1440, Math.max(1, Math.round(v || 1)))
+    const payload: AutoUnloadSettings = {
+      main:      { enabled: autoUnloadSettings.value.main.enabled,      timeout_minutes: clamp(autoUnloadSettings.value.main.timeout_minutes) },
+      upscaler:  { enabled: autoUnloadSettings.value.upscaler.enabled,  timeout_minutes: clamp(autoUnloadSettings.value.upscaler.timeout_minutes) },
+      adetailer: { enabled: autoUnloadSettings.value.adetailer.enabled, timeout_minutes: clamp(autoUnloadSettings.value.adetailer.timeout_minutes) }
+    }
+    const updated = await api.updateAutoUnloadSettings(payload)
+    autoUnloadSettings.value = updated
+    store.showToast('Auto-unload settings saved', 'success')
+  } catch (e) {
+    store.showToast('Failed to save auto-unload settings', 'error')
+  }
+}
+
+function formatIdleFor(kind: 'main' | 'upscaler' | 'adetailer'): string {
+  if (!autoUnloadStatus.value) return ''
+  const s = autoUnloadStatus.value[kind]
+  if (!s || !s.is_loaded) return 'Not loaded'
+  if (!s.last_used_unix) return 'Loaded, idle -'
+  const now = Math.floor(Date.now() / 1000)
+  let idle = now - s.last_used_unix
+  if (idle < 0) idle = 0
+  const m = Math.floor(idle / 60)
+  const sec = idle % 60
+  return `Loaded, idle ${m}m ${sec}s`
+}
+
+onMounted(() => {
+  autoUnloadPollTimer = setInterval(() => { refreshAutoUnloadStatus() }, 5000)
+})
+
+onBeforeUnmount(() => {
+  if (autoUnloadPollTimer) {
+    clearInterval(autoUnloadPollTimer)
+    autoUnloadPollTimer = null
+  }
+})
 
 async function loadAssistantSettings() {
   try {
@@ -897,6 +977,48 @@ loadSettings()
                   />
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- Auto-unload Tab -->
+          <div v-if="activeTab === 'auto-unload'" class="tab-panel">
+            <h3>Auto-unload (idle timeout)</h3>
+            <p class="help-text">
+              When a kind has been idle for N minutes, unload it to free VRAM/RAM.
+              Off by default. Configure per-kind independently.
+            </p>
+
+            <div class="settings-card" v-for="kind in (['main','upscaler','adetailer'] as const)" :key="kind">
+              <div class="settings-card-header">
+                <h4>
+                  <template v-if="kind === 'main'">Main model (sd_ctx)</template>
+                  <template v-else-if="kind === 'upscaler'">Upscaler</template>
+                  <template v-else>ADetailer detector</template>
+                </h4>
+              </div>
+              <div class="settings-card-body">
+                <SwitchField
+                  v-model="autoUnloadSettings[kind].enabled"
+                  label="Enable auto-unload"
+                  :description="'Unload this kind after the idle window elapses'"
+                />
+                <div :class="{ 'settings-disabled': !autoUnloadSettings[kind].enabled }">
+                  <SettingField
+                    v-model.number="autoUnloadSettings[kind].timeout_minutes"
+                    label="Idle timeout (minutes)"
+                    description="Between 1 and 1440 minutes"
+                    type="number"
+                    :disabled="!autoUnloadSettings[kind].enabled"
+                  />
+                </div>
+                <p class="help-text" style="margin-top: 8px;">
+                  Status: {{ formatIdleFor(kind) }}
+                </p>
+              </div>
+            </div>
+
+            <div class="settings-actions">
+              <button class="btn btn-primary" @click="saveAutoUnloadSettings">Save</button>
             </div>
           </div>
 

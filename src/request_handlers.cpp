@@ -737,6 +737,17 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         "Update preview settings", "Settings", 200,
         [this](auto& req, auto& res) { handle_update_preview_settings(req, res); });
 
+    // ── Auto-unload Settings ─────────────────────────────────────────
+    api.addEndpoint<void, AutoUnloadSettingsResponse>(
+        server, "GET", "/settings/auto-unload",
+        "Get auto-unload (idle timeout) settings", "Settings", 200,
+        [this](auto& req, auto& res) { handle_get_auto_unload_settings(req, res); });
+
+    api.addEndpoint<UpdateAutoUnloadSettingsRequest, AutoUnloadSettingsResponse>(
+        server, "PUT", "/settings/auto-unload",
+        "Update auto-unload (idle timeout) settings", "Settings", 200,
+        [this](auto& req, auto& res) { handle_update_auto_unload_settings(req, res); });
+
 #ifdef SDCPP_ASSISTANT_ENABLED
     // ── Assistant ────────────────────────────────────────────────────
     api.addEndpoint<AssistantChatRequest, void>(
@@ -1100,8 +1111,10 @@ void RequestHandlers::handle_health(const httplib::Request& req, httplib::Respon
             {"ip_adapter_plus", true},
             {"ref_video", true},
             {"ref_audio", true},
-            {"auth_required", auth_manager_.enabled()}
-        }}
+            {"auth_required", auth_manager_.enabled()},
+            {"auto_unload", true}
+        }},
+        {"auto_unload", model_manager_.get_auto_unload_status_json()}
     };
 
     send_json(res, response);
@@ -3757,6 +3770,84 @@ void RequestHandlers::handle_update_preview_settings(const httplib::Request& req
             {"max_size", max_size},
             {"quality", quality}
         }}
+    });
+}
+
+// ==================== Auto-unload Settings Handlers ====================
+
+static nlohmann::json per_kind_to_json(const AutoUnloadPerKind& k) {
+    return {
+        {"enabled", k.enabled},
+        {"timeout_minutes", k.timeout_minutes}
+    };
+}
+
+void RequestHandlers::handle_get_auto_unload_settings(const httplib::Request& /*req*/, httplib::Response& res) {
+    auto s = model_manager_.get_auto_unload_settings();
+    send_json(res, {
+        {"main",      per_kind_to_json(s.main)},
+        {"upscaler",  per_kind_to_json(s.upscaler)},
+        {"adetailer", per_kind_to_json(s.adetailer)}
+    });
+}
+
+void RequestHandlers::handle_update_auto_unload_settings(const httplib::Request& req, httplib::Response& res) {
+    auto json = parse_json_body(req);
+    if (json.is_null() || !json.is_object()) {
+        send_error(res, "Invalid JSON body", 400);
+        return;
+    }
+
+    static const std::unordered_set<std::string> KNOWN_KINDS = {"main", "upscaler", "adetailer"};
+    for (auto it = json.begin(); it != json.end(); ++it) {
+        if (KNOWN_KINDS.find(it.key()) == KNOWN_KINDS.end()) {
+            send_error(res, "Unknown field in /settings/auto-unload body: " + it.key() +
+                                ". Accepted: main, upscaler, adetailer.", 400);
+            return;
+        }
+    }
+
+    // Start from current settings so partial updates work.
+    AutoUnloadSettings s = model_manager_.get_auto_unload_settings();
+
+    auto apply = [this, &res](const nlohmann::json& src, AutoUnloadPerKind& dst, const char* kind_name) -> bool {
+        if (!src.is_object()) {
+            send_error(res, std::string("Field '") + kind_name + "' must be an object", 400);
+            return false;
+        }
+        if (src.contains("enabled")) {
+            if (!src["enabled"].is_boolean()) {
+                send_error(res, std::string(kind_name) + ".enabled must be a boolean", 400);
+                return false;
+            }
+            dst.enabled = src["enabled"].get<bool>();
+        }
+        if (src.contains("timeout_minutes")) {
+            if (!src["timeout_minutes"].is_number_integer()) {
+                send_error(res, std::string(kind_name) + ".timeout_minutes must be an integer", 400);
+                return false;
+            }
+            int v = src["timeout_minutes"].get<int>();
+            if (v < 1 || v > 1440) {
+                send_error(res, std::string(kind_name) + ".timeout_minutes must be in [1, 1440]", 400);
+                return false;
+            }
+            dst.timeout_minutes = v;
+        }
+        return true;
+    };
+
+    if (json.contains("main")      && !apply(json["main"],      s.main,      "main"))      return;
+    if (json.contains("upscaler")  && !apply(json["upscaler"],  s.upscaler,  "upscaler"))  return;
+    if (json.contains("adetailer") && !apply(json["adetailer"], s.adetailer, "adetailer")) return;
+
+    model_manager_.set_auto_unload_settings(s);
+
+    auto effective = model_manager_.get_auto_unload_settings();
+    send_json(res, {
+        {"main",      per_kind_to_json(effective.main)},
+        {"upscaler",  per_kind_to_json(effective.upscaler)},
+        {"adetailer", per_kind_to_json(effective.adetailer)}
     });
 }
 

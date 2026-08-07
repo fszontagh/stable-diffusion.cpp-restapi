@@ -437,12 +437,228 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
 
 ModelManager::ModelManager(const Config& config)
     : config_(config) {
+    auto_unload_settings_path_ =
+        (fs::path(config_.paths.output) / "auto_unload_settings.json").string();
+    load_auto_unload_settings_from_disk();
+    auto_unload_thread_ = std::thread([this]() { auto_unload_loop(); });
 }
 
 ModelManager::~ModelManager() {
+    {
+        std::lock_guard<std::mutex> lk(auto_unload_cv_mutex_);
+        auto_unload_stop_ = true;
+    }
+    auto_unload_cv_.notify_all();
+    if (auto_unload_thread_.joinable()) {
+        auto_unload_thread_.join();
+    }
     unload_model();
     unload_upscaler();
     unload_adetailer();
+}
+
+// ==================== Auto-unload implementation ====================
+
+static int64_t now_unix_seconds() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
+void ModelManager::stamp_activity(AutoUnloadKind kind) {
+    int64_t now = now_unix_seconds();
+    switch (kind) {
+        case AutoUnloadKind::Main:      last_used_main_.store(now); break;
+        case AutoUnloadKind::Upscaler:  last_used_upscaler_.store(now); break;
+        case AutoUnloadKind::Adetailer: last_used_adetailer_.store(now); break;
+    }
+}
+
+AutoUnloadSettings ModelManager::get_auto_unload_settings() const {
+    std::lock_guard<std::mutex> lk(auto_unload_mutex_);
+    return auto_unload_settings_;
+}
+
+static int clamp_timeout_minutes(int v) {
+    if (v < 1) return 1;
+    if (v > 1440) return 1440;
+    return v;
+}
+
+void ModelManager::set_auto_unload_settings(const AutoUnloadSettings& settings) {
+    {
+        std::lock_guard<std::mutex> lk(auto_unload_mutex_);
+        auto_unload_settings_ = settings;
+        auto_unload_settings_.main.timeout_minutes      = clamp_timeout_minutes(settings.main.timeout_minutes);
+        auto_unload_settings_.upscaler.timeout_minutes  = clamp_timeout_minutes(settings.upscaler.timeout_minutes);
+        auto_unload_settings_.adetailer.timeout_minutes = clamp_timeout_minutes(settings.adetailer.timeout_minutes);
+    }
+    save_auto_unload_settings_to_disk();
+    auto_unload_cv_.notify_all();  // Wake timer to re-evaluate immediately.
+}
+
+nlohmann::json ModelManager::get_auto_unload_status_json() const {
+    auto s = get_auto_unload_settings();
+    auto to_json = [](const AutoUnloadPerKind& k) {
+        return nlohmann::json{
+            {"enabled", k.enabled},
+            {"timeout_minutes", k.timeout_minutes}
+        };
+    };
+    return {
+        {"settings", {
+            {"main",      to_json(s.main)},
+            {"upscaler",  to_json(s.upscaler)},
+            {"adetailer", to_json(s.adetailer)}
+        }},
+        {"main", {
+            {"is_loaded",      model_loaded_.load()},
+            {"last_used_unix", last_used_main_.load()}
+        }},
+        {"upscaler", {
+            {"is_loaded",      upscaler_loaded_.load()},
+            {"last_used_unix", last_used_upscaler_.load()}
+        }},
+        {"adetailer", {
+            {"is_loaded",      adetailer_context_ != nullptr},
+            {"last_used_unix", last_used_adetailer_.load()}
+        }}
+    };
+}
+
+void ModelManager::load_auto_unload_settings_from_disk() {
+    std::lock_guard<std::mutex> lk(auto_unload_mutex_);
+    auto_unload_settings_ = AutoUnloadSettings{};  // defaults
+    try {
+        if (!fs::exists(auto_unload_settings_path_)) return;
+        std::ifstream f(auto_unload_settings_path_);
+        if (!f.is_open()) return;
+        nlohmann::json j;
+        f >> j;
+        auto parse = [](const nlohmann::json& src, AutoUnloadPerKind& dst) {
+            if (!src.is_object()) return;
+            if (src.contains("enabled") && src["enabled"].is_boolean()) {
+                dst.enabled = src["enabled"].get<bool>();
+            }
+            if (src.contains("timeout_minutes") && src["timeout_minutes"].is_number_integer()) {
+                dst.timeout_minutes = clamp_timeout_minutes(src["timeout_minutes"].get<int>());
+            }
+        };
+        if (j.contains("main"))      parse(j["main"],      auto_unload_settings_.main);
+        if (j.contains("upscaler"))  parse(j["upscaler"],  auto_unload_settings_.upscaler);
+        if (j.contains("adetailer")) parse(j["adetailer"], auto_unload_settings_.adetailer);
+    } catch (const std::exception& e) {
+        std::cerr << "[ModelManager] Failed to load auto_unload_settings: "
+                  << e.what() << std::endl;
+    }
+}
+
+void ModelManager::save_auto_unload_settings_to_disk() const {
+    AutoUnloadSettings s;
+    {
+        std::lock_guard<std::mutex> lk(auto_unload_mutex_);
+        s = auto_unload_settings_;
+    }
+    try {
+        auto to_json = [](const AutoUnloadPerKind& k) {
+            return nlohmann::json{
+                {"enabled", k.enabled},
+                {"timeout_minutes", k.timeout_minutes}
+            };
+        };
+        nlohmann::json j = {
+            {"main",      to_json(s.main)},
+            {"upscaler",  to_json(s.upscaler)},
+            {"adetailer", to_json(s.adetailer)}
+        };
+        fs::create_directories(fs::path(auto_unload_settings_path_).parent_path());
+        std::ofstream f(auto_unload_settings_path_);
+        f << j.dump(2);
+    } catch (const std::exception& e) {
+        std::cerr << "[ModelManager] Failed to save auto_unload_settings: "
+                  << e.what() << std::endl;
+    }
+}
+
+void ModelManager::auto_unload_loop() {
+    using namespace std::chrono_literals;
+    while (true) {
+        {
+            std::unique_lock<std::mutex> lk(auto_unload_cv_mutex_);
+            auto_unload_cv_.wait_for(lk, 30s, [this]() { return auto_unload_stop_.load(); });
+            if (auto_unload_stop_.load()) return;
+        }
+
+        AutoUnloadSettings s = get_auto_unload_settings();
+        int64_t now = now_unix_seconds();
+
+        // Skip everything if a load is in progress — don't fight the loader.
+        if (model_loading_.load()) continue;
+
+        auto try_unload = [&](AutoUnloadKind kind,
+                              const AutoUnloadPerKind& cfg,
+                              std::atomic<int64_t>& last_used,
+                              bool is_loaded,
+                              const char* kind_str,
+                              std::function<std::string()> get_name,
+                              std::function<void()> do_unload) {
+            if (!cfg.enabled || !is_loaded) return;
+            int64_t last = last_used.load();
+            if (last <= 0) return;
+            int64_t idle = now - last;
+            int64_t threshold = static_cast<int64_t>(cfg.timeout_minutes) * 60;
+            if (idle < threshold) return;
+            std::string name = get_name();
+            std::cout << "[ModelManager] Auto-unload " << kind_str
+                      << " (idle " << idle << "s >= " << threshold << "s): "
+                      << name << std::endl;
+            do_unload();
+            if (auto* ws = get_websocket_server()) {
+                ws->broadcast(WSEventType::AutoUnloaded, {
+                    {"kind", kind_str},
+                    {"idle_seconds", idle},
+                    {"model_name", name}
+                });
+            }
+        };
+
+        // main
+        try_unload(
+            AutoUnloadKind::Main, s.main, last_used_main_,
+            model_loaded_.load(), "main",
+            [this]() { return get_loaded_model_name(); },
+            [this]() {
+                // Interlock: skip if a job is running (context_mutex_ held by worker).
+                std::unique_lock<std::mutex> lk(context_mutex_, std::try_to_lock);
+                if (!lk.owns_lock()) return;
+                lk.unlock();
+                unload_model();  // takes context_mutex_ itself
+            });
+
+        // upscaler
+        try_unload(
+            AutoUnloadKind::Upscaler, s.upscaler, last_used_upscaler_,
+            upscaler_loaded_.load(), "upscaler",
+            [this]() { return get_loaded_upscaler_name(); },
+            [this]() {
+                std::unique_lock<std::mutex> lk(upscaler_mutex_, std::try_to_lock);
+                if (!lk.owns_lock()) return;
+                lk.unlock();
+                unload_upscaler();
+            });
+
+        // adetailer (guarded by context_mutex_ per header note)
+        try_unload(
+            AutoUnloadKind::Adetailer, s.adetailer, last_used_adetailer_,
+            adetailer_context_ != nullptr, "adetailer",
+            [this]() { return current_adetailer_name(); },
+            [this]() {
+                std::unique_lock<std::mutex> lk(context_mutex_, std::try_to_lock);
+                if (!lk.owns_lock()) return;
+                lk.unlock();
+                unload_adetailer();
+            });
+    }
 }
 
 void ModelManager::scan_models() {
@@ -1446,6 +1662,9 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     std::cout << "[ModelManager] Model architecture: " << loaded_model_architecture_ << std::endl;
     std::cout << "[ModelManager] Model loaded successfully" << std::endl;
 
+    // Stamp activity so a freshly-loaded model isn't immediately auto-unloaded.
+    stamp_activity(AutoUnloadKind::Main);
+
     // Broadcast model loaded via WebSocket
     if (auto* ws = get_websocket_server()) {
         ws->broadcast(WSEventType::ModelLoaded, {
@@ -1759,9 +1978,12 @@ bool ModelManager::load_upscaler(const std::string& model_name, int n_threads, i
     }
     
     loaded_upscaler_name_ = model_name;
-    
+
     // Set atomic flag for lock-free checks
     upscaler_loaded_ = true;
+
+    // Stamp activity so a freshly-loaded upscaler isn't immediately auto-unloaded.
+    stamp_activity(AutoUnloadKind::Upscaler);
     
     int scale = ::get_upscale_factor(upscaler_context_);
     std::cout << "[ModelManager] Upscaler loaded successfully (scale: " << scale << "x)" << std::endl;
@@ -1938,6 +2160,7 @@ adetailer_ctx_t* ModelManager::get_or_create_adetailer(const std::string& detect
         return nullptr;
     }
     loaded_adetailer_name_ = detector;
+    stamp_activity(AutoUnloadKind::Adetailer);
     return adetailer_context_;
 }
 

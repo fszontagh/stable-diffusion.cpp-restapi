@@ -299,6 +299,7 @@ std::string WebSocketServer::event_type_to_string(WSEventType type) {
         case WSEventType::ModelUnloaded:       return "model_unloaded";
         case WSEventType::UpscalerLoaded:      return "upscaler_loaded";
         case WSEventType::UpscalerUnloaded:    return "upscaler_unloaded";
+        case WSEventType::AutoUnloaded:        return "auto_unloaded";
         case WSEventType::ServerStatus:        return "server_status";
         case WSEventType::ServerShutdown:      return "server_shutdown";
         case WSEventType::MemoryStatus:        return "memory_status";

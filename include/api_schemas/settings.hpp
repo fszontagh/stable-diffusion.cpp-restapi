@@ -29,6 +29,35 @@ struct UpdatePreviewSettingsRequest {
     }
 };
 
+struct AutoUnloadPerKindSchema {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("AutoUnloadPerKind", "Per-kind auto-unload settings")
+            .required_field("enabled", schema::FieldType::Boolean, "Auto-unload when idle")
+            .required_field("timeout_minutes", schema::FieldType::Integer, "Idle minutes before unload (1-1440)")
+            .build();
+    }
+};
+
+struct AutoUnloadSettingsResponse {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("AutoUnloadSettingsResponse", "Auto-unload settings (per kind)")
+            .required_field("main",      schema::FieldType::Object, "Settings for the main sd_ctx")
+            .required_field("upscaler",  schema::FieldType::Object, "Settings for the upscaler ctx")
+            .required_field("adetailer", schema::FieldType::Object, "Settings for the adetailer ctx")
+            .build();
+    }
+};
+
+struct UpdateAutoUnloadSettingsRequest {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("UpdateAutoUnloadSettingsRequest", "Replace auto-unload settings")
+            .optional_field("main",      schema::FieldType::Object, "Settings for the main sd_ctx")
+            .optional_field("upscaler",  schema::FieldType::Object, "Settings for the upscaler ctx")
+            .optional_field("adetailer", schema::FieldType::Object, "Settings for the adetailer ctx")
+            .build();
+    }
+};
+
 struct ArchitecturesResponse {
     static schema::SchemaDescriptor schema() {
         return schema::SchemaBuilder("ArchitecturesResponse", "Available model architecture presets")

@@ -40,6 +40,9 @@ enum class WSEventType {
     UpscalerLoaded,     // Upscaler finished loading
     UpscalerUnloaded,   // Upscaler was unloaded
 
+    // Auto-unload (idle timeout) events
+    AutoUnloaded,       // A kind (main/upscaler/adetailer) was auto-unloaded by the idle timer
+
     // Server status
     ServerStatus,       // Periodic server status update / heartbeat
     ServerShutdown,     // Server is shutting down

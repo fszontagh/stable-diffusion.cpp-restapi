@@ -1054,6 +1054,15 @@ class ApiClient {
     return this.request('PUT', '/preview/settings', settings)
   }
 
+  // Auto-unload (Ollama-style idle timeout) settings
+  async getAutoUnloadSettings(): Promise<AutoUnloadSettings> {
+    return this.request('GET', '/settings/auto-unload')
+  }
+
+  async updateAutoUnloadSettings(settings: AutoUnloadSettings): Promise<AutoUnloadSettings> {
+    return this.request('PUT', '/settings/auto-unload', settings)
+  }
+
   // Assistant (LLM helper)
   async assistantChat(request: AssistantChatRequest): Promise<AssistantChatResponse> {
     return this.request('POST', '/assistant/chat', request)
@@ -1223,6 +1232,30 @@ export interface PreviewSettings {
 export interface PreviewSettingsUpdateResponse {
   success: boolean
   settings: PreviewSettings
+}
+
+// Auto-unload (idle timeout) Types
+export interface AutoUnloadPerKind {
+  enabled: boolean
+  timeout_minutes: number
+}
+
+export interface AutoUnloadSettings {
+  main: AutoUnloadPerKind
+  upscaler: AutoUnloadPerKind
+  adetailer: AutoUnloadPerKind
+}
+
+export interface AutoUnloadKindStatus {
+  is_loaded: boolean
+  last_used_unix: number
+}
+
+export interface AutoUnloadStatus {
+  settings: AutoUnloadSettings
+  main: AutoUnloadKindStatus
+  upscaler: AutoUnloadKindStatus
+  adetailer: AutoUnloadKindStatus
 }
 
 // Assistant Types

@@ -141,6 +141,10 @@ private:
     void handle_get_preview_settings(const httplib::Request& req, httplib::Response& res);
     void handle_update_preview_settings(const httplib::Request& req, httplib::Response& res);
 
+    // Auto-unload (Ollama-style idle timeout) settings endpoints
+    void handle_get_auto_unload_settings(const httplib::Request& req, httplib::Response& res);
+    void handle_update_auto_unload_settings(const httplib::Request& req, httplib::Response& res);
+
 #ifdef SDCPP_ASSISTANT_ENABLED
     // Assistant endpoints
     void handle_assistant_chat(const httplib::Request& req, httplib::Response& res);

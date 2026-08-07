@@ -1155,8 +1155,28 @@ std::vector<std::string> QueueManager::process_job_unlocked(
         );
     }
 
+    // Stamp auto-unload activity for the kind this job uses. Must happen
+    // BEFORE the work so the idle timer sees the timestamp bump even if the
+    // work takes longer than the timeout window.
+    switch (type) {
+        case GenerationType::Text2Image:
+        case GenerationType::Image2Image:
+        case GenerationType::Text2Video:
+            model_manager_.stamp_activity(AutoUnloadKind::Main);
+            break;
+        case GenerationType::Upscale:
+            model_manager_.stamp_activity(AutoUnloadKind::Upscaler);
+            break;
+        case GenerationType::ADetailer:
+            model_manager_.stamp_activity(AutoUnloadKind::Main);
+            model_manager_.stamp_activity(AutoUnloadKind::Adetailer);
+            break;
+        default:
+            break;
+    }
+
     std::vector<std::string> outputs;
-    
+
     try {
         switch (type) {
             case GenerationType::Text2Image:

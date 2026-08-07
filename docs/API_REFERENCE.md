@@ -84,6 +84,8 @@ link here for the current field list.
 
 - [`GET /preview/settings`](#op-get-/preview/settings) - Get preview generation settings
 - [`PUT /preview/settings`](#op-put-/preview/settings) - Update preview settings
+- [`GET /settings/auto-unload`](#op-get-/settings/auto-unload) - Get auto-unload (idle timeout) settings
+- [`PUT /settings/auto-unload`](#op-put-/settings/auto-unload) - Update auto-unload (idle timeout) settings
 - [`GET /settings/generation`](#op-get-/settings/generation) - Get all generation defaults
 - [`PUT /settings/generation`](#op-put-/settings/generation) - Update all generation defaults
 - [`GET /settings/generation/{mode}`](#op-get-/settings/generation/{mode}) - Get generation defaults for a mode
@@ -900,6 +902,36 @@ Tags: `Settings`
 | `400` | Bad request | `application/json` -> [ErrorResponse](#schema-errorresponse) |
 | `500` | Internal server error | `application/json` -> [ErrorResponse](#schema-errorresponse) |
 
+### `GET /settings/auto-unload` <a id="op-get-/settings/auto-unload"></a>
+
+**Get auto-unload (idle timeout) settings**
+
+Tags: `Settings`
+
+**Responses**
+
+| status | description | body |
+|---|---|---|
+| `200` | Successful operation | `application/json` -> [AutoUnloadSettingsResponse](#schema-autounloadsettingsresponse) |
+| `400` | Bad request | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+| `500` | Internal server error | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+
+### `PUT /settings/auto-unload` <a id="op-put-/settings/auto-unload"></a>
+
+**Update auto-unload (idle timeout) settings**
+
+Tags: `Settings`
+
+**Request body** (`application/json`): [UpdateAutoUnloadSettingsRequest](#schema-updateautounloadsettingsrequest)
+
+**Responses**
+
+| status | description | body |
+|---|---|---|
+| `200` | Successful operation | `application/json` -> [AutoUnloadSettingsResponse](#schema-autounloadsettingsresponse) |
+| `400` | Bad request | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+| `500` | Internal server error | `application/json` -> [ErrorResponse](#schema-errorresponse) |
+
 ### `GET /settings/generation` <a id="op-get-/settings/generation"></a>
 
 **Get all generation defaults**
@@ -1140,6 +1172,16 @@ Assistant status and model info
 | `available` | boolean | yes |  | Whether assistant is available |
 | `model_loaded` | boolean |  |  | Whether LLM is loaded |
 | `model_name` | string |  |  | Loaded LLM model name |
+
+### schema `AutoUnloadSettingsResponse` <a id="schema-autounloadsettingsresponse"></a>
+
+Auto-unload settings (per kind)
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `adetailer` | object | yes |  | Settings for the adetailer ctx |
+| `main` | object | yes |  | Settings for the main sd_ctx |
+| `upscaler` | object | yes |  | Settings for the upscaler ctx |
 
 ### schema `ControlnetStatusResponse` <a id="schema-controlnetstatusresponse"></a>
 
@@ -1679,6 +1721,16 @@ Returned with HTTP 401 when authentication is missing or invalid
 |---|---|---|---|---|
 | `error` | string | yes |  | Short error code |
 | `message` | string | yes |  | Human-readable message |
+
+### schema `UpdateAutoUnloadSettingsRequest` <a id="schema-updateautounloadsettingsrequest"></a>
+
+Replace auto-unload settings
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `adetailer` | object |  |  | Settings for the adetailer ctx |
+| `main` | object |  |  | Settings for the main sd_ctx |
+| `upscaler` | object |  |  | Settings for the upscaler ctx |
 
 ### schema `UpdatePreviewSettingsRequest` <a id="schema-updatepreviewsettingsrequest"></a>
 

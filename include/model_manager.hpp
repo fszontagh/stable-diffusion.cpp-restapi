@@ -8,6 +8,8 @@
 #include <optional>
 #include <atomic>
 #include <cmath>
+#include <thread>
+#include <condition_variable>
 
 #include "config.hpp"
 
@@ -206,6 +208,28 @@ struct ModelLoadParams {
                                                  // Empty = no RPC, ctx_params.rpc_servers stays nullptr.
 
     static ModelLoadParams from_json(const nlohmann::json& j);
+};
+
+/**
+ * Auto-unload (Ollama-style idle timeout) per-kind settings.
+ * When enabled, the corresponding kind is unloaded after
+ * `timeout_minutes` of no activity. Default off.
+ */
+enum class AutoUnloadKind {
+    Main,       // sd_ctx (base + VAE + text encoders + LLM + controlnet + ...)
+    Upscaler,   // upscaler_ctx_t
+    Adetailer   // adetailer_ctx_t
+};
+
+struct AutoUnloadPerKind {
+    bool enabled = false;
+    int timeout_minutes = 30;
+};
+
+struct AutoUnloadSettings {
+    AutoUnloadPerKind main;
+    AutoUnloadPerKind upscaler;
+    AutoUnloadPerKind adetailer;
 };
 
 /**
@@ -409,6 +433,33 @@ public:
      */
     nlohmann::json get_paths_config() const;
 
+    // ==================== Auto-unload (Ollama-style idle timeout) ====================
+    /**
+     * Stamp an activity timestamp for the given kind. Call at the START of any
+     * job that USES the corresponding ctx (not on model listing / health / WS
+     * events). Also called from load_model / load_upscaler /
+     * get_or_create_adetailer so a freshly-loaded ctx isn't immediately
+     * unloaded by the timer thread.
+     */
+    void stamp_activity(AutoUnloadKind kind);
+
+    /**
+     * Get the current auto-unload settings (thread-safe copy).
+     */
+    AutoUnloadSettings get_auto_unload_settings() const;
+
+    /**
+     * Replace the auto-unload settings and persist them to disk.
+     * Clamps `timeout_minutes` to [1, 1440].
+     */
+    void set_auto_unload_settings(const AutoUnloadSettings& settings);
+
+    /**
+     * Return a JSON summary of the current auto-unload state for /health:
+     *   { "settings": {...}, "main": {"is_loaded": bool, "last_used_unix": int}, ... }
+     */
+    nlohmann::json get_auto_unload_status_json() const;
+
 private:
     void scan_directory(const std::string& base_path, ModelType type);
     std::string get_base_path(ModelType type) const;
@@ -457,6 +508,28 @@ private:
     // hold the same mutex during generation.
     adetailer_ctx_t* adetailer_context_ = nullptr;
     std::string loaded_adetailer_name_;
+
+    // ==================== Auto-unload state ====================
+    mutable std::mutex auto_unload_mutex_;
+    AutoUnloadSettings auto_unload_settings_;
+    std::string auto_unload_settings_path_;
+
+    // Last-used unix timestamps (seconds since epoch). Written on every job
+    // start / load; read by the timer thread. Atomic to avoid holding a
+    // mutex on the hot path.
+    std::atomic<int64_t> last_used_main_{0};
+    std::atomic<int64_t> last_used_upscaler_{0};
+    std::atomic<int64_t> last_used_adetailer_{0};
+
+    // Timer thread state.
+    std::thread auto_unload_thread_;
+    std::mutex auto_unload_cv_mutex_;
+    std::condition_variable auto_unload_cv_;
+    std::atomic<bool> auto_unload_stop_{false};
+
+    void auto_unload_loop();
+    void load_auto_unload_settings_from_disk();
+    void save_auto_unload_settings_to_disk() const;
 };
 
 // String conversions

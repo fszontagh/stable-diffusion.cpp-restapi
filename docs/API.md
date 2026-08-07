@@ -1850,6 +1850,34 @@ Update preview settings.
 
 Server-side persistence for generation defaults and UI preferences.
 
+### Auto-unload
+
+Ollama-style idle-timeout auto-unload. Off by default. Configurable per model kind: `main` (the sd_ctx: base + VAE + text encoders + ControlNet + IP-Adapter + motion module - all one context), `upscaler` (ESRGAN ctx), `adetailer` (YOLOv8 detector ctx). Each kind has its own `enabled` flag + `timeout_minutes`. Server checks every 30 seconds; if a kind's context has been idle at least `timeout_minutes`, it's unloaded (only when no job is in flight - the same generation mutex is used as an interlock).
+
+Activity is stamped when generation actually runs (`generate_image`, `generate_video`, `upscale`, `run_adetailer`) and when the context is first loaded. Model listing, `/health`, and WebSocket pings do NOT count as activity. An adetailer job stamps both `adetailer` and `main` (the inpaint pass reuses the base sd_ctx).
+
+When an auto-unload fires, the server broadcasts a WebSocket `auto_unloaded` event with `{kind, idle_seconds, model_name}` alongside the usual `model_unloaded` / `upscaler_unloaded` events.
+
+#### `GET /settings/auto-unload`
+
+**Response (200):**
+
+```json
+{
+    "main":      { "enabled": false, "timeout_minutes": 30 },
+    "upscaler":  { "enabled": false, "timeout_minutes": 30 },
+    "adetailer": { "enabled": false, "timeout_minutes": 30 }
+}
+```
+
+#### `PUT /settings/auto-unload`
+
+Body is the same shape. `timeout_minutes` is clamped to `[1, 1440]`. Returns the effective (persisted) settings.
+
+Settings persist to `${output}/auto_unload_settings.json` and survive server restart.
+
+`/health.auto_unload` echoes the current settings plus per-kind `is_loaded: bool` and `last_used_unix: int|null`, so a UI can show a live "idle 4m 12s" hint without extra polling. `features.auto_unload: true` advertises the surface.
+
 ### Get All Generation Defaults
 
 #### `GET /settings/generation`

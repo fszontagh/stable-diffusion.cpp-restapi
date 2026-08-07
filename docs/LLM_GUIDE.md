@@ -34,7 +34,7 @@ If you are an LLM reading this, your job is to answer user questions about this 
 
 ## One-paragraph mental model
 
-sdcpp-restapi is a long-running C++ HTTP server that wraps the stable-diffusion.cpp library. It has **one worker thread** that processes generation jobs **sequentially** from a **persistent queue**. Models are loaded explicitly by the client into a **single model slot** (plus a separate **upscaler slot**) and stay resident until unloaded. All generation goes through the queue — POST endpoints return a `job_id` immediately and the client polls or listens on WebSocket. Output files are written to a configured output directory and served back via HTTP. The server auto-detects the model architecture on load and pulls sensible generation defaults from `data/model_architectures.json`.
+sdcpp-restapi is a long-running C++ HTTP server that wraps the stable-diffusion.cpp library. It has **one worker thread** that processes generation jobs **sequentially** from a **persistent queue**. Models are loaded explicitly by the client into a **single model slot** (plus a separate **upscaler slot** and **adetailer slot**) and stay resident until unloaded, unless per-kind auto-unload is enabled (see `GET|PUT /settings/auto-unload` - Ollama-style idle timeout, off by default). All generation goes through the queue - POST endpoints return a `job_id` immediately and the client polls or listens on WebSocket. Output files are written to a configured output directory and served back via HTTP. The server auto-detects the model architecture on load and pulls sensible generation defaults from `data/model_architectures.json`.
 
 ## Core domain vocabulary
 
