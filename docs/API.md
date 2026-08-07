@@ -1321,6 +1321,7 @@ Get jobs with filtering, pagination, and optional date grouping.
 | `type` | string | `"all"` | Filter by type: `txt2img`, `img2img`, `txt2vid`, `upscale`, `convert`, `model_download`, `model_hash`, `all` |
 | `search` | string | - | Search in prompt/negative_prompt (case-insensitive) |
 | `architecture` | string | - | Filter by model architecture (case-insensitive partial match) |
+| `titles` | string | - | Comma-separated exact-match title list (multi-select). Only jobs whose title equals one of these are returned. Available titles are echoed in every `/queue` response under `all_titles` so a UI can populate a dropdown. |
 | `limit` | integer | 20 | Maximum items per page |
 | `page` | integer | 1 | Page number (1-based). Mutually exclusive with `offset`. |
 | `offset` | integer | 0 | Items to skip (0-based item index). Mutually exclusive with `page`. |
@@ -2993,7 +2994,7 @@ curl -X POST 'http://localhost:8080/models/load?waitt=true' ...
 | `POST /txt2vid` | enumerated in `Txt2VidParams::from_json` | n/a |
 | `POST /upscale` | enumerated in `UpscaleParams::from_json` | n/a |
 | `POST /convert` | inline (`input_path`, `output_path`, `output_type`, `model_type`, `model_name`, `vae_path`, `tensor_type_rules`) | n/a |
-| `GET /queue` | n/a (body-less) | `status`, `type`, `search`, `architecture`, `group_by`, `limit`, `offset`, `page`, `before`, `after` |
+| `GET /queue` | n/a (body-less) | `status`, `type`, `search`, `architecture`, `titles`, `group_by`, `limit`, `offset`, `page`, `before`, `after` |
 | `PUT /preview/settings` | inline (`enabled`, `mode`, `interval`, `max_size`, `quality`) | n/a |
 | `PUT /settings/output` | inline (`output_group_folders`) | n/a |
 

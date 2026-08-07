@@ -2054,7 +2054,7 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
     // Strict query-param validation: reject anything not in the closed
     // allow-list with 400. Same UX rationale as the body validators.
     static const std::unordered_set<std::string> KNOWN_QUERY = {
-        "status", "type", "search", "architecture", "group_by",
+        "status", "type", "search", "architecture", "titles", "group_by",
         "limit", "offset", "page", "before", "after",
     };
     std::vector<std::string> unknown_qp;
@@ -2069,7 +2069,7 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
             if (i) msg += ", ";
             msg += unknown_qp[i];
         }
-        msg += ". Accepted: status, type, search, architecture, group_by, limit, offset, page, before, after.";
+        msg += ". Accepted: status, type, search, architecture, titles, group_by, limit, offset, page, before, after.";
         send_error(res, msg, 400);
         return;
     }

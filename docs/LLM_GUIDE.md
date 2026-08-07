@@ -357,7 +357,9 @@ Previews are broadcast over WebSocket as `job_preview` events and are also avail
 - **All queue responses capped at 10 items.** For bigger listings, use REST `/queue`.
 - See `docs/MCP.md` for full MCP reference.
 
-**REST `/queue` pagination:** use `page` (1-based) **or** `offset` (0-based item index), not both. Sending both returns HTTP 400. Typical call: `GET /queue?limit=20&page=2`. The response payload echoes `page`, `offset`, `limit`, `total_pages`, `has_more`, `has_prev` — drive the next request off those, don't guess. Combine with filters as usual: `GET /queue?status=completed&type=txt2img&limit=20&page=3`. When you paginate by raw `offset`, `offset` is the ground truth; the echoed `page` field is floor-divided (`(offset/limit)+1`) and only matches the data when `offset` lands on a page boundary.
+**REST `/queue` pagination:** use `page` (1-based) **or** `offset` (0-based item index), not both. Sending both returns HTTP 400. Typical call: `GET /queue?limit=20&page=2`. The response payload echoes `page`, `offset`, `limit`, `total_pages`, `has_more`, `has_prev` - drive the next request off those, don't guess. Combine with filters as usual: `GET /queue?status=completed&type=txt2img&limit=20&page=3`. When you paginate by raw `offset`, `offset` is the ground truth; the echoed `page` field is floor-divided (`(offset/limit)+1`) and only matches the data when `offset` lands on a page boundary.
+
+**Title filter:** `GET /queue?titles=my-run,another-run` narrows by exact-match title membership (multi-select). Every `/queue` response includes `all_titles: string[]` - the unfiltered universe of distinct non-empty titles across all non-deleted jobs, so a UI can populate a title-picker dropdown independently of the active filter.
 
 ## Common user intents → what to do
 
