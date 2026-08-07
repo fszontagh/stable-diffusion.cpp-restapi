@@ -24,6 +24,7 @@ struct QueueListResponse {
             .optional_field("newest_timestamp", schema::FieldType::Integer, "Newest job timestamp (unix)")
             .optional_field("oldest_timestamp", schema::FieldType::Integer, "Oldest job timestamp (unix)")
             .object_field("applied_filters", "Active filter parameters")
+            .array_field("all_titles", schema::FieldType::String, "Distinct non-empty titles across all non-deleted jobs, sorted case-insensitive. Feeds the WebUI title-filter dropdown.")
             .array_field("items", schema::FieldType::Object, "Job entries", true)
             .build();
     }

@@ -20,8 +20,19 @@ const deleting = ref<string | null>(null)
 // Filter state
 const statusFilter = ref<string>('all')
 const searchQuery = ref<string>('')
+const titleFilters = ref<string[]>([])
 const searchDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const isFetching = ref(false)
+
+// Backend returns the full title universe on every /queue response so the
+// dropdown always shows every option regardless of the current filter.
+const availableTitles = computed<string[]>(() => store.queue?.all_titles ?? [])
+
+function toggleTitleFilter(t: string) {
+  const i = titleFilters.value.indexOf(t)
+  if (i === -1) titleFilters.value = [...titleFilters.value, t]
+  else titleFilters.value = titleFilters.value.filter(x => x !== t)
+}
 
 // View mode: 'pages' for numerical pagination, 'dates' for date grouping
 const viewMode = ref<'pages' | 'dates'>('pages')
@@ -87,6 +98,9 @@ function getCurrentFilters(): QueueFilters {
   }
   if (searchQuery.value.trim()) {
     filters.search = searchQuery.value.trim()
+  }
+  if (titleFilters.value.length > 0) {
+    filters.titles = [...titleFilters.value]
   }
 
   return filters
@@ -211,6 +225,11 @@ watch(statusFilter, () => {
   fetchWithFilters()
 })
 
+watch(titleFilters, () => {
+  currentPage.value = 1
+  fetchWithFilters()
+})
+
 // Sort jobs. Members of the same variation_group_id MUST stay adjacent
 // regardless of their individual statuses, otherwise the group visually
 // dissolves once jobs start completing at different times. The sort uses a
@@ -319,9 +338,11 @@ function isHiddenByCollapse(job: import('../api/client').Job, idx: number): bool
 }
 
 function clearFilters() {
-  // Set searchQuery first (doesn't trigger fetch)
+  // Set searchQuery + titleFilters first (searchQuery doesn't trigger fetch;
+  // titleFilters and statusFilter each trigger their own watcher, so we
+  // reset the non-fetching one, then the multi-select, then status).
   searchQuery.value = ''
-  // Then set statusFilter (triggers watch which fetches)
+  titleFilters.value = []
   statusFilter.value = 'all'
 }
 
@@ -1238,6 +1259,34 @@ async function sendImageToUpscale(outputPath: string) {
           placeholder="Search in prompts..."
         />
       </div>
+      <div v-if="availableTitles.length > 0" class="filter-group">
+        <label class="filter-label">
+          Titles
+          <span v-if="titleFilters.length > 0" class="filter-badge">{{ titleFilters.length }}</span>
+        </label>
+        <details class="title-filter-dropdown">
+          <summary class="filter-select title-filter-summary">
+            {{ titleFilters.length === 0 ? 'All titles' : titleFilters.length === 1 ? titleFilters[0] : `${titleFilters.length} selected` }}
+          </summary>
+          <div class="title-filter-menu">
+            <button
+              v-if="titleFilters.length > 0"
+              class="title-filter-clear"
+              type="button"
+              @click="titleFilters = []"
+            >Clear</button>
+            <label v-for="t in availableTitles" :key="t" class="title-filter-option">
+              <input
+                type="checkbox"
+                :value="t"
+                :checked="titleFilters.includes(t)"
+                @change="toggleTitleFilter(t)"
+              />
+              <span>{{ t }}</span>
+            </label>
+          </div>
+        </details>
+      </div>
       <div class="filter-group">
         <label class="filter-label">View</label>
         <div class="view-mode-toggle">
@@ -1260,7 +1309,7 @@ async function sendImageToUpscale(outputPath: string) {
         </div>
       </div>
       <button
-        v-if="statusFilter !== 'all' || searchQuery"
+        v-if="statusFilter !== 'all' || searchQuery || titleFilters.length > 0"
         class="btn btn-secondary btn-sm filter-clear"
         @click="clearFilters"
       >
@@ -1917,7 +1966,7 @@ async function sendImageToUpscale(outputPath: string) {
       </div>
     </div>
 
-    <div v-if="(viewMode === 'pages' && sortedJobs.length === 0 || viewMode === 'dates' && dateGroups.length === 0) && (statusFilter !== 'all' || searchQuery)" class="empty-state">
+    <div v-if="(viewMode === 'pages' && sortedJobs.length === 0 || viewMode === 'dates' && dateGroups.length === 0) && (statusFilter !== 'all' || searchQuery || titleFilters.length > 0)" class="empty-state">
       <div class="empty-state-icon">&#128270;</div>
       <div class="empty-state-title">No matching jobs</div>
       <p>Try adjusting your filters or <button class="link-btn" @click="clearFilters">clear all filters</button></p>
@@ -2159,6 +2208,69 @@ async function sendImageToUpscale(outputPath: string) {
   color: var(--text-primary);
   font-size: 13px;
   min-width: 200px;
+}
+
+.title-filter-dropdown {
+  position: relative;
+  min-width: 180px;
+}
+.title-filter-summary {
+  cursor: pointer;
+  list-style: none;
+  min-width: 180px;
+  display: inline-block;
+  user-select: none;
+}
+.title-filter-summary::-webkit-details-marker { display: none; }
+.title-filter-menu {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  min-width: 220px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+.title-filter-clear {
+  display: block;
+  width: 100%;
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+}
+.title-filter-clear:hover { color: var(--text-primary); }
+.title-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  border-radius: var(--border-radius-sm);
+}
+.title-filter-option:hover { background: var(--bg-tertiary); }
+.title-filter-option input { margin: 0; }
+.filter-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  background: var(--accent-primary);
+  color: #000;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .filter-search {

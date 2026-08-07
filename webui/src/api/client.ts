@@ -467,10 +467,13 @@ export interface QueueResponse {
   has_prev?: boolean
   newest_timestamp?: number
   oldest_timestamp?: number
+  all_titles?: string[]
   applied_filters?: {
     status?: string
     type?: string
     search?: string
+    architecture?: string
+    titles?: string[]
   }
 }
 
@@ -479,6 +482,7 @@ export interface QueueFilters {
   type?: string
   search?: string
   architecture?: string   // Filter by model architecture (case-insensitive partial match)
+  titles?: string[]       // Exact-match title membership (multi-select). Empty array = no title filter.
   limit?: number
   offset?: number
   page?: number           // Page number (1-based)
@@ -971,6 +975,7 @@ class ApiClient {
     if (filters?.status && filters.status !== 'all') params.append('status', filters.status)
     if (filters?.type && filters.type !== 'all') params.append('type', filters.type)
     if (filters?.search) params.append('search', filters.search)
+    if (filters?.titles && filters.titles.length > 0) params.append('titles', filters.titles.join(','))
     if (filters?.limit !== undefined) params.append('limit', String(filters.limit))
     if (filters?.offset !== undefined) params.append('offset', String(filters.offset))
     if (filters?.page !== undefined) params.append('page', String(filters.page))

@@ -14,6 +14,8 @@ using F = sdcpp::QueueItemFields;
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
+#include <set>
+#include <cctype>
 
 namespace sdcpp {
 
@@ -227,6 +229,14 @@ bool QueueFilter::matches(const QueueItem& item) const {
         }
     }
 
+    // Titles filter (exact-match membership; empty item title never matches a non-empty list)
+    if (titles.has_value() && !titles.value().empty()) {
+        const auto& allowed = titles.value();
+        if (std::find(allowed.begin(), allowed.end(), item.title) == allowed.end()) {
+            return false;
+        }
+    }
+
     // Date-based filters
     auto item_timestamp = std::chrono::duration_cast<std::chrono::seconds>(
         item.created_at.time_since_epoch()
@@ -244,7 +254,9 @@ bool QueueFilter::matches(const QueueItem& item) const {
 }
 
 bool QueueFilter::is_empty() const {
-    return !status.has_value() && !search.has_value() && !type.has_value() && !architecture.has_value() && !model.has_value();
+    return !status.has_value() && !search.has_value() && !type.has_value()
+        && !architecture.has_value() && !model.has_value()
+        && !(titles.has_value() && !titles.value().empty());
 }
 
 QueueManager::QueueManager(
@@ -636,6 +648,22 @@ nlohmann::json QueueManager::get_status() const {
         {"failed_count", failed},
         {"total_count", jobs_.size()}
     };
+}
+
+std::vector<std::string> QueueManager::get_distinct_titles() const {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    std::set<std::string> seen;
+    for (const auto& [id, item] : jobs_) {
+        if (item.status == QueueStatus::Deleted) continue;
+        if (item.title.empty()) continue;
+        seen.insert(item.title);
+    }
+    std::vector<std::string> out(seen.begin(), seen.end());
+    std::sort(out.begin(), out.end(), [](const std::string& a, const std::string& b) {
+        return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(),
+            [](char x, char y) { return std::tolower(static_cast<unsigned char>(x)) < std::tolower(static_cast<unsigned char>(y)); });
+    });
+    return out;
 }
 
 bool QueueManager::cancel_job(const std::string& job_id) {

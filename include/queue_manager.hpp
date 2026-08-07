@@ -104,6 +104,7 @@ struct QueueFilter {
     std::optional<GenerationType> type;     // Filter by generation type
     std::optional<std::string> architecture;  // Filter by model architecture (case-insensitive partial match)
     std::optional<std::string> model;       // Filter by model name (case-insensitive partial match)
+    std::optional<std::vector<std::string>> titles;  // Include only jobs whose exact title is in this list. Empty list means no title filter (unset the optional to disable).
 
     // Pagination
     size_t limit = 20;                      // Max items per page (default 20)
@@ -263,7 +264,13 @@ public:
      * @return JSON with pending_count, processing_count, etc.
      */
     nlohmann::json get_status() const;
-    
+
+    /**
+     * Distinct non-empty titles across all non-deleted jobs, sorted case-insensitive.
+     * Used to populate the queue title-filter dropdown.
+     */
+    std::vector<std::string> get_distinct_titles() const;
+
     /**
      * Cancel a pending job
      * @param job_id Job UUID

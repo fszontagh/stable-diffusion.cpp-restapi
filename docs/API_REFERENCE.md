@@ -1578,6 +1578,7 @@ Queue listing with pagination and status counts
 
 | field | type | required | default | description |
 |---|---|---|---|---|
+| `all_titles` | array<string> |  |  | Distinct non-empty titles across all non-deleted jobs, sorted case-insensitive. Feeds the WebUI title-filter dropdown. |
 | `applied_filters` | object |  |  | Active filter parameters |
 | `cancelled_count` | integer | yes |  | Number of cancelled jobs |
 | `completed_count` | integer | yes |  | Number of completed jobs |

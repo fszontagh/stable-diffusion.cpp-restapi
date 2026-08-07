@@ -2109,6 +2109,21 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
         }
     }
 
+    // Titles filter (comma-separated exact-match list; empty entries dropped)
+    if (req.has_param("titles")) {
+        std::string raw = req.get_param_value("titles");
+        std::vector<std::string> parts;
+        size_t pos = 0;
+        while (pos <= raw.size()) {
+            size_t comma = raw.find(',', pos);
+            if (comma == std::string::npos) comma = raw.size();
+            std::string t = raw.substr(pos, comma - pos);
+            if (!t.empty()) parts.push_back(std::move(t));
+            pos = comma + 1;
+        }
+        if (!parts.empty()) filter.titles = std::move(parts);
+    }
+
     // Check for group_by parameter
     std::string group_by;
     if (req.has_param("group_by")) {
@@ -2192,8 +2207,12 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
     if (filter.architecture.has_value()) {
         applied_filters["architecture"] = filter.architecture.value();
     }
+    if (filter.titles.has_value() && !filter.titles.value().empty()) {
+        applied_filters["titles"] = filter.titles.value();
+    }
 
     auto status = queue_manager_.get_status();
+    status["all_titles"] = queue_manager_.get_distinct_titles();
 
     // Handle grouped response
     const std::string base_url = compute_base_url(req, trusted_proxies_);
