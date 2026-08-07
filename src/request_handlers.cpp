@@ -4085,7 +4085,7 @@ void RequestHandlers::handle_detect_architecture(const httplib::Request& req, ht
 // JSON file. Used by /options/descriptions (load options) and
 // /options/generation. Returns {"options": {}} when not found, so the
 // frontend can degrade gracefully (no tooltips, but no error either).
-void RequestHandlers::serve_options_json(httplib::Response& res, const std::string& filename) {
+std::optional<std::string> RequestHandlers::resolve_options_json(const std::string& filename) {
     std::vector<std::string> search_paths = {
         "data/" + filename,
         "../data/" + filename,
@@ -4100,16 +4100,21 @@ void RequestHandlers::serve_options_json(httplib::Response& res, const std::stri
         search_paths.push_back((exe_dir.parent_path() / "share" / "sdcpp-restapi" / "data" / filename).string());
     }
     for (const auto& path : search_paths) {
-        if (!std::filesystem::exists(path)) continue;
+        if (std::filesystem::exists(path)) return path;
+    }
+    return std::nullopt;
+}
+
+void RequestHandlers::serve_options_json(httplib::Response& res, const std::string& filename) {
+    auto path = resolve_options_json(filename);
+    if (path) {
         try {
-            std::ifstream f(path);
-            if (!f.is_open()) continue;
-            nlohmann::json j = nlohmann::json::parse(f);
-            send_json(res, j);
-            return;
-        } catch (const std::exception&) {
-            // Try next candidate
-        }
+            std::ifstream f(*path);
+            if (f.is_open()) {
+                send_json(res, nlohmann::json::parse(f));
+                return;
+            }
+        } catch (const std::exception&) { /* fallthrough */ }
     }
     send_json(res, {{"options", nlohmann::json::object()}});
 }
@@ -4119,7 +4124,37 @@ void RequestHandlers::handle_get_option_descriptions(const httplib::Request& /*r
 }
 
 void RequestHandlers::handle_get_generation_option_descriptions(const httplib::Request& /*req*/, httplib::Response& res) {
-    serve_options_json(res, "generation_options.json");
+    // Merge canonical enum lists over whatever data/generation_options.json
+    // supplies, so a stale JSON can never leak wrong sampler / scheduler
+    // names (or drop new ones) into the WebUI dropdowns. JSON stays the
+    // source of truth for human descriptions; common.hpp SAMPLER_VALUES /
+    // SCHEDULER_VALUES stay the source of truth for the enum keys.
+    auto path_opt = resolve_options_json("generation_options.json");
+    nlohmann::json body{{"options", nlohmann::json::object()}};
+    if (path_opt) {
+        try {
+            std::ifstream f(*path_opt);
+            if (f.is_open()) body = nlohmann::json::parse(f);
+        } catch (const std::exception&) { /* leave body as empty options */ }
+    }
+    auto& opts = body["options"];
+    if (!opts.is_object()) opts = nlohmann::json::object();
+
+    auto reconcile = [&](const char* key, const std::vector<std::string>& canonical) {
+        auto& node = opts[key];
+        if (!node.is_object()) node = nlohmann::json::object();
+        auto& values = node["values"];
+        nlohmann::json merged = nlohmann::json::object();
+        nlohmann::json prev = values.is_object() ? values : nlohmann::json::object();
+        for (const auto& name : canonical) {
+            merged[name] = prev.contains(name) ? prev[name] : nlohmann::json("");
+        }
+        values = std::move(merged);
+    };
+    reconcile("sampler",   api::SAMPLER_VALUES);
+    reconcile("scheduler", api::SCHEDULER_VALUES);
+
+    send_json(res, body);
 }
 
 // ==================== Download Handlers ====================

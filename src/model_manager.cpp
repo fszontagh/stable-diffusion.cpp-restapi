@@ -3,6 +3,7 @@
 #include "utils.hpp"
 #include "memory_utils.hpp"
 #include "sd_error_capture.hpp"
+#include "api_schemas/common.hpp"
 
 #include <iostream>
 #include <sstream>
@@ -187,6 +188,23 @@ bool ModelFilter::is_empty() const {
 //
 // `where` is a human-readable label for the message; `j` is the object to
 // scan; `known` is the closed set of accepted keys at this level.
+// See sd_wrapper.cpp:validate_enum for the rationale. Kept as a
+// separate copy here to avoid dragging sd_wrapper into ModelManager's
+// includes just for a 6-line helper.
+static void validate_enum_load(const std::string& field,
+                               const std::string& value,
+                               const std::vector<std::string>& allowed) {
+    if (value.empty()) return;
+    for (const auto& v : allowed) if (v == value) return;
+    std::string msg = "Invalid " + field + " '" + value + "' in /models/load options. Allowed: ";
+    for (size_t i = 0; i < allowed.size(); ++i) {
+        if (i) msg += ", ";
+        msg += allowed[i];
+    }
+    msg += ". See /options/descriptions or /openapi.json.";
+    throw std::runtime_error(msg);
+}
+
 static void reject_unknown_keys(const std::string& where,
                                 const nlohmann::json& j,
                                 const std::unordered_set<std::string>& known) {
@@ -351,14 +369,19 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         // 0.0 = disabled (sd.cpp default).
         params.max_vram = opts.value("max_vram", 0.0f);
         params.weight_type = opts.value("weight_type", "");
+        validate_enum_load("weight_type", params.weight_type, api::WEIGHT_TYPE_VALUES);
         params.tensor_type_rules = opts.value("tensor_type_rules", "");
 
         // RNG options
         params.rng_type = opts.value("rng_type", "cuda");
+        validate_enum_load("rng_type", params.rng_type, api::RNG_TYPE_VALUES);
         params.sampler_rng_type = opts.value("sampler_rng_type", "");
+        validate_enum_load("sampler_rng_type", params.sampler_rng_type, api::RNG_TYPE_VALUES);
 
         // Prediction type override (empty = auto)
         params.prediction = opts.value("prediction", "");
+        validate_enum_load("prediction", params.prediction,
+            {"eps", "v", "edm_v", "sd3_flow", "flux_flow", "flux2_flow", "sefi_flow", "minit2i_flow"});
 
         // LoRA apply mode — default `auto` so sd.cpp picks the best path for the
         // current load. Previously hard-defaulted to `runtime` to dodge a
@@ -371,6 +394,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         // the base weights are stable and `runtime` only when the workflow
         // demands it, matching the streaming planner's residency assumptions.
         params.lora_apply_mode = opts.value("lora_apply_mode", "auto");
+        validate_enum_load("lora_apply_mode", params.lora_apply_mode, {"auto", "immediately", "at_runtime"});
 
         // VAE tiling is per-generation now (sd_tiling_params_t), not load-time.
 
@@ -383,6 +407,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
 
         // VAE format override
         params.vae_format = opts.value("vae_format", "auto");
+        validate_enum_load("vae_format", params.vae_format, {"auto", "flux", "sd3", "flux2", "wan"});
         // circular_x / circular_y now per-generation (leejet PR #1748) —
         // see the generation request schemas + sd_wrapper.
 

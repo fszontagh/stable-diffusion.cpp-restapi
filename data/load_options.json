@@ -1,7 +1,14 @@
 {
   "_meta": {
     "description": "Per-field documentation for POST /models/load `options` object. Sourced from sd.cpp (include/stable-diffusion.h + .cpp consumers); keep these in sync with the C++ ModelLoadParams struct.",
-    "fields": ["label", "description", "type", "default", "values", "recommended"]
+    "fields": [
+      "label",
+      "description",
+      "type",
+      "default",
+      "values",
+      "recommended"
+    ]
   },
   "options": {
     "n_threads": {
@@ -10,27 +17,6 @@
       "type": "number",
       "default": -1,
       "recommended": "Leave at -1 (auto). Lower it only if you're sharing the box with other CPU-heavy workloads."
-    },
-    "keep_clip_on_cpu": {
-      "label": "Keep CLIP on CPU",
-      "description": "Keep the CLIP / T5 / LLM text encoder on CPU instead of GPU. Saves substantial VRAM (T5-XXL alone is ~9 GiB fp16) at the cost of slightly slower text-encoding (one pass per generation, runs once before the diffusion loop).",
-      "type": "boolean",
-      "default": true,
-      "recommended": "Enable for SD3 / Flux / Z-Image / Qwen-Image on GPUs with less than 16 GiB VRAM."
-    },
-    "keep_vae_on_cpu": {
-      "label": "Keep VAE on CPU",
-      "description": "Keep the VAE on CPU. The VAE is idle during the entire sampler loop and only needed at the very end (decode), so the impact is one slow decode step per image.",
-      "type": "boolean",
-      "default": false,
-      "recommended": "Enable only if you're VRAM-bound during VAE decode. With layer_streaming + max_vram, sd.cpp parks the VAE on CPU automatically."
-    },
-    "keep_controlnet_on_cpu": {
-      "label": "Keep ControlNet on CPU",
-      "description": "Keep ControlNet weights on CPU. ControlNet runs every diffusion step, so this slows generation roughly proportional to ControlNet's size — use only if ControlNet is what tips you over the VRAM limit.",
-      "type": "boolean",
-      "default": false,
-      "recommended": "Enable when running ControlNet alongside large diffusion models on smaller GPUs."
     },
     "flash_attn": {
       "label": "Flash Attention (CLIP / T5)",
@@ -46,54 +32,12 @@
       "default": false,
       "recommended": "Try on for SDXL / Flux / SD3 / Z-Image. Bench against off — usually faster, occasionally produces different outputs at the per-pixel level."
     },
-    "offload_to_cpu": {
-      "label": "Offload Params to CPU",
-      "description": "Keep model parameters in CPU RAM and stream them to GPU on demand (sd.cpp's static `offload_params_to_cpu`). Different from the dynamic `offload_mode` below — this is set once at model-load and stays for the model's lifetime.",
-      "type": "boolean",
-      "default": false,
-      "recommended": "Enable when the model file is larger than your VRAM but fits in RAM. Significantly slower than VRAM-resident inference."
-    },
     "enable_mmap": {
       "label": "Memory-mapped Loading",
       "description": "mmap() the model file instead of read()-ing it into anonymous memory. Much faster initial load (no full file read) and the kernel can evict pages under memory pressure.",
       "type": "boolean",
       "default": true,
       "recommended": "Keep on. Disable only on filesystems that don't handle large mmaps well (some network mounts)."
-    },
-    "vae_decode_only": {
-      "label": "VAE Decode Only",
-      "description": "Skip loading the VAE encoder weights — only the decoder is loaded. Saves ~50% of VAE memory but img2img and inpainting break (no encode path). Image-edit via `ref_images` still works because that doesn't go through the VAE encoder.",
-      "type": "boolean",
-      "default": true,
-      "recommended": "Keep on for txt2img-only workflows. Disable for img2img / inpainting."
-    },
-    "vae_tiling": {
-      "label": "VAE Tiling",
-      "description": "Process the VAE in spatial tiles instead of as one large tensor. Reduces peak VAE-decode VRAM dramatically (the encoder/decoder are the most memory-hungry parts). Mild quality cost from tile boundaries.",
-      "type": "boolean",
-      "default": false,
-      "recommended": "Enable for high-resolution generation (≥2048 px) or whenever VAE decode OOMs."
-    },
-    "vae_tile_size_x": {
-      "label": "VAE Tile Width",
-      "description": "Width of each VAE tile in pixels. 0 = sd.cpp picks a default based on architecture (typically 512–768).",
-      "type": "number",
-      "default": 0,
-      "recommended": "Leave at 0 (auto). Tune only if you see visible tile seams — try 768 or 1024."
-    },
-    "vae_tile_size_y": {
-      "label": "VAE Tile Height",
-      "description": "Height of each VAE tile in pixels. 0 = auto.",
-      "type": "number",
-      "default": 0,
-      "recommended": "Leave at 0. Same logic as `vae_tile_size_x`."
-    },
-    "vae_tile_overlap": {
-      "label": "VAE Tile Overlap",
-      "description": "Fraction of overlap between adjacent VAE tiles, used to blend seams (0.0–1.0). Higher = fewer seam artifacts, more compute.",
-      "type": "number",
-      "default": 0.5,
-      "recommended": "0.5 is a safe default. Drop to 0.25 for speed if seams aren't visible; raise to 0.75 if they are."
     },
     "vae_conv_direct": {
       "label": "VAE Direct Convolution",
@@ -115,13 +59,6 @@
       "type": "boolean",
       "default": false,
       "recommended": "Enable when you're loading a TAESD model just for previews and want full-quality finals."
-    },
-    "free_params_immediately": {
-      "label": "Free Params Immediately",
-      "description": "Free model weights from GPU memory immediately after generation completes. Useful for one-shot CLIs but cripples a server (every generation pays the full reload cost).",
-      "type": "boolean",
-      "default": false,
-      "recommended": "Keep off for server use. Was the right default for sd.cpp's CLI; it's wrong for restapi."
     },
     "weight_type": {
       "label": "Weight Type",
@@ -210,129 +147,12 @@
       "default": 0.0,
       "recommended": "0 (disabled) by default. Set to slightly less than your total VRAM (e.g. 10 on a 12 GiB card) when the model still OOMs at the smallest sample step. Combines well with `offload_mode = layer_streaming`."
     },
-    "offload_mode": {
-      "label": "Dynamic VRAM Offloading",
-      "description": "Cross-stage offload strategy. Different from the static `offload_to_cpu` — these dynamically move components between CPU and GPU during a generation.",
-      "type": "select",
-      "default": "none",
-      "values": {
-        "none": "Disabled — keep all components on GPU (fastest, needs most VRAM)",
-        "cond_only": "After Conditioning — offload text encoders after the prompt pass (good balance for small VRAM gains)",
-        "cond_diffusion": "After Cond + Diffusion — also offload diffusion after sampling, keeps VAE on GPU",
-        "aggressive": "Aggressive — offload each component when not in use (saves most VRAM, slowest)",
-        "layer_streaming": "Layer Streaming — stream UNet/DiT layers one-by-one (enables models larger than VRAM)"
-      },
-      "recommended": "`cond_only` for 12 GiB GPUs running Z-Image / Flux. `layer_streaming` when the model file alone is bigger than your VRAM."
-    },
-    "vram_estimation": {
-      "label": "VRAM Estimation Method",
-      "description": "How sd.cpp predicts the peak VRAM each component needs. `dryrun` builds a throwaway compute graph for an exact answer. `formula` uses a closed-form heuristic — faster, less precise.",
-      "type": "select",
-      "default": "dryrun",
-      "values": {
-        "dryrun": "Dry-run — exact via test allocation (default)",
-        "formula": "Formula — closed-form heuristic (faster, may over- or under-estimate)"
-      },
-      "recommended": "`dryrun` for accuracy. Switch to `formula` only if you find dryrun's overhead noticeable on small generations."
-    },
-    "offload_cond_stage": {
-      "label": "Offload LLM/CLIP After Cond",
-      "description": "Move the text encoder (LLM for Z-Image, CLIP/T5 for SD3/Flux) to CPU after the prompt is encoded. Makes the text encoder available for the next generation but lets the diffusion model reclaim the freed VRAM.",
-      "type": "boolean",
-      "default": true,
-      "default_when": {"offload_mode": "layer_streaming", "value": false},
-      "recommended": "On for `aggressive` and `cond_*` offload modes (where the point is to free as much VRAM as possible per stage). **Off for `layer_streaming`** — the diffusion is already paying its way via per-layer dispatch, so kicking the encoder out and reloading it from disk every generation just adds 5-60s of mmap fault-in cost per gen with no benefit. The restapi flips the default automatically when `offload_mode=layer_streaming`."
-    },
-    "offload_diffusion": {
-      "label": "Offload Diffusion After Sampling",
-      "description": "Move the diffusion model (UNet/DiT) to CPU after the sampler loop finishes, before VAE decode runs. Lets VAE decode use the full GPU.",
-      "type": "boolean",
-      "default": false,
-      "recommended": "Enable in `cond_diffusion` or `aggressive` modes when VAE decode is what's hitting OOM."
-    },
-    "reload_cond_stage": {
-      "label": "Reload LLM/CLIP After Generation",
-      "description": "After generation, copy the text encoder back to GPU so the next generation starts faster. Holds VRAM between generations — disable if you want max VRAM available for non-generation work between requests.",
-      "type": "boolean",
-      "default": true,
-      "recommended": "On for server use (multiple generations). Off for one-shot CLIs."
-    },
-    "reload_diffusion": {
-      "label": "Reload Diffusion After Generation",
-      "description": "Same logic as `reload_cond_stage` but for the diffusion model.",
-      "type": "boolean",
-      "default": true,
-      "recommended": "On for server use."
-    },
-    "log_offload_events": {
-      "label": "Log Offload Events",
-      "description": "sd.cpp logs each offload / reload event to stdout. Useful for diagnosing slow generations (see how often things are moving) but spammy in production.",
-      "type": "boolean",
-      "default": true,
-      "recommended": "On while tuning. Off in steady-state production once you've calibrated."
-    },
-    "min_offload_size_mb": {
-      "label": "Min Offload Size (MB)",
-      "description": "Skip offloading any component smaller than this many megabytes. Prevents wasting PCIe bandwidth moving tiny tensors that wouldn't actually free meaningful VRAM. 0 = no minimum.",
-      "type": "number",
-      "default": 0,
-      "recommended": "0 to start. Raise to 256 if you see lots of noise in the offload log for tiny components (TAESD, conditioner sub-modules)."
-    },
-    "target_free_vram_mb": {
-      "label": "Target Free VRAM (MB)",
-      "description": "VRAM headroom sd.cpp tries to keep free before VAE decode. 0 = always offload (when mode is set). Higher = trigger offloading sooner.",
-      "type": "number",
-      "default": 0,
-      "recommended": "0 unless you're seeing decode OOM despite aggressive offloading — then bump to 1024 or 2048."
-    },
-    "streaming_prefetch_layers": {
-      "label": "Layer Streaming: Prefetch Ahead",
-      "description": "When `offload_mode = layer_streaming`, how many layers ahead to start copying to GPU before they're needed. Higher = more overlap of compute and PCIe transfer (faster) but more VRAM in flight.",
-      "type": "number",
-      "default": 1,
-      "recommended": "1 is the sd.cpp default. Try 2 if PCIe bandwidth is your bottleneck and you have headroom."
-    },
-    "streaming_keep_layers_behind": {
-      "label": "Layer Streaming: Keep Behind",
-      "description": "When `offload_mode = layer_streaming`, how many already-executed layers to keep resident on GPU. Useful for skip connections (UNet U-shape) where the encoder side's outputs feed the decoder later in the same step.",
-      "type": "number",
-      "default": 0,
-      "recommended": "0 for DiT (Flux/SD3/Z-Image — purely linear graph). UNet (SDXL/SD1.x) may benefit from 1–2 to avoid re-streaming for skip connections."
-    },
-    "streaming_min_free_vram_mb": {
-      "label": "Layer Streaming: Min Free VRAM (MB)",
-      "description": "Minimum VRAM sd.cpp tries to keep free during layer streaming. Backstop for the prefetch window — if streaming would push residency above (total - this), it stalls until the next layer's done.",
-      "type": "number",
-      "default": 0,
-      "recommended": "0 (disabled) unless you're co-running other GPU workloads and need predictable headroom."
-    },
     "stream_layers": {
       "label": "Stream Layers (unified-streaming)",
       "description": "Engage sd.cpp's residency+async-prefetch streaming on top of the `max_vram` budget. The planner picks the resident/streamed split automatically and overlaps next-segment H2D with current-segment compute, so per-step overhead is much lower than the legacy per-layer streaming. Only exposed when restapi is built with `-DSD_UNIFIED_STREAMING=ON` against the fork's `feature/unified-streaming` branch. Has no effect when `max_vram == 0`.",
       "type": "boolean",
       "default": false,
       "recommended": "On with `max_vram` set to ~80% of your free VRAM. Replaces the legacy `offload_mode=layer_streaming` workflow — don't combine the two (they target different fork branches)."
-    },
-    "chroma_use_dit_mask": {
-      "label": "Chroma DiT Mask",
-      "description": "Enable the DiT-side attention masking that Chroma was trained with. Required for correct Chroma outputs.",
-      "type": "boolean",
-      "default": true,
-      "recommended": "Keep on for Chroma; ignored for other architectures."
-    },
-    "chroma_use_t5_mask": {
-      "label": "Chroma T5 Mask",
-      "description": "Enable T5-side attention masking on Chroma. Reduces hallucinated tokens at the cost of slightly different prompt fidelity.",
-      "type": "boolean",
-      "default": false,
-      "recommended": "Off (matches sd.cpp default). Try on if Chroma is producing artifacts in long prompts."
-    },
-    "chroma_t5_mask_pad": {
-      "label": "Chroma T5 Mask Padding",
-      "description": "Padding token count appended to T5 prompts when `chroma_use_t5_mask` is on. Compensates for Chroma's training-time padding behavior.",
-      "type": "number",
-      "default": 1,
-      "recommended": "Default 1. Bump only if Chroma docs explicitly say so for your fine-tune."
     },
     "vae_format": {
       "label": "VAE Format Override",
@@ -347,56 +167,118 @@
       },
       "recommended": "Leave on `auto`. Set explicitly only for PiD (per its doc) or when you have a stripped VAE file."
     },
-    "circular_x": {
-      "label": "Circular X (tileable horizontally)",
-      "description": "Engage circular RoPE on the X axis so the output tiles seamlessly across the horizontal seam. Used for tileable-texture workflows (skyboxes, repeating patterns, Ideogram4 horizontal panoramas). Independent of `circular_y`.",
-      "type": "boolean",
-      "default": false,
-      "recommended": "Off for normal generation. Turn on when you want horizontally-seamless output."
+    "backend": {
+      "label": "Compute backend",
+      "type": "text",
+      "default": "",
+      "description": "Compute backend override (replaces keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu). Empty = sd.cpp picks; supports per-component placement e.g. 'te=cpu,vae=cpu,diffusion=cuda0'.",
+      "recommended": "Empty for standard runs. 'te=cpu,vae=cpu' when the diffusion model is large enough to need VRAM headroom."
     },
-    "circular_y": {
-      "label": "Circular Y (tileable vertically)",
-      "description": "Engage circular RoPE on the Y axis so the output tiles seamlessly across the vertical seam. Independent of `circular_x` — combine for fully-tileable textures.",
-      "type": "boolean",
-      "default": false,
-      "recommended": "Off for normal generation. Turn on for vertically-seamless or fully-tileable output."
+    "params_backend": {
+      "label": "Parameter storage backend",
+      "type": "text",
+      "default": "",
+      "description": "Where param tensors live (replaces offload_to_cpu). '*=cpu' keeps all weights in host RAM and streams into VRAM on demand.",
+      "recommended": "Empty by default. '*=cpu' with stream_layers=true + max_vram > 0 for very large models on limited VRAM."
     },
-    "flow_shift": {
-      "label": "Flow Shift (default)",
-      "description": "Default flow-matching shift parameter for Flux / SD3 / Z-Image models. INFINITY (sent as nothing or omitted) = auto-detect based on model. This is the LOAD-time default; the per-generation request can override.",
-      "type": "number",
-      "default": null,
-      "recommended": "Leave unset (auto). Override only when you're tuning for a specific model that benefits from a non-default shift."
+    "model_args": {
+      "label": "Model args",
+      "type": "text",
+      "default": "",
+      "description": "Model-specific comma-separated key=value list (replaces chroma_use_dit_mask, chroma_use_t5_mask, chroma_t5_mask_pad, qwen_image_zero_cond_t, etc.). e.g. 'chroma_use_dit_mask=true,chroma_t5_mask_pad=1'.",
+      "recommended": "Empty unless a specific architecture doc says otherwise."
+    },
+    "rpc_servers": {
+      "label": "RPC servers",
+      "type": "text",
+      "default": "",
+      "description": "Comma-separated host:port pairs for distributed-backend (rpc) workers.",
+      "recommended": "Empty for single-machine setups."
+    },
+    "eager_load": {
+      "label": "Eager load",
+      "type": "switch",
+      "default": true,
+      "description": "Pre-load all params into the params backend at load-time instead of lazily on first use (leejet PR #1687). Trades load time for first-generation latency.",
+      "recommended": "true for long-lived servers (default). false for one-shot CLI use."
     }
   },
   "categories": {
     "performance": {
       "label": "Performance",
-      "options": ["flash_attn", "diffusion_flash_attn", "enable_mmap", "n_threads", "vae_conv_direct", "diffusion_conv_direct"]
+      "options": [
+        "flash_attn",
+        "diffusion_flash_attn",
+        "enable_mmap",
+        "n_threads",
+        "vae_conv_direct",
+        "diffusion_conv_direct"
+      ]
     },
     "memory": {
       "label": "Memory Management",
-      "options": ["keep_clip_on_cpu", "keep_vae_on_cpu", "keep_controlnet_on_cpu", "offload_to_cpu", "free_params_immediately", "max_vram", "weight_type", "tensor_type_rules"]
+      "options": [
+        "keep_clip_on_cpu",
+        "keep_vae_on_cpu",
+        "keep_controlnet_on_cpu",
+        "offload_to_cpu",
+        "free_params_immediately",
+        "max_vram",
+        "weight_type",
+        "tensor_type_rules"
+      ]
     },
     "vae": {
       "label": "VAE Settings",
-      "options": ["vae_decode_only", "vae_tiling", "vae_tile_size_x", "vae_tile_size_y", "vae_tile_overlap", "tae_preview_only", "force_sdxl_vae_conv_scale"]
+      "options": [
+        "vae_decode_only",
+        "vae_tiling",
+        "vae_tile_size_x",
+        "vae_tile_size_y",
+        "vae_tile_overlap",
+        "tae_preview_only",
+        "force_sdxl_vae_conv_scale"
+      ]
     },
     "offloading": {
       "label": "Dynamic VRAM Offloading",
-      "options": ["offload_mode", "vram_estimation", "offload_cond_stage", "offload_diffusion", "reload_cond_stage", "reload_diffusion", "log_offload_events", "min_offload_size_mb", "target_free_vram_mb"]
+      "options": [
+        "offload_mode",
+        "vram_estimation",
+        "offload_cond_stage",
+        "offload_diffusion",
+        "reload_cond_stage",
+        "reload_diffusion",
+        "log_offload_events",
+        "min_offload_size_mb",
+        "target_free_vram_mb"
+      ]
     },
     "layer_streaming": {
       "label": "Layer Streaming Tuning",
-      "options": ["streaming_prefetch_layers", "streaming_keep_layers_behind", "streaming_min_free_vram_mb"]
+      "options": [
+        "streaming_prefetch_layers",
+        "streaming_keep_layers_behind",
+        "streaming_min_free_vram_mb"
+      ]
     },
     "rng_and_prediction": {
       "label": "RNG & Prediction",
-      "options": ["rng_type", "sampler_rng_type", "prediction", "lora_apply_mode", "flow_shift"]
+      "options": [
+        "rng_type",
+        "sampler_rng_type",
+        "prediction",
+        "lora_apply_mode",
+        "flow_shift"
+      ]
     },
     "chroma": {
       "label": "Chroma-specific",
-      "options": ["chroma_use_dit_mask", "chroma_use_t5_mask", "chroma_t5_mask_pad"]
+      "options": [
+        "chroma_use_dit_mask",
+        "chroma_use_t5_mask",
+        "chroma_t5_mask_pad"
+      ]
     }
   }
 }

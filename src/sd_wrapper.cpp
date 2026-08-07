@@ -1,6 +1,7 @@
 #include "sd_wrapper.hpp"
 #include "sd_error_capture.hpp"
 #include "utils.hpp"
+#include "api_schemas/common.hpp"
 
 #include <iostream>
 #include <iomanip>
@@ -653,6 +654,45 @@ static void reject_unknown_keys(const std::string& where,
     }
 }
 
+// Per-gen enum universes that share the same set of accepted values.
+// Kept next to validate_enum so drift between the validator and the schema
+// stays visible in one place.
+static const std::vector<std::string> CACHE_MODE_VALUES = {
+    "", "easycache", "ucache", "dbcache", "taylorseer", "cache_dit", "spectrum"
+};
+static const std::vector<std::string> HIRES_UPSCALER_VALUES = {
+    "none", "latent", "latent_nearest", "latent_nearest_exact",
+    "latent_antialiased", "latent_bicubic", "latent_bicubic_antialiased",
+    "lanczos", "nearest", "model"
+};
+
+// Enforce that a string value lands in an allowed enum. Empty string is
+// treated as "not set" and passes through - lets callers omit an optional
+// field without triggering a validation error. Throws std::runtime_error
+// (which the request layer maps to HTTP 400) on mismatch.
+//
+// Why this exists: sd.cpp's str_to_sample_method / str_to_scheduler
+// silently fall back to defaults on unknown input, so a typo like
+// "dpmpp2m" (vs the canonical "dpm++2m") would produce an image with
+// the WRONG sampler and no error at all. We reject at the boundary so
+// the caller learns immediately.
+static void validate_enum(const std::string& where,
+                          const std::string& field,
+                          const std::string& value,
+                          const std::vector<std::string>& allowed) {
+    if (value.empty()) return;
+    for (const auto& v : allowed) {
+        if (v == value) return;
+    }
+    std::string msg = "Invalid " + field + " '" + value + "' in " + where + ". Allowed: ";
+    for (size_t i = 0; i < allowed.size(); ++i) {
+        if (i) msg += ", ";
+        msg += allowed[i];
+    }
+    msg += ". See /options for the canonical list.";
+    throw std::runtime_error(msg);
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Per-generation struct fillers shared between txt2img / img2img / txt2vid.
 // The 3 Params types deliberately carry identical field names for these
@@ -787,7 +827,9 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     p.sampler = parse_string(j, "sampler", "euler_a");
     p.scheduler = parse_string(j, "scheduler", "discrete");
 
-    // Integer parameters
+        validate_enum("/txt2img body", "sampler", p.sampler, api::SAMPLER_VALUES);
+    validate_enum("/txt2img body", "scheduler", p.scheduler, api::SCHEDULER_VALUES);
+// Integer parameters
     p.width = parse_int(j, "width", 512);
     p.height = parse_int(j, "height", 512);
     p.steps = parse_int(j, "steps", 20);
@@ -855,6 +897,7 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
 
     // Cache acceleration for DiT models
     p.cache_mode = parse_string(j, "cache_mode", "");
+    validate_enum("/txt2img body", "cache_mode", p.cache_mode, CACHE_MODE_VALUES);
     if (p.cache_mode.empty() && parse_bool(j, "easycache", false)) {
         p.cache_mode = "easycache";
     }
@@ -883,6 +926,7 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     // Built-in hi-res-fix (sd_hires_params_t)
     p.hires_enabled = parse_bool(j, "hires_enabled", false);
     p.hires_upscaler = parse_string(j, "hires_upscaler", "model");
+    validate_enum("/txt2img body", "hires_upscaler", p.hires_upscaler, HIRES_UPSCALER_VALUES);
     p.hires_model_path = parse_string(j, "hires_model_path", "");
     p.hires_scale = parse_float(j, "hires_scale", 2.0f);
     p.hires_target_width = parse_int(j, "hires_target_width", 0);
@@ -1044,7 +1088,9 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     p.sampler = parse_string(j, "sampler", "euler_a");
     p.scheduler = parse_string(j, "scheduler", "discrete");
 
-    // Integer parameters
+        validate_enum("/img2img body", "sampler", p.sampler, api::SAMPLER_VALUES);
+    validate_enum("/img2img body", "scheduler", p.scheduler, api::SCHEDULER_VALUES);
+// Integer parameters
     p.width = parse_int(j, "width", 512);
     p.height = parse_int(j, "height", 512);
     p.steps = parse_int(j, "steps", 20);
@@ -1134,6 +1180,7 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
 
     // Cache acceleration for DiT models
     p.cache_mode = parse_string(j, "cache_mode", "");
+    validate_enum("/img2img body", "cache_mode", p.cache_mode, CACHE_MODE_VALUES);
     if (p.cache_mode.empty() && parse_bool(j, "easycache", false)) {
         p.cache_mode = "easycache";
     }
@@ -1162,6 +1209,7 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     // Built-in hi-res-fix (sd_hires_params_t)
     p.hires_enabled = parse_bool(j, "hires_enabled", false);
     p.hires_upscaler = parse_string(j, "hires_upscaler", "model");
+    validate_enum("/img2img body", "hires_upscaler", p.hires_upscaler, HIRES_UPSCALER_VALUES);
     p.hires_model_path = parse_string(j, "hires_model_path", "");
     p.hires_scale = parse_float(j, "hires_scale", 2.0f);
     p.hires_target_width = parse_int(j, "hires_target_width", 0);
@@ -1334,7 +1382,9 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     p.sampler = parse_string(j, "sampler", "euler");
     p.scheduler = parse_string(j, "scheduler", "discrete");
 
-    // Integer parameters
+        validate_enum("/txt2vid body", "sampler", p.sampler, api::SAMPLER_VALUES);
+    validate_enum("/txt2vid body", "scheduler", p.scheduler, api::SCHEDULER_VALUES);
+// Integer parameters
     p.width = parse_int(j, "width", 832);
     p.height = parse_int(j, "height", 480);
     p.video_frames = parse_int(j, "video_frames", 33);
@@ -1421,6 +1471,8 @@ Txt2VidParams Txt2VidParams::from_json(const nlohmann::json& j) {
     p.high_noise_img_cfg = parse_float(j, "high_noise_img_cfg", -1.0f);
     p.high_noise_sampler = parse_string(j, "high_noise_sampler", "");
     p.high_noise_scheduler = parse_string(j, "high_noise_scheduler", "");
+    validate_enum("/txt2vid body", "high_noise_sampler", p.high_noise_sampler, api::SAMPLER_VALUES);
+    validate_enum("/txt2vid body", "high_noise_scheduler", p.high_noise_scheduler, api::SCHEDULER_VALUES);
     p.high_noise_eta = parse_float(j, "high_noise_eta", 0.0f);
     p.high_noise_shifted_timestep = parse_int(j, "high_noise_shifted_timestep", 0);
     p.high_noise_flow_shift = parse_float(j, "high_noise_flow_shift", 0.0f);
