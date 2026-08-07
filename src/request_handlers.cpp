@@ -49,7 +49,7 @@ namespace sdcpp {
 //
 // Why this exists: the previous code path read each file into a
 // std::stringstream, copied the contents into a std::string, then handed
-// that to res.set_content() — three allocations per request and a
+// that to res.set_content() - three allocations per request and a
 // worker thread pinned for the entire transfer. Worse, no cache headers
 // were sent at all, so every browser repaint of an output image did a
 // full re-download. This helper:
@@ -119,7 +119,7 @@ static void serve_file_cached(const httplib::Request& req,
     res.set_content_provider(
         static_cast<size_t>(file_size), mime,
         [path_str](size_t offset, size_t length, httplib::DataSink& sink) -> bool {
-            // Fixed-length provider: do NOT call sink.done() — that field
+            // Fixed-length provider: do NOT call sink.done() - that field
             // is only wired up by httplib for set_content_provider_without_length().
             // Calling it here throws std::bad_function_call. We just write
             // exactly `length` bytes from `offset` and return true; httplib
@@ -240,7 +240,7 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     // Register the 401 schema so OpenAPI consumers know the response shape.
     api.registerSchema("UnauthorizedResponse", UnauthorizedResponse::schema());
 
-    // Auth middleware — runs before any route handler. The /auth/login
+    // Auth middleware - runs before any route handler. The /auth/login
     // endpoint and a small allowlist (health, openapi.json, static UI / docs)
     // bypass it. Everything else must present `Authorization: Bearer <token>`.
     //
@@ -254,7 +254,7 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         server.set_pre_routing_handler(
             [this](const httplib::Request& req, httplib::Response& res) -> httplib::Server::HandlerResponse {
                 // ── WebDAV branch ─────────────────────────────────────
-                // Runs even when the global auth_manager is disabled — the
+                // Runs even when the global auth_manager is disabled - the
                 // pre-routing handler is the only place we can intercept
                 // the custom HTTP methods (PROPFIND, MKCOL, MOVE, COPY).
                 bool is_webdav_path =
@@ -334,10 +334,10 @@ void RequestHandlers::register_routes(httplib::Server& server) {
                 }
 
                 // Resolve "who is this caller?" trying, in order:
-                //   1. Cookie (sdcpp_auth=<token>) — set by /auth/login,
+                //   1. Cookie (sdcpp_auth=<token>) - set by /auth/login,
                 //      auto-attached by browsers on every same-origin
                 //      request including <img>/<video>/WS handshakes.
-                //   2. Bearer token (Authorization: Bearer <token>) —
+                //   2. Bearer token (Authorization: Bearer <token>) -
                 //      curl, scripts, MCP clients.
                 //   3. ?token=<token> query param (legacy WS path; cookie
                 //      should also work for WS but kept as a fallback).
@@ -492,7 +492,7 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         "Get configured model storage paths", "Models", 200,
         [this](auto& req, auto& res) { handle_get_model_paths(req, res); });
 
-    // Multipart/form-data upload — request body schema is NOT modeled in
+    // Multipart/form-data upload - request body schema is NOT modeled in
     // the OpenAPI spec yet (SchemaBuilder doesn't have multipart support).
     // The endpoint is auth-protected automatically via the pre-routing
     // middleware. See handle_upload_model() for the field contract.
@@ -869,7 +869,7 @@ void RequestHandlers::register_routes(httplib::Server& server) {
     api.serveOpenApiSpec(server, "/openapi.json");
 
     // ── llms.txt (LLM discoverability) ───────────────────────────────
-    // Convention from https://llmstxt.org/ — a markdown file at the root
+    // Convention from https://llmstxt.org/ - a markdown file at the root
     // of a service that an LLM agent can fetch without auth to learn
     // what's here and where the machine-readable docs live. Both /llms.txt
     // (canonical) and /llm.txt (common typo) serve the same content.
@@ -893,22 +893,31 @@ void RequestHandlers::register_routes(httplib::Server& server) {
             "\n"
             "## API reference\n"
             "\n"
-            "- [OpenAPI 3.1 schema](/openapi.json) — machine-readable, always in sync with the running build.\n"
-            "- [REST API guide](/docs/API.md) — human-readable, with worked examples.\n"
-            "- [LLM agent guide](/docs/LLM_GUIDE.md) — workflows tailored to autonomous agents.\n"
-            "- [MCP server reference](/docs/MCP.md) — JSON-RPC over `/mcp`, alternative to REST.\n"
+            "- [OpenAPI 3.1 schema](/openapi.json) - machine-readable, always in sync with the running build.\n"
+            "- [REST API guide](/docs/API.md) - human-readable, with worked examples.\n"
+            "- [LLM agent guide](/docs/LLM_GUIDE.md) - workflows tailored to autonomous agents.\n"
+            "- [MCP server reference](/docs/MCP.md) - JSON-RPC over `/mcp`, alternative to REST.\n"
             "\n"
             "## Per-field option documentation\n"
             "\n"
-            "Both endpoints below return JSON describing each option's purpose, default, and recommended usage — sourced from sd.cpp's actual code. Useful for an LLM choosing values for `/models/load` or generation calls.\n"
+            "Both endpoints below return JSON describing each option's purpose, default, and recommended usage - sourced from sd.cpp's actual code. Useful for an LLM choosing values for `/models/load` or generation calls.\n"
             "\n"
-            "- [Model-load options](/options/descriptions) — every field accepted by `POST /models/load`'s `options` object.\n"
-            "- [Generation options](/options/generation) — every field accepted by `/txt2img`, `/img2img`, `/txt2vid`, `/upscale`.\n"
+            "- [Model-load options](/options/descriptions) - every field accepted by `POST /models/load`'s `options` object.\n"
+            "- [Generation options](/options/generation) - every field accepted by `/txt2img`, `/img2img`, `/txt2vid`, `/upscale`.\n"
+            "\n"
+            "## Server settings\n"
+            "\n"
+            "Persistent server-side configuration. `GET` returns current state, `PUT` updates it.\n"
+            "\n"
+            "- [Auto-unload](/settings/auto-unload) - Ollama-style per-model idle timeout (`main`, `upscaler`, `adetailer`). Off by default.\n"
+            "- [Preview settings](/preview/settings) - Live preview stream during generation.\n"
+            "- [Recycle bin settings](/queue/recycle-bin/settings) - Soft-delete retention.\n"
+            "- [Generation defaults](/settings/generation) - Per-mode defaults applied when a request omits a field.\n"
             "\n"
             "## Optional\n"
             "\n"
-            "- [Library reference](/docs/LIBRARY_REFERENCE.md) — internal C++ libraries.\n"
-            "- [Health check](/health) — server status, loaded model, memory snapshot.\n";
+            "- [Library reference](/docs/LIBRARY_REFERENCE.md) - internal C++ libraries.\n"
+            "- [Health check](/health) - server status, loaded model, memory snapshot.\n";
         res.set_content(body, "text/markdown; charset=utf-8");
     };
     server.Get("/llms.txt", serve_llms_txt);
@@ -918,7 +927,7 @@ void RequestHandlers::register_routes(httplib::Server& server) {
 }
 
 void RequestHandlers::handle_auth_login(const httplib::Request& req, httplib::Response& res) {
-    // If auth is disabled at the server level, /auth/login is meaningless —
+    // If auth is disabled at the server level, /auth/login is meaningless -
     // tell the caller, but don't 500.
     if (!auth_manager_.enabled()) {
         nlohmann::json body = {
@@ -973,7 +982,7 @@ void RequestHandlers::handle_auth_login(const httplib::Request& req, httplib::Re
 
     // Set the auth cookie alongside the JSON token so:
     //   - Browsers attach it automatically to every same-origin request
-    //     (including <img> tags hitting /output, WS handshakes, etc.) — no
+    //     (including <img> tags hitting /output, WS handshakes, etc.) - no
     //     custom Authorization header machinery needed in the SPA.
     //   - HttpOnly: JS cannot read it, mitigates XSS exfiltration.
     //   - SameSite=Strict: CSRF-immune at the browser level.
@@ -1014,7 +1023,7 @@ void RequestHandlers::handle_auth_logout(const httplib::Request& req, httplib::R
             auth_manager_.revoke_token(cookie_token);
         }
     }
-    // Always clear the cookie regardless — defensive (user may have a stale
+    // Always clear the cookie regardless - defensive (user may have a stale
     // one even after auth is disabled at the server).
     res.set_header(
         "Set-Cookie",
@@ -1168,7 +1177,7 @@ void RequestHandlers::handle_get_options(const httplib::Request& /*req*/, httpli
             "flux",         // leejet PR #1723
             "flux2",        // leejet PR #1722
             "beta",         // leejet PR #811
-            "normal"        // leejet PR #1724 — alias for "discrete"
+            "normal"        // leejet PR #1724 - alias for "discrete"
         }},
         {"quantization_types", nlohmann::json::array({
             {{"id", "f32"}, {"name", "F32 (32-bit float)"}, {"bits", 32}},
@@ -1250,7 +1259,7 @@ void RequestHandlers::handle_refresh_models(const httplib::Request& /*req*/, htt
 
 void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Response& res) {
     // Default flow is async: validate the request synchronously, then
-    // dispatch the heavy work (sd.cpp model load — minutes for big GGUFs)
+    // dispatch the heavy work (sd.cpp model load - minutes for big GGUFs)
     // to a detached thread so the cpp-httplib worker pool is free for
     // concurrent traffic (WebDAV, /health, WS pings) that would otherwise
     // feel "frozen" while a load was in progress. Completion is reported
@@ -1266,7 +1275,7 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
     try {
         // Strict query-param validation: reject anything not in the
         // closed allow-list with a 400. Same UX rationale as the body
-        // validator — typos like ?waitt=true should fail loudly instead
+        // validator - typos like ?waitt=true should fail loudly instead
         // of being silently ignored (the user thinks they enabled
         // synchronous wait, the server doesn't).
         static const std::unordered_set<std::string> KNOWN_QUERY = {
@@ -1309,7 +1318,7 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
             } catch (...) { /* fall through to default */ }
         }
 
-        // Reject if a load is already in progress — saves the user from
+        // Reject if a load is already in progress - saves the user from
         // queuing on a context_mutex_ that will hold for minutes.
         if (model_manager_.is_loading()) {
             send_error(res,
@@ -1382,7 +1391,7 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
         const auto deadline = std::chrono::steady_clock::now() +
                               std::chrono::seconds(timeout_sec);
         // Brief settle so the worker thread has a chance to flip
-        // is_loading() to true before we start polling — otherwise a
+        // is_loading() to true before we start polling - otherwise a
         // very fast validation failure could race the poll and we'd
         // observe is_loading()==false before it ever went true.
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -1397,7 +1406,7 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
                     {"error",       "Model load did not finish within "
                                     + std::to_string(timeout_sec)
                                     + " seconds. Loading continues in the "
-                                    "background — poll /health or watch "
+                                    "background - poll /health or watch "
                                     "the model_loaded WebSocket event."},
                     {"model_name",  params.model_name},
                     {"timeout_sec", timeout_sec}
@@ -1524,7 +1533,7 @@ void RequestHandlers::handle_adetailer(const httplib::Request& req, httplib::Res
 
         auto body = parse_json_body(req);
 
-        // Optional user-supplied display title — strip before typed validation.
+        // Optional user-supplied display title - strip before typed validation.
         std::string title;
         if (body.contains("title") && body["title"].is_string()) {
             title = body["title"].get<std::string>();
@@ -1593,7 +1602,7 @@ constexpr size_t MAX_PROMPT_VARIATIONS = 200;
 
 // Normalize a generation request body so the queued job has clean JSON
 // types. Naive HTTP clients (shell scripts, form-encoded wrappers) often
-// send numbers and booleans as strings — `"steps": "9"`, `"easycache":
+// send numbers and booleans as strings - `"steps": "9"`, `"easycache":
 // "false"`. The typed param structs' from_json methods already coerce
 // permissively (parse_int/parse_float/parse_bool helpers), but the worker
 // then writes the raw body straight back to the queue's stored params,
@@ -1624,7 +1633,7 @@ nlohmann::json normalize_generation_body(GenerationType type,
             break;
         default:
             // Other types (upscale, convert, ...) don't go through this
-            // path — they have their own handlers. Pass through untouched.
+            // path - they have their own handlers. Pass through untouched.
             return body;
     }
     // Preserve fields the typed struct doesn't enumerate:
@@ -1632,7 +1641,7 @@ nlohmann::json normalize_generation_body(GenerationType type,
     //     control_image_base64, ref_images[], pm_id_images[])
     //   - Variation metadata stamped by the expand-prompt path
     //     (variation_group_id, variation_index, variation_total,
-    //     variation_template) — these are added by the caller AFTER
+    //     variation_template) - these are added by the caller AFTER
     //     normalization, but pre-existing keys on a re-submission also
     //     survive.
     //   - Anything we haven't explicitly modeled yet.
@@ -1670,7 +1679,7 @@ void RequestHandlers::submit_generation_jobs(const httplib::Request& req,
 
         // Optional user-supplied display title. Stored on the QueueItem
         // (not on params) so it never reaches the typed generation
-        // structs — strip before strict validation.
+        // structs - strip before strict validation.
         std::string title;
         if (body.contains("title") && body["title"].is_string()) {
             title = body["title"].get<std::string>();
@@ -1709,7 +1718,7 @@ void RequestHandlers::submit_generation_jobs(const httplib::Request& req,
         }
 
         // Expansion path. The parser throws std::runtime_error on malformed
-        // input (unterminated brace, pick-N > options, etc.) — bubble that up
+        // input (unterminated brace, pick-N > options, etc.) - bubble that up
         // as a 400 with the parser's message.
         std::vector<std::string> variations;
         try {
@@ -1768,7 +1777,7 @@ void RequestHandlers::handle_upscale(const httplib::Request& req, httplib::Respo
 
         auto body = parse_json_body(req);
 
-        // Optional user-supplied display title — strip before strict
+        // Optional user-supplied display title - strip before strict
         // validation since UpscaleParams doesn't model it.
         std::string title;
         if (body.contains("title") && body["title"].is_string()) {
@@ -1779,7 +1788,7 @@ void RequestHandlers::handle_upscale(const httplib::Request& req, httplib::Respo
         // Convenience: resolve `job_id` (+ optional `image_index`, defaults 0)
         // into the `image_base64` payload that UpscaleParams::from_json + the
         // worker expect. Previously this resolution was promised by inline
-        // comments but never implemented — the body queued with job_id only,
+        // comments but never implemented - the body queued with job_id only,
         // and the worker failed at "No image provided for upscaling" because
         // the parser saw no image_base64. Mirrors the MCP path's resolution
         // in tool_executor.cpp (analyze_image), including the "/output/" strip
@@ -1828,7 +1837,7 @@ void RequestHandlers::handle_upscale(const httplib::Request& req, httplib::Respo
             // Read the raw file bytes and base64-encode them. UpscaleParams::
             // from_json's decode_base64_image path expects encoded file bytes
             // (matches what direct image_base64 callers send), not decoded
-            // pixel data — so we just slurp + encode, no stbi round-trip.
+            // pixel data - so we just slurp + encode, no stbi round-trip.
             std::ifstream f(full_path, std::ios::binary);
             if (!f) {
                 send_error(res, "Cannot open source image: " + full_path.string(), 500);
@@ -1844,7 +1853,7 @@ void RequestHandlers::handle_upscale(const httplib::Request& req, httplib::Respo
 
         // Validate body shape at the boundary so unknown fields fail fast
         // as 400 (instead of being silently dropped on the way to the
-        // worker). Discard the parsed result — we store the raw body on
+        // worker). Discard the parsed result - we store the raw body on
         // the job and let the worker re-parse via UpscaleParams::from_json.
         try {
             (void) UpscaleParams::from_json(body);
@@ -1871,7 +1880,7 @@ void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Respo
     try {
         auto body = parse_json_body(req);
 
-        // Optional user-supplied display title — strip before strict
+        // Optional user-supplied display title - strip before strict
         // validation since it isn't a convert parameter.
         std::string title;
         if (body.contains("title") && body["title"].is_string()) {
@@ -1961,7 +1970,7 @@ void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Respo
             // with the output's filename, in the input's directory. Whatever
             // subdir the client sent in the relative path (e.g. "sefi/foo.gguf"
             // from a WebUI that prepends the model's stored subpath) is
-            // ignored — we don't try to map it onto a model-type base dir,
+            // ignored - we don't try to map it onto a model-type base dir,
             // we just convert in place. Absolute paths pass through unchanged
             // for callers that want an explicit destination.
             if (!output_p.is_absolute()) {
@@ -1986,7 +1995,7 @@ void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Respo
         }
 
         // Ensure the output directory exists so sd.cpp's fopen() doesn't fail
-        // with the generic "failed to write GGUF file" message — the user
+        // with the generic "failed to write GGUF file" message - the user
         // already paid the load+convert cost (60-120s on a 5B-class model)
         // and shouldn't lose it to a missing-dir issue at the write step.
         try {
@@ -2145,7 +2154,7 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
 
     // Pagination parameters.
     // The endpoint accepts either `page` (1-based) or `offset` (0-based item
-    // index), not both. They're equivalent expressions of the same cursor —
+    // index), not both. They're equivalent expressions of the same cursor -
     // accepting both in one request would silently let one override the other,
     // so we 400 instead of guessing intent.
     if (req.has_param("page") && req.has_param("offset")) {
@@ -3127,7 +3136,7 @@ std::string RequestHandlers::generate_directory_html(const std::string& dir_path
     html << R"(    <div class="stats">
         <div class="stat"><span class="stat-value">)" << dir_count << R"(</span> folders</div>
         <div class="stat"><span class="stat-value">)" << file_count << R"(</span> files</div>
-        <div class="stat">Showing <span class="stat-value">)" << (start_idx + 1) << R"(</span>–<span class="stat-value">)" << end_idx << R"(</span> of <span class="stat-value">)" << total_entries << R"(</span></div>
+        <div class="stat">Showing <span class="stat-value">)" << (start_idx + 1) << R"(</span>-<span class="stat-value">)" << end_idx << R"(</span> of <span class="stat-value">)" << total_entries << R"(</span></div>
     </div>
 )";
 
@@ -3154,8 +3163,8 @@ std::string RequestHandlers::generate_directory_html(const std::string& dir_path
                         </div>
                     </div>
                 </td>
-                <td class="size" data-label="Size">—</td>
-                <td class="date date-col" data-label="Modified">—</td>
+                <td class="size" data-label="Size">-</td>
+                <td class="date date-col" data-label="Modified">-</td>
             </tr>
 )";
     }
@@ -4353,15 +4362,15 @@ void RequestHandlers::handle_get_model_paths(const httplib::Request& /*req*/, ht
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// POST /models/upload — multipart/form-data upload of a model file.
+// POST /models/upload - multipart/form-data upload of a model file.
 //
 // Form fields:
-//   file       (required) — the binary file part
-//   model_type (required) — checkpoint|diffusion|vae|lora|clip|t5|
+//   file       (required) - the binary file part
+//   model_type (required) - checkpoint|diffusion|vae|lora|clip|t5|
 //                           embedding|controlnet|llm|esrgan|taesd
-//   filename   (optional) — overrides the multipart Content-Disposition
+//   filename   (optional) - overrides the multipart Content-Disposition
 //                           filename if present
-//   subfolder  (optional) — relative path under the model_type directory;
+//   subfolder  (optional) - relative path under the model_type directory;
 //                           rejected if it contains ".." or starts with "/"
 //
 // v1 LIMITATION: cpp-httplib's multipart parser buffers the full file in
@@ -4442,7 +4451,7 @@ void RequestHandlers::handle_upload_model(const httplib::Request& req, httplib::
         return;
     }
 
-    // Subfolder validation — block traversal and absolute paths.
+    // Subfolder validation - block traversal and absolute paths.
     std::string subfolder;
     if (req.form.has_field("subfolder")) {
         subfolder = req.form.get_field("subfolder");
@@ -4548,7 +4557,7 @@ void RequestHandlers::handle_upload_model(const httplib::Request& req, httplib::
     } catch (const std::exception& e) {
         std::cerr << "[RequestHandlers] scan_models after upload failed: "
                   << e.what() << std::endl;
-        // Non-fatal — the file is on disk; clients can call /models/refresh.
+        // Non-fatal - the file is on disk; clients can call /models/refresh.
     }
 
     nlohmann::json body = {
@@ -4738,7 +4747,7 @@ void RequestHandlers::handle_reset_settings(const httplib::Request& /*req*/, htt
 
 namespace {
 
-// URL-decode a percent-encoded path component. Stops at '?' (query) — but
+// URL-decode a percent-encoded path component. Stops at '?' (query) - but
 // httplib already strips the query string off req.path, so this is just
 // belt-and-braces.
 std::string url_decode(const std::string& s) {
@@ -4864,7 +4873,7 @@ std::string base64_decode(const std::string& s) {
     return out;
 }
 
-// Map an extension to a Content-Type. Small built-in table — we don't want
+// Map an extension to a Content-Type. Small built-in table - we don't want
 // to drag in libmagic for this. Defaults to application/octet-stream.
 std::string mime_for_extension(const std::filesystem::path& p) {
     std::string ext = p.extension().string();
@@ -4905,7 +4914,7 @@ sanitize_relative_segments(const std::string& tail) {
             if (seg == "..") {
                 return std::nullopt;  // traversal attempt
             }
-            // Reject NUL or control bytes — should never occur after URL decode.
+            // Reject NUL or control bytes - should never occur after URL decode.
             for (char c : seg) {
                 if (static_cast<unsigned char>(c) < 0x20) return std::nullopt;
             }
@@ -4954,7 +4963,7 @@ RequestHandlers::resolve_webdav_path(const std::string& url_path,
         std::string rest = (slash == std::string::npos) ? "" : after_models.substr(slash + 1);
 
         if (type.empty()) {
-            // /webdav/models/ — pseudo-root; no real filesystem mapping.
+            // /webdav/models/ - pseudo-root; no real filesystem mapping.
             // Caller must handle this case (typically PROPFIND lists the
             // available types). Signal "models pseudo-root" by returning a
             // sentinel: empty path with url_root = "/webdav/models".
@@ -5002,7 +5011,7 @@ void RequestHandlers::send_webdav_unauthorized(httplib::Response& res) const {
     res.status = 401;
     res.set_header("WWW-Authenticate", "Basic realm=\"sdcpp-restapi\"");
     res.set_header("Content-Type", "text/plain; charset=utf-8");
-    res.body = "401 Unauthorized — WebDAV requires HTTP Basic credentials.";
+    res.body = "401 Unauthorized - WebDAV requires HTTP Basic credentials.";
 }
 
 // Pick 400 (path traversal) vs 404 (unknown root / unconfigured type) when
@@ -5010,7 +5019,7 @@ void RequestHandlers::send_webdav_unauthorized(httplib::Response& res) const {
 static int webdav_resolve_failure_status(const std::string& url_path) {
     std::string decoded;
     // Inline copy of url_decode (we're in a different translation-unit-internal
-    // namespace context here — keep it simple).
+    // namespace context here - keep it simple).
     decoded.reserve(url_path.size());
     for (size_t i = 0; i < url_path.size(); ++i) {
         if (url_path[i] == '%' && i + 2 < url_path.size()) {
@@ -5043,7 +5052,7 @@ std::string RequestHandlers::extract_cookie_token(const httplib::Request& req) {
     // The Cookie header is a single line of the form
     //   Cookie: name1=val1; name2=val2; ...
     // We only care about our `sdcpp_auth` entry. Hand-parse rather than pull
-    // in a cookie library — the format is dead simple and we want to be
+    // in a cookie library - the format is dead simple and we want to be
     // strict about whitespace tolerance.
     std::string h = req.get_header_value("Cookie");
     if (h.empty()) return std::string();
@@ -5090,7 +5099,7 @@ RequestHandlers::handle_webdav_options(const httplib::Request& /*req*/, httplib:
     // because we don't implement it. macOS Finder gripes about missing class
     // 2 in logs but mounts and reads/writes fine; Windows Explorer is happy
     // with class 1 alone. Some clients (cadaver, davfs2) require class 2 for
-    // write — they'll still work because we return 405 for LOCK and the
+    // write - they'll still work because we return 405 for LOCK and the
     // clients fall back to lock-free PUT. A future v1.1 will add LOCK/UNLOCK.
     res.status = 200;
     res.set_header("DAV", "1");
@@ -5153,8 +5162,8 @@ RequestHandlers::handle_webdav_propfind(const httplib::Request& req, httplib::Re
     else depth = 1;  // default + "infinity" both clamped to 1
 
     // Pseudo-roots that don't resolve to a single filesystem directory:
-    //   /webdav/                — top-level: lists "output" + "models"
-    //   /webdav/models/         — lists the configured model-type subdirs
+    //   /webdav/                - top-level: lists "output" + "models"
+    //   /webdav/models/         - lists the configured model-type subdirs
     bool is_top_level_pseudo  = (req.path == "/webdav/" || req.path == "/webdav");
     bool is_models_pseudo_root = false;
     std::string url_root;
@@ -5305,7 +5314,7 @@ RequestHandlers::handle_webdav_mkcol(const httplib::Request& req, httplib::Respo
         return httplib::Server::HandlerResponse::Handled;
     }
     if (maybe->empty()) {
-        // Pseudo-root (/webdav/, /webdav/models/) — not creatable.
+        // Pseudo-root (/webdav/, /webdav/models/) - not creatable.
         res.status = 405;
         res.body = "Cannot MKCOL on a virtual root";
         return httplib::Server::HandlerResponse::Handled;
@@ -5401,7 +5410,7 @@ RequestHandlers::handle_webdav_move(const httplib::Request& req, httplib::Respon
     }
     fs::rename(*src, *dst, ec);
     if (ec) {
-        // rename() across mount points fails with EXDEV — fall back to copy+remove.
+        // rename() across mount points fails with EXDEV - fall back to copy+remove.
         std::error_code ec2;
         fs::copy(*src, *dst, fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec2);
         if (ec2) {
@@ -5476,10 +5485,10 @@ void RequestHandlers::handle_webdav_get(const httplib::Request& req,
         return;
     }
     if (maybe->empty()) {
-        // Pseudo-root — Finder/Explorer issue PROPFIND not GET on these.
+        // Pseudo-root - Finder/Explorer issue PROPFIND not GET on these.
         // For curl users: respond with a tiny placeholder.
         res.status = 200;
-        res.set_content("WebDAV root — use PROPFIND to list collections.\n",
+        res.set_content("WebDAV root - use PROPFIND to list collections.\n",
                         "text/plain; charset=utf-8");
         return;
     }
