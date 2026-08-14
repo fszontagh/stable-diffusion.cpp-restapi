@@ -90,32 +90,93 @@ REST API for stable-diffusion.cpp image and video generation.
 
 ## HTTPS (optional, for local testing)
 
-Some browser features (Notification API, WebCrypto, service workers) are gated behind a "secure context" - which means HTTPS *or* the origin `localhost`. `http://myhost:8077` (or any HTTP hostname URL) is NOT a secure context, so those APIs stay silently disabled.
+Some browser features (Notification API, WebCrypto, service workers) are gated behind a **secure context**, which the browser defines as HTTPS *or* the exact origin `localhost`. A plain-HTTP hostname URL (`http://<hostname>:8080`) is NOT a secure context, so those APIs stay silently disabled - the top-bar notification bell will keep saying "disabled" even when the toggle is clicked, because `Notification.permission` is pre-denied by the browser on insecure origins.
 
-For local testing without a reverse proxy, the server can bind directly as HTTPS with a self-signed certificate:
+For local testing without a reverse proxy, the server can bind directly as HTTPS with a self-signed certificate.
 
-1. Generate a cert:
-   ```
-   scripts/generate-self-cert.sh <hostname-or-ip>   # writes ./certs/sdcpp-{cert,key}.pem
-   ```
-   Both DNS names and IPs go into the SAN block. Chrome/Firefox ignore CN and require SAN.
+### 1. Generate a certificate
 
-2. Point config.json at the files:
-   ```json
-   "server": {
-     "host": "0.0.0.0",
-     "port": 8443,
-     "ssl": {
-       "enabled":   true,
-       "cert_path": "/absolute/path/to/sdcpp-cert.pem",
-       "key_path":  "/absolute/path/to/sdcpp-key.pem"
-     }
-   }
-   ```
+```
+scripts/generate-self-cert.sh <hostname-or-ip> [output-dir]
+```
 
-3. Browsers will show a one-time "not trusted" warning (self-signed is not a trusted CA). Accept it - the origin then counts as secure and the Notification / WebCrypto / SW APIs light up. WebSocket automatically upgrades to `wss://` at the same port.
+Writes `sdcpp-cert.pem` (public) and `sdcpp-key.pem` (private, mode 600). SAN entries include `localhost`, `127.0.0.1`, and whatever hostname/IP you passed in. Modern browsers ignore the certificate CN and require a SAN match, which is what this script produces.
 
-Production: prefer a reverse proxy (nginx/caddy) with a real cert. The built-in TLS is for local testing.
+Examples:
+
+```
+scripts/generate-self-cert.sh myhost                       # writes ./certs/
+scripts/generate-self-cert.sh myhost.lan /etc/sdcpp-restapi/
+scripts/generate-self-cert.sh 192.168.1.10
+```
+
+Validity is 825 days (macOS's max acceptance window for user-trusted self-signed certs). Override with `SDCPP_CERT_DAYS=<n>`.
+
+### 2. Enable in config.json
+
+```json
+"server": {
+    "host": "0.0.0.0",
+    "port": 8077,
+    "ssl": {
+        "enabled": true,
+        "cert_path": "/etc/sdcpp-restapi/sdcpp-cert.pem",
+        "key_path": "/etc/sdcpp-restapi/sdcpp-key.pem",
+        "redirect_http_port": 8078
+    }
+}
+```
+
+Fields inside `ssl`:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Bind the main port as HTTPS. When true, `cert_path` and `key_path` must resolve to readable PEM files. |
+| `cert_path` | string | `""` | Absolute path to the PEM-encoded certificate. |
+| `key_path` | string | `""` | Absolute path to the PEM-encoded private key (matches the cert). Should be mode 600, owned by the service user. |
+| `redirect_http_port` | int | `port + 1` when `enabled=true`, otherwise `0` | If non-zero, spawns a second plain-HTTP listener on that port that 301-redirects every request to `https://<Host header>:<main port><path>`. Use to give users typing `http://<host>:<redirect_port>` a soft landing. Set to `0` to disable. Cannot equal `port` - cpp-httplib can't serve HTTP and TLS on the same socket. |
+
+Restart the service after editing. The startup banner confirms the setup:
+
+```
+SSL:           ENABLED (cert=..., key=...)
+HTTP API:     https://0.0.0.0:8077
+HTTP redirect: http://0.0.0.0:8078 -> https://<host>:8077 (301)
+```
+
+WebSocket automatically upgrades to `wss://` at the same port; no separate cert or config is needed.
+
+### 3. Trust the certificate
+
+Browsers will show a "not trusted" warning on the first visit because the cert isn't signed by a public CA. Two approaches:
+
+**Click-through (simplest).** Chrome/Brave/Firefox: click *Advanced* → *Proceed to \<host\> (unsafe)*. The origin is then treated as secure and Notification / WebCrypto / SW APIs light up for the current session and beyond. The security-warning banner in the address bar remains.
+
+**Install the cert (no warning, green padlock).** Trust store choice depends on the browser:
+
+*Linux, system-wide (works for Brave 137+, Chrome, curl, wget, ...):*
+```
+sudo cp /etc/sdcpp-restapi/sdcpp-cert.pem /usr/local/share/ca-certificates/sdcpp-<host>.crt
+sudo update-ca-certificates
+```
+The `.crt` extension is required for `update-ca-certificates` to pick the file up. Restart the browser (`brave://restart`) so it re-reads the OS store.
+
+*Chromium's own root store (Chrome 137+, Brave 137+).* Since Chromium 137 on Linux, TLS validation uses the bundled Chrome Root Store, which consults the OS store above but ignores the NSS user DB (`~/.pki/nssdb`). If you *only* imported via `certutil -A -d sql:~/.pki/nssdb`, the cert will show as "Imported from Linux" in `chrome://certificate-manager` but TLS will still fail. Either use the OS-store approach above, or import via `chrome://certificate-manager` → *Custom* → *Trusted Certificates* → *Import*.
+
+*Firefox.* Has its own per-profile NSS DB at `~/.mozilla/firefox/<profile>/`. Either import via *Settings* → *Privacy & Security* → *View Certificates* → *Authorities* → *Import*, or:
+```
+certutil -A -d sql:~/.mozilla/firefox/<profile>/ -t "C,," -n "sdcpp-restapi <host>" -i /path/to/sdcpp-cert.pem
+```
+
+*If a browser still refuses after import:* Chromium may have cached the earlier failed handshake. Open `chrome://net-internals/#hsts` (or `brave://net-internals/#hsts`), delete the domain from the security state list, and reload.
+
+### 4. Production
+
+Prefer a proper reverse proxy (nginx, Caddy, Traefik) with a real Let's Encrypt certificate. Turn `ssl.enabled` off and point the proxy at plain HTTP on `127.0.0.1:8077` with `server.trusted_proxies` set. The built-in TLS is scoped to local dev.
+
+### Regenerating the cert
+
+Rerun `scripts/generate-self-cert.sh` with the same arguments - it overwrites `sdcpp-cert.pem` and `sdcpp-key.pem`. The service picks up the new files on next restart. Re-run the OS trust-store step (`update-ca-certificates` is safe to re-run; it recognises the same file).
 
 ## Authentication
 

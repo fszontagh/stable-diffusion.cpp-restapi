@@ -361,6 +361,8 @@ Previews are broadcast over WebSocket as `job_preview` events and are also avail
 
 **Title filter:** `GET /queue?titles=my-run,another-run` narrows by exact-match title membership (multi-select). Every `/queue` response includes `all_titles: string[]` - the unfiltered universe of distinct non-empty titles across all non-deleted jobs, so a UI can populate a title-picker dropdown independently of the active filter.
 
+**Transport / secure context:** The server binds HTTP by default. When `server.ssl.enabled=true` it binds HTTPS (with the configured cert + key) and by default also spawns an HTTP redirect listener on `server.ssl.redirect_http_port` (defaults to `port + 1`) that 301s to the HTTPS origin. Browser features that require a secure context (Notification API, WebCrypto, service workers) work only on HTTPS or on the exact origin `localhost` - a hostname-based `http://` URL is silently insecure. If a user reports the top-bar notification bell always saying "disabled", they're on plain HTTP. Point them at `/docs/API.md#https-optional-for-local-testing` for the self-signed cert flow.
+
 ## Common user intents → what to do
 
 | User says | What they probably need | What you should do |

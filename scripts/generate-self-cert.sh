@@ -9,7 +9,7 @@
 #   scripts/generate-self-cert.sh <hostname-or-ip> [output-dir]
 #
 # Examples:
-#   scripts/generate-self-cert.sh myhost                  # -> ./certs/
+#   scripts/generate-self-cert.sh myhost                # -> ./certs/
 #   scripts/generate-self-cert.sh myhost.lan  /etc/sdcpp-restapi/
 #   scripts/generate-self-cert.sh 192.168.1.10
 #
