@@ -7,12 +7,16 @@ const store = useAppStore()
 
 // Notification toggle handler
 async function toggleNotifications() {
-  const enabled = await store.toggleDesktopNotifications()
-  if (enabled) {
-    store.showToast('Desktop notifications enabled', 'success')
-  } else {
-    store.showToast('Desktop notifications disabled', 'info')
-  }
+  const result = await store.toggleDesktopNotifications()
+  const msg = result.message ?? (result.enabled ? 'Desktop notifications enabled' : 'Desktop notifications disabled')
+  // reason=null + enabled=true is the happy "just turned on" path;
+  // reason=null + enabled=false is the happy "just turned off" path.
+  // Anything else is a blocked toggle - render as warning so it's not
+  // confused with a normal off state.
+  const kind = result.enabled
+    ? 'success'
+    : (result.reason === null || result.reason === undefined ? 'info' : 'warning')
+  store.showToast(msg, kind)
 }
 
 // Manual reconnect handler

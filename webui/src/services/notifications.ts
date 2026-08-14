@@ -6,6 +6,19 @@
 // Notification settings stored in localStorage
 const STORAGE_KEY = 'desktop_notifications_enabled'
 
+export type NotificationBlockReason =
+  | null
+  | 'unsupported'
+  | 'insecure-context'
+  | 'denied'
+  | 'dismissed'
+
+export interface NotificationToggleResult {
+  enabled: boolean
+  reason: NotificationBlockReason
+  message?: string
+}
+
 class NotificationService {
   private enabled: boolean = false
   private permissionGranted: boolean = false
@@ -29,6 +42,26 @@ class NotificationService {
       this.enabled = false
       localStorage.setItem(STORAGE_KEY, 'false')
     }
+  }
+
+  /**
+   * Return null when notifications COULD be enabled (either already granted,
+   * or 'default' and the browser will prompt). Otherwise return the concrete
+   * reason so the UI can explain instead of just saying "disabled". This is
+   * the piece that was missing - previously toggle() returned bare `false`
+   * for every non-happy path and the toast could never tell the user WHY.
+   */
+  getBlockReason(): NotificationBlockReason {
+    if (!this.isSupported()) return 'unsupported'
+    // Notification API only works from a secure context (HTTPS) or from
+    // localhost. On plain http://<hostname> the permission prompt never
+    // appears and Notification.permission is stuck at 'denied' (Chromium)
+    // or requestPermission returns 'denied' without a UI (Firefox).
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      return 'insecure-context'
+    }
+    if (Notification.permission === 'denied') return 'denied'
+    return null
   }
 
   /**
@@ -120,19 +153,57 @@ class NotificationService {
   }
 
   /**
-   * Toggle notifications
-   * If not permitted, will request permission
+   * Toggle notifications. Returns a structured result so the UI can show
+   * the actual reason instead of a generic "disabled" toast.
    */
-  async toggle(): Promise<boolean> {
+  async toggle(): Promise<NotificationToggleResult> {
     if (this.enabled) {
       this.disable()
-      return false
-    } else {
-      if (this.permissionGranted) {
-        return this.enable()
-      } else {
-        return await this.requestPermission()
+      return { enabled: false, reason: null, message: 'Desktop notifications disabled' }
+    }
+
+    const blocked = this.getBlockReason()
+    if (blocked === 'unsupported') {
+      return {
+        enabled: false,
+        reason: 'unsupported',
+        message: 'This browser does not expose the Notification API.',
       }
+    }
+    if (blocked === 'insecure-context') {
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      return {
+        enabled: false,
+        reason: 'insecure-context',
+        message: `Desktop notifications need HTTPS or a localhost URL. ${origin} is neither, so the browser blocks the prompt. Access the WebUI over HTTPS (or via http://localhost) to enable them.`,
+      }
+    }
+    if (blocked === 'denied') {
+      return {
+        enabled: false,
+        reason: 'denied',
+        message: 'Notifications were denied in your browser. Reset the permission via the site-info menu in the address bar, then click again.',
+      }
+    }
+
+    if (this.permissionGranted) {
+      return {
+        enabled: this.enable(),
+        reason: null,
+        message: 'Desktop notifications enabled',
+      }
+    }
+
+    const granted = await this.requestPermission()
+    if (granted) {
+      return { enabled: true, reason: null, message: 'Desktop notifications enabled' }
+    }
+    // requestPermission() returned false but we already ruled out unsupported /
+    // insecure / denied above, so this is the user dismissing the prompt.
+    return {
+      enabled: false,
+      reason: 'dismissed',
+      message: 'Permission dismissed. Click again to see the prompt.',
     }
   }
 

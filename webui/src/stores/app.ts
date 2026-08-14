@@ -210,11 +210,13 @@ export const useAppStore = defineStore('app', () => {
   const desktopNotificationsEnabled = ref(notificationService.isEnabled())
   const desktopNotificationsPermission = computed(() => notificationService.getPermission())
 
-  // Toggle desktop notifications
-  async function toggleDesktopNotifications(): Promise<boolean> {
-    const enabled = await notificationService.toggle()
-    desktopNotificationsEnabled.value = enabled
-    return enabled
+  // Toggle desktop notifications. Returns the structured result from the
+  // service so the caller can show a reason-specific toast (insecure
+  // context, permission denied, etc.) instead of a bare enabled/disabled.
+  async function toggleDesktopNotifications() {
+    const result = await notificationService.toggle()
+    desktopNotificationsEnabled.value = result.enabled
+    return result
   }
 
   // Add error to history
