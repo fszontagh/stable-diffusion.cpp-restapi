@@ -148,27 +148,34 @@ WebSocket automatically upgrades to `wss://` at the same port; no separate cert 
 
 ### 3. Trust the certificate
 
-Browsers will show a "not trusted" warning on the first visit because the cert isn't signed by a public CA. Two approaches:
+Browsers will show a "not trusted" warning on the first visit because the cert isn't signed by a public CA. Pick one path:
 
 **Click-through (simplest).** Chrome/Brave/Firefox: click *Advanced* → *Proceed to \<host\> (unsafe)*. The origin is then treated as secure and Notification / WebCrypto / SW APIs light up for the current session and beyond. The security-warning banner in the address bar remains.
 
-**Install the cert (no warning, green padlock).** Trust store choice depends on the browser:
+**Install the cert (no warning, green padlock).** The trust flow is browser-specific and, on Chromium/Brave, has changed in recent versions - the OS-wide store and NSS user DB approaches that worked pre-Chrome-137 are **no longer effective for TLS**. Use the browser's own certificate manager.
 
-*Linux, system-wide (works for Brave 137+, Chrome, curl, wget, ...):*
-```
-sudo cp /etc/sdcpp-restapi/sdcpp-cert.pem /usr/local/share/ca-certificates/sdcpp-<host>.crt
-sudo update-ca-certificates
-```
-The `.crt` extension is required for `update-ca-certificates` to pick the file up. Restart the browser (`brave://restart`) so it re-reads the OS store.
+*Chromium / Brave / Chrome / Edge (Chromium 137+) - THIS IS THE ONLY WORKING PATH on modern Chromium builds on Linux:*
 
-*Chromium's own root store (Chrome 137+, Brave 137+).* Since Chromium 137 on Linux, TLS validation uses the bundled Chrome Root Store, which consults the OS store above but ignores the NSS user DB (`~/.pki/nssdb`). If you *only* imported via `certutil -A -d sql:~/.pki/nssdb`, the cert will show as "Imported from Linux" in `chrome://certificate-manager` but TLS will still fail. Either use the OS-store approach above, or import via `chrome://certificate-manager` → *Custom* → *Trusted Certificates* → *Import*.
+1. Open `brave://certificate-manager` (or `chrome://certificate-manager`).
+2. *Custom* → *Trusted Certificates* → *Import*.
+3. Select `/etc/sdcpp-restapi/sdcpp-cert.pem` (or wherever the cert lives).
+4. Fully quit the browser (not just `brave://restart` - it leaves background utility processes; kill them explicitly if needed) and relaunch. The cert now shows under *Custom Trusted Certificates* and TLS validation succeeds.
 
-*Firefox.* Has its own per-profile NSS DB at `~/.mozilla/firefox/<profile>/`. Either import via *Settings* → *Privacy & Security* → *View Certificates* → *Authorities* → *Import*, or:
+Why the browser UI is the only path: since Chromium 137, TLS validation on Linux uses the bundled Chrome Root Store, which does **not** consult `~/.pki/nssdb` (the NSS user DB) OR `/etc/ssl/certs/` for user-added roots. Certs imported with `certutil -A -d sql:~/.pki/nssdb` show up in `certificate-manager` under *Imported from Linux* but TLS still fails - that section is displayed for information only, not honoured. Adding to `/usr/local/share/ca-certificates/` + `update-ca-certificates` similarly does nothing for Brave/Chrome - it only helps `curl`, `wget`, and OS-native tools.
+
+*Firefox.* Has its own per-profile NSS DB at `~/.mozilla/firefox/<profile>/` which it DOES honour. Either import via *Settings* → *Privacy & Security* → *View Certificates* → *Authorities* → *Import*, or:
 ```
 certutil -A -d sql:~/.mozilla/firefox/<profile>/ -t "C,," -n "sdcpp-restapi <host>" -i /path/to/sdcpp-cert.pem
 ```
 
-*If a browser still refuses after import:* Chromium may have cached the earlier failed handshake. Open `chrome://net-internals/#hsts` (or `brave://net-internals/#hsts`), delete the domain from the security state list, and reload.
+*curl / wget / other CLI tools (optional).* If you also want bare `curl https://<host>:<port>` to work without `-k`:
+```
+sudo cp /etc/sdcpp-restapi/sdcpp-cert.pem /usr/local/share/ca-certificates/sdcpp-<host>.crt
+sudo update-ca-certificates
+```
+This does NOT affect Brave/Chrome - it only populates `/etc/ssl/certs/ca-certificates.crt` which OS-native TLS clients consult.
+
+*If a browser still refuses after import:* Chromium may have cached the earlier failed handshake. Open `chrome://net-internals/#hsts` (or `brave://net-internals/#hsts`), delete the domain from the security state list, then fully quit and relaunch.
 
 ### 4. Production
 
@@ -176,7 +183,7 @@ Prefer a proper reverse proxy (nginx, Caddy, Traefik) with a real Let's Encrypt 
 
 ### Regenerating the cert
 
-Rerun `scripts/generate-self-cert.sh` with the same arguments - it overwrites `sdcpp-cert.pem` and `sdcpp-key.pem`. The service picks up the new files on next restart. Re-run the OS trust-store step (`update-ca-certificates` is safe to re-run; it recognises the same file).
+Rerun `scripts/generate-self-cert.sh` with the same arguments - it overwrites `sdcpp-cert.pem` and `sdcpp-key.pem`. The service picks up the new files on next restart. Then re-import in the browser's certificate manager (Chromium/Brave keeps the trust binding keyed by the certificate's fingerprint, so a new cert requires a fresh import). If you also installed to the OS trust store for CLI tools, `sudo update-ca-certificates` is safe to re-run.
 
 ## Authentication
 
