@@ -867,7 +867,6 @@ CONFIGEOF
         cat > "${SERVICE_FILE}" << SERVICEEOF
 [Unit]
 Description=SDCPP REST API Server
-Documentation=https://github.com/<owner>/stable-diffusion.cpp-restapi
 After=network.target
 
 [Service]

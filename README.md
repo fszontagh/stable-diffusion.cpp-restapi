@@ -233,7 +233,7 @@ This enables:
 
 When enabled, the Web UI shows a "VRAM Offloading" section in model load settings.
 
-**Note:** This feature requires a fork of stable-diffusion.cpp with offloading support with offloading support. The fork is automatically fetched when `SD_EXPERIMENTAL_OFFLOAD=ON`.
+**Note:** This feature requires a fork of stable-diffusion.cpp with dynamic-offloading support. The fork branch is pinned in `CMakeLists.txt` and automatically fetched when `SD_EXPERIMENTAL_OFFLOAD=ON`. Leejet master already ships the newer unified-streaming API (`stream_layers` + `max_vram`), so the fork build is only needed for the legacy multi-mode offload vocabulary.
 
 ## Documentation
 
