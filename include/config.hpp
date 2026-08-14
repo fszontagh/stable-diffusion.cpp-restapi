@@ -26,6 +26,17 @@ struct ServerConfig {
     // this to the address(es) of your reverse proxy (e.g. ["127.0.0.1",
     // "10.0.0.0/8"]) when the server runs behind nginx/Caddy/Traefik.
     std::vector<std::string> trusted_proxies;
+
+    // Optional TLS. When enabled, the HTTP server binds as HTTPS with the
+    // supplied cert + private key (PEM). Intended primarily for local
+    // testing with a self-signed cert - browsers only treat an origin as
+    // "secure" (needed for the Notification API, WebCrypto, service
+    // workers, etc.) when it's HTTPS or localhost. Ignore in production
+    // in favour of a real reverse proxy; this exists so a single-binary
+    // deploy can still get the secure-context bits.
+    bool ssl_enabled = false;
+    std::string ssl_cert_path;
+    std::string ssl_key_path;
 };
 
 /**

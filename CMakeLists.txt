@@ -474,8 +474,14 @@ target_link_libraries(sdcpp-restapi PRIVATE
     nlohmann_json
     Threads::Threads
     OpenSSL::Crypto
+    OpenSSL::SSL
     CURL::libcurl
 )
+
+# Enable TLS support in cpp-httplib (httplib::SSLServer). Optional at
+# runtime via config.server.ssl.enabled; the binary always compiles it in
+# so a user can flip the flag without rebuilding.
+target_compile_definitions(sdcpp-restapi PRIVATE CPPHTTPLIB_OPENSSL_SUPPORT)
 
 # WebSocket support is built into httplib - no additional link libraries needed
 

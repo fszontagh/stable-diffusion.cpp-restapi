@@ -334,9 +334,36 @@ int main(int argc, char* argv[]) {
             std::cout << "Preview disabled" << std::endl;
         }
 
-        // Initialize HTTP Server
+        // Initialize HTTP(S) server. SSLServer publicly inherits Server so
+        // the rest of the setup code works against a Server& regardless.
         std::cout << "Initializing HTTP server..." << std::endl;
-        httplib::Server server;
+        std::unique_ptr<httplib::Server> server_ptr;
+        if (config.server.ssl_enabled) {
+            if (config.server.ssl_cert_path.empty() || config.server.ssl_key_path.empty()) {
+                std::cerr << "Fatal: ssl.enabled=true but ssl.cert_path or ssl.key_path is empty. "
+                             "Generate a self-signed cert with scripts/generate-self-cert.sh or point at real files."
+                          << std::endl;
+                return 1;
+            }
+            if (!fs::exists(config.server.ssl_cert_path) || !fs::exists(config.server.ssl_key_path)) {
+                std::cerr << "Fatal: SSL cert or key file not found. cert="
+                          << config.server.ssl_cert_path << " key=" << config.server.ssl_key_path << std::endl;
+                return 1;
+            }
+            auto ssl_srv = std::make_unique<httplib::SSLServer>(
+                config.server.ssl_cert_path.c_str(),
+                config.server.ssl_key_path.c_str());
+            if (!ssl_srv->is_valid()) {
+                std::cerr << "Fatal: failed to initialize SSL server. Check that the cert and key are PEM-encoded and match." << std::endl;
+                return 1;
+            }
+            server_ptr = std::move(ssl_srv);
+            std::cout << "SSL:           ENABLED (cert=" << config.server.ssl_cert_path
+                      << ", key=" << config.server.ssl_key_path << ")" << std::endl;
+        } else {
+            server_ptr = std::make_unique<httplib::Server>();
+        }
+        httplib::Server& server = *server_ptr;
         g_server = &server;
 
         // Set server options.
@@ -505,13 +532,15 @@ int main(int argc, char* argv[]) {
         std::cout << "\n========================================" << std::endl;
         std::cout << "SDCPP-RESTAPI Server Started" << std::endl;
         std::cout << "========================================" << std::endl;
-        std::cout << "HTTP API:     http://" << config.server.host << ":" << config.server.port << std::endl;
+        const char* scheme = config.server.ssl_enabled ? "https" : "http";
+        const char* ws_scheme = config.server.ssl_enabled ? "wss" : "ws";
+        std::cout << "HTTP API:     " << scheme << "://" << config.server.host << ":" << config.server.port << std::endl;
 #ifdef SDCPP_WEBSOCKET_ENABLED
-        std::cout << "WebSocket:    ws://" << config.server.host << ":" << config.server.port << "/ws" << std::endl;
+        std::cout << "WebSocket:    " << ws_scheme << "://" << config.server.host << ":" << config.server.port << "/ws" << std::endl;
 #endif
-        std::cout << "Output URL:   http://" << config.server.host << ":" << config.server.port << "/output/" << std::endl;
+        std::cout << "Output URL:   " << scheme << "://" << config.server.host << ":" << config.server.port << "/output/" << std::endl;
         if (!webui_path.empty()) {
-            std::cout << "Web UI:       http://" << config.server.host << ":" << config.server.port << "/ui/" << std::endl;
+            std::cout << "Web UI:       " << scheme << "://" << config.server.host << ":" << config.server.port << "/ui/" << std::endl;
         }
         std::cout << "Auth:         " << (auth_manager.enabled() ? "ENABLED (POST /auth/login to obtain bearer token)" : "DISABLED") << std::endl;
         std::cout << "Press Ctrl+C to stop (twice to force quit)\n" << std::endl;

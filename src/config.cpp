@@ -17,7 +17,12 @@ void to_json(nlohmann::json& j, const ServerConfig& c) {
         {"ws_port", c.ws_port},
         {"threads", c.threads},
         {"sd_log_level", c.sd_log_level},
-        {"trusted_proxies", c.trusted_proxies}
+        {"trusted_proxies", c.trusted_proxies},
+        {"ssl", nlohmann::json{
+            {"enabled", c.ssl_enabled},
+            {"cert_path", c.ssl_cert_path},
+            {"key_path", c.ssl_key_path},
+        }}
     };
 }
 
@@ -32,6 +37,12 @@ void from_json(const nlohmann::json& j, ServerConfig& c) {
         for (const auto& v : j["trusted_proxies"]) {
             if (v.is_string()) c.trusted_proxies.push_back(v.get<std::string>());
         }
+    }
+    if (j.contains("ssl") && j["ssl"].is_object()) {
+        const auto& s = j["ssl"];
+        c.ssl_enabled   = s.value("enabled", false);
+        c.ssl_cert_path = s.value("cert_path", std::string{});
+        c.ssl_key_path  = s.value("key_path", std::string{});
     }
 }
 

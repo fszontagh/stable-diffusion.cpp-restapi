@@ -88,6 +88,35 @@ REST API for stable-diffusion.cpp image and video generation.
 
 ---
 
+## HTTPS (optional, for local testing)
+
+Some browser features (Notification API, WebCrypto, service workers) are gated behind a "secure context" - which means HTTPS *or* the origin `localhost`. `http://myhost:8077` (or any HTTP hostname URL) is NOT a secure context, so those APIs stay silently disabled.
+
+For local testing without a reverse proxy, the server can bind directly as HTTPS with a self-signed certificate:
+
+1. Generate a cert:
+   ```
+   scripts/generate-self-cert.sh <hostname-or-ip>   # writes ./certs/sdcpp-{cert,key}.pem
+   ```
+   Both DNS names and IPs go into the SAN block. Chrome/Firefox ignore CN and require SAN.
+
+2. Point config.json at the files:
+   ```json
+   "server": {
+     "host": "0.0.0.0",
+     "port": 8443,
+     "ssl": {
+       "enabled":   true,
+       "cert_path": "/absolute/path/to/sdcpp-cert.pem",
+       "key_path":  "/absolute/path/to/sdcpp-key.pem"
+     }
+   }
+   ```
+
+3. Browsers will show a one-time "not trusted" warning (self-signed is not a trusted CA). Accept it - the origin then counts as secure and the Notification / WebCrypto / SW APIs light up. WebSocket automatically upgrades to `wss://` at the same port.
+
+Production: prefer a reverse proxy (nginx/caddy) with a real cert. The built-in TLS is for local testing.
+
 ## Authentication
 
 When the server is built with auth enabled and a username/password is configured (`auth.username` + `auth.password` in `config.json`, or via `SDCPP_AUTH_USERNAME` / `SDCPP_AUTH_PASSWORD` env vars), most endpoints require authentication. The two transports are:
