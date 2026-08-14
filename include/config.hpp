@@ -37,6 +37,13 @@ struct ServerConfig {
     bool ssl_enabled = false;
     std::string ssl_cert_path;
     std::string ssl_key_path;
+    // When ssl_enabled is true, plain HTTP requests to the TLS port hang up
+    // with ERR_EMPTY_RESPONSE. Setting this to a non-zero port spawns a
+    // second listener on plain HTTP that 301-redirects every path to
+    // https://<host>:<main port>. 0 = disabled. A common pick is 80 (if
+    // running as root) or the main port + 1. Cannot equal the main port -
+    // cpp-httplib can't multiplex HTTP + TLS on the same socket.
+    int ssl_redirect_http_port = 0;
 };
 
 /**

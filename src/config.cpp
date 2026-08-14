@@ -22,6 +22,7 @@ void to_json(nlohmann::json& j, const ServerConfig& c) {
             {"enabled", c.ssl_enabled},
             {"cert_path", c.ssl_cert_path},
             {"key_path", c.ssl_key_path},
+            {"redirect_http_port", c.ssl_redirect_http_port},
         }}
     };
 }
@@ -40,9 +41,17 @@ void from_json(const nlohmann::json& j, ServerConfig& c) {
     }
     if (j.contains("ssl") && j["ssl"].is_object()) {
         const auto& s = j["ssl"];
-        c.ssl_enabled   = s.value("enabled", false);
-        c.ssl_cert_path = s.value("cert_path", std::string{});
-        c.ssl_key_path  = s.value("key_path", std::string{});
+        c.ssl_enabled            = s.value("enabled", false);
+        c.ssl_cert_path          = s.value("cert_path", std::string{});
+        c.ssl_key_path           = s.value("key_path", std::string{});
+        // Default: main_port + 1 when SSL is on. User can override with an
+        // explicit port or set to 0 to disable the redirect. Making it
+        // opt-out matches the "by default on" request; the fallback
+        // choice still respects a config that says {"redirect_http_port": 0}.
+        int default_redirect = c.ssl_enabled ? (c.port + 1) : 0;
+        c.ssl_redirect_http_port = s.value("redirect_http_port", default_redirect);
+    } else if (c.ssl_enabled) {
+        c.ssl_redirect_http_port = c.port + 1;
     }
 }
 

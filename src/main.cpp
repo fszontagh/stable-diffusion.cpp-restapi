@@ -545,12 +545,74 @@ int main(int argc, char* argv[]) {
         std::cout << "Auth:         " << (auth_manager.enabled() ? "ENABLED (POST /auth/login to obtain bearer token)" : "DISABLED") << std::endl;
         std::cout << "Press Ctrl+C to stop (twice to force quit)\n" << std::endl;
 
+        // Optional HTTP -> HTTPS redirect listener. When SSL is on, a plain
+        // HTTP request to the TLS port hangs up with ERR_EMPTY_RESPONSE.
+        // Binding a second listener on a plain HTTP port that 301s every
+        // request to the canonical https URL gives users a soft landing.
+        std::unique_ptr<httplib::Server> redirect_srv;
+        std::thread redirect_thread;
+        if (config.server.ssl_enabled && config.server.ssl_redirect_http_port > 0) {
+            if (config.server.ssl_redirect_http_port == config.server.port) {
+                std::cerr << "Warning: ssl.redirect_http_port == server.port ("
+                          << config.server.port << "); cpp-httplib cannot serve "
+                          "HTTP and HTTPS on the same socket. Skipping redirect listener."
+                          << std::endl;
+            } else {
+                redirect_srv = std::make_unique<httplib::Server>();
+                int https_port = config.server.port;
+                redirect_srv->set_default_headers({{"Connection", "close"}});
+                auto redirect_handler = [https_port](const httplib::Request& req, httplib::Response& res) {
+                    // Prefer the Host: header (respects any name the client used) so
+                    // the 301 lands them at https://<same-hostname>:<https_port>. Fall
+                    // back to the bound host if the header is absent.
+                    std::string host = req.get_header_value("Host");
+                    auto colon = host.find(':');
+                    if (colon != std::string::npos) host = host.substr(0, colon);
+                    if (host.empty()) host = "localhost";
+                    std::string target = "https://" + host + ":" + std::to_string(https_port) + req.path;
+                    if (!req.params.empty()) {
+                        target += "?" + httplib::detail::params_to_query_str(req.params);
+                    }
+                    res.set_redirect(target, 301);
+                };
+                // Catch every HTTP verb we care about. httplib doesn't have a
+                // wildcard so register the common ones explicitly - anything
+                // else hits set_error_handler and still gets redirected.
+                redirect_srv->Get(".*",     redirect_handler);
+                redirect_srv->Post(".*",    redirect_handler);
+                redirect_srv->Put(".*",     redirect_handler);
+                redirect_srv->Delete(".*",  redirect_handler);
+                redirect_srv->Patch(".*",   redirect_handler);
+                redirect_srv->Options(".*", redirect_handler);
+                redirect_srv->set_error_handler(redirect_handler);
+                std::cout << "HTTP redirect: http://" << config.server.host << ":"
+                          << config.server.ssl_redirect_http_port
+                          << " -> https://<host>:" << https_port
+                          << " (301)" << std::endl;
+                redirect_thread = std::thread([&redirect_srv, host = config.server.host,
+                                               rport = config.server.ssl_redirect_http_port]() {
+                    if (!redirect_srv->listen(host, rport)) {
+                        std::cerr << "Warning: HTTP redirect listener failed to bind on "
+                                  << host << ":" << rport
+                                  << " (port in use? insufficient privilege for a low port?). "
+                                  "Continuing without redirect." << std::endl;
+                    }
+                });
+            }
+        }
+
         if (!server.listen(config.server.host, config.server.port)) {
             if (g_running) {
                 std::cerr << "Error: Failed to start server on "
                           << config.server.host << ":" << config.server.port << std::endl;
+                if (redirect_srv) redirect_srv->stop();
+                if (redirect_thread.joinable()) redirect_thread.join();
                 return 1;
             }
+        }
+        if (redirect_srv) {
+            redirect_srv->stop();
+            if (redirect_thread.joinable()) redirect_thread.join();
         }
 
         // Cleanup
