@@ -1288,7 +1288,7 @@ Common generation parameters
 | `easycache_start` | number |  | 0.15 | Cache start percentage (shared across modes) |
 | `easycache_threshold` | number |  | 0.2 | Reuse threshold for similarity-based caches (EasyCache/UCache/DBCache) |
 | `eta` | number |  | 0.0 | Eta for DDIM-like samplers |
-| `extra_sample_args` | string |  |  | Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs). When scheduler=beta, accepts beta_alpha=X,beta_beta=Y for custom beta-distribution parameters (leejet PR #1834). |
+| `extra_sample_args` | string |  |  | Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs). When scheduler=beta, accepts beta_alpha=X,beta_beta=Y for custom beta-distribution parameters (leejet PR #1834). When sampler=lms, accepts lms_max_order=N (1-4, default 4) to configure the linear multi-step order (leejet PR #1885). |
 | `extra_tiling_args` | string |  |  | Extra key=value tiling args (passed through to sd.cpp's tiling parser, model-specific) |
 | `height` | integer |  |  | Image height in pixels (default from model_architectures.json) |
 | `hires_denoising_strength` | number |  | 0.4 | Hires denoising strength |

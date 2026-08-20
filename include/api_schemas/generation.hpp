@@ -21,7 +21,7 @@ struct GenerationRequestBase {
             .optional_field("distilled_guidance", schema::FieldType::Number, "Distilled guidance scale (Flux/distilled models)", 3.5)
             .optional_field("eta", schema::FieldType::Number, "Eta for DDIM-like samplers", 0.0)
             .optional_field("shifted_timestep", schema::FieldType::Integer, "Shifted timestep value (NitroFusion: 250-500)", 0)
-            .optional_field("extra_sample_args", schema::FieldType::String, "Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs). When scheduler=beta, accepts beta_alpha=X,beta_beta=Y for custom beta-distribution parameters (leejet PR #1834).")
+            .optional_field("extra_sample_args", schema::FieldType::String, "Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs). When scheduler=beta, accepts beta_alpha=X,beta_beta=Y for custom beta-distribution parameters (leejet PR #1834). When sampler=lms, accepts lms_max_order=N (1-4, default 4) to configure the linear multi-step order (leejet PR #1885).")
             .optional_field("seed", schema::FieldType::Integer, "RNG seed (-1 for random)", -1)
             .arch_default_enum("sampler", "Sampling algorithm", SAMPLER_VALUES)
             .arch_default_enum("scheduler", "Noise scheduler", SCHEDULER_VALUES)
