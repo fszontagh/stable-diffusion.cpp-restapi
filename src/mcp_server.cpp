@@ -701,6 +701,7 @@ json McpServer::tool_job(const json& args) {
         if (args.contains("status_filter") && args["status_filter"].is_string()) {
             std::string s = args["status_filter"].get<std::string>();
             if (s == "pending") filter.status = QueueStatus::Pending;
+            else if (s == "waiting") filter.status = QueueStatus::Waiting;
             else if (s == "processing") filter.status = QueueStatus::Processing;
             else if (s == "completed") filter.status = QueueStatus::Completed;
             else if (s == "failed") filter.status = QueueStatus::Failed;

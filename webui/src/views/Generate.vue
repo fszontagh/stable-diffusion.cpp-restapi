@@ -1718,7 +1718,7 @@ async function handleSubmit() {
     return
   }
 
-  if (!store.modelLoaded) {
+  if (!store.modelLoaded && !store.modelLoading) {
     store.showToast('Please load a model first', 'warning')
     return
   }
@@ -2630,13 +2630,24 @@ async function handleSubmit() {
           <button
             class="btn btn-primary btn-lg"
             @click="handleSubmit"
-            :disabled="submitting || cooldown || !store.modelLoaded"
+            :disabled="submitting || cooldown || (!store.modelLoaded && !store.modelLoading)"
           >
             <span v-if="submitting" class="spinner"></span>
-            {{ submitting ? 'Submitting...' : cooldown ? 'Please wait...' : `Generate ${mode === 'txt2vid' ? 'Video' : 'Image'}` }}
+            {{
+              submitting
+                ? 'Submitting...'
+                : cooldown
+                  ? 'Please wait...'
+                  : (!store.modelLoaded && store.modelLoading)
+                    ? `Queue ${mode === 'txt2vid' ? 'Video' : 'Image'} (starts after model loads)`
+                    : `Generate ${mode === 'txt2vid' ? 'Video' : 'Image'}`
+            }}
           </button>
-          <p v-if="!store.modelLoaded" class="text-error mt-2">
+          <p v-if="!store.modelLoaded && !store.modelLoading" class="text-error mt-2">
             Please load a model first
+          </p>
+          <p v-else-if="!store.modelLoaded && store.modelLoading" class="text-warning mt-2">
+            Model is loading - jobs submitted now will run once loading finishes.
           </p>
         </div>
       </div>

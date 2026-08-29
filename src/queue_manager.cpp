@@ -22,6 +22,7 @@ namespace sdcpp {
 std::string queue_status_to_string(QueueStatus status) {
     switch (status) {
         case QueueStatus::Pending: return "pending";
+        case QueueStatus::Waiting: return "waiting";
         case QueueStatus::Processing: return "processing";
         case QueueStatus::Completed: return "completed";
         case QueueStatus::Failed: return "failed";
@@ -33,6 +34,7 @@ std::string queue_status_to_string(QueueStatus status) {
 
 QueueStatus string_to_queue_status(const std::string& str) {
     if (str == "pending") return QueueStatus::Pending;
+    if (str == "waiting") return QueueStatus::Waiting;
     if (str == "processing") return QueueStatus::Processing;
     if (str == "completed") return QueueStatus::Completed;
     if (str == "failed") return QueueStatus::Failed;
@@ -675,10 +677,11 @@ bool QueueManager::cancel_job(const std::string& job_id) {
         return false;
     }
 
-    if (it->second.status != QueueStatus::Pending) {
+    if (it->second.status != QueueStatus::Pending &&
+        it->second.status != QueueStatus::Waiting) {
         std::cout << "[QueueManager] Cancel failed: job " << job_id
                   << " is " << queue_status_to_string(it->second.status)
-                  << " (only pending jobs can be cancelled)" << std::endl;
+                  << " (only pending/waiting jobs can be cancelled)" << std::endl;
         return false;
     }
 
@@ -953,37 +956,18 @@ void QueueManager::worker_thread() {
 
             if (!running_) break;
 
-            // Find next non-cancelled job
+            // Find next non-cancelled job. We do NOT flip Pending ->
+            // Processing here anymore - the model-load wait step below
+            // may transition Pending -> Waiting first. Only copy type +
+            // params under the lock.
             while (!pending_queue_.empty()) {
                 job_id = pending_queue_.front();
                 pending_queue_.pop();
 
                 auto it = jobs_.find(job_id);
                 if (it != jobs_.end() && it->second.status == QueueStatus::Pending) {
-                    it->second.status = QueueStatus::Processing;
-                    it->second.started_at = utils::get_time_now();
-                    job_start_time = it->second.started_at;
-                    // Copy data we need for processing
                     job_type = it->second.type;
                     job_params = it->second.params;
-
-                    // Broadcast status change via WebSocket. Include started_at
-                    // so the frontend can render the live elapsed-time counter
-                    // immediately — it doesn't have access to it otherwise
-                    // until a separate /queue refresh.
-                    if (auto* ws = get_websocket_server()) {
-                        ws->broadcast(WSEventType::JobStatusChanged, {
-                            {"job_id", job_id},
-                            {"status", "processing"},
-                            {"previous_status", "pending"},
-                            {"started_at", utils::time_to_string(it->second.started_at)}
-                        });
-                    }
-
-                    std::cout << "[QueueManager] Job status: " << job_id
-                              << " | pending -> processing"
-                              << " | type=" << generation_type_to_string(job_type)
-                              << " | remaining_in_queue=" << pending_queue_.size() << std::endl;
                     break;
                 }
                 job_id.clear();
@@ -992,6 +976,109 @@ void QueueManager::worker_thread() {
             if (job_id.empty()) continue;
         }
         // Lock released here
+
+        // Step 1.5: If a model load is in-flight (or was just marked pending
+        // by a POST /models/load handler), park the job in Waiting until the
+        // load finishes, then decide success vs failure. Skipped for job
+        // types that don't consume sd_ctx.
+        const bool needs_model =
+            job_type != GenerationType::Convert &&
+            job_type != GenerationType::ModelDownload &&
+            job_type != GenerationType::ModelHash;
+
+        bool went_waiting = false;
+        if (needs_model && model_manager_.is_loading_or_pending()) {
+            {
+                std::lock_guard<std::mutex> lock(queue_mutex_);
+                auto it = jobs_.find(job_id);
+                if (it != jobs_.end() && it->second.status == QueueStatus::Pending) {
+                    it->second.status = QueueStatus::Waiting;
+                    went_waiting = true;
+                    if (auto* ws = get_websocket_server()) {
+                        ws->broadcast(WSEventType::JobStatusChanged, {
+                            {"job_id", job_id},
+                            {"status", "waiting"},
+                            {"previous_status", "pending"},
+                            {"message", "Waiting for model to finish loading"}
+                        });
+                    }
+                    std::cout << "[QueueManager] Job status: " << job_id
+                              << " | pending -> waiting (model load in progress)"
+                              << std::endl;
+                }
+            }
+
+            while (running_ && model_manager_.is_loading_or_pending()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
+
+            if (!running_) break;
+
+            // Load finished. If it failed, mark this job Failed with the
+            // real load error so the user isn't shown the misleading
+            // generic "No model loaded".
+            if (!model_manager_.is_model_loaded()) {
+                std::string load_err = model_manager_.get_last_load_error();
+                std::string err_msg = load_err.empty()
+                    ? std::string("No model loaded and none is being loaded")
+                    : ("Model load failed: " + load_err);
+
+                auto now = utils::get_time_now();
+                std::lock_guard<std::mutex> lock(queue_mutex_);
+                auto it = jobs_.find(job_id);
+                if (it != jobs_.end()) {
+                    it->second.status = QueueStatus::Failed;
+                    it->second.error_message = err_msg;
+                    it->second.completed_at = now;
+                    if (auto* ws = get_websocket_server()) {
+                        ws->broadcast(WSEventType::JobStatusChanged, {
+                            {"job_id", job_id},
+                            {"status", "failed"},
+                            {"previous_status", went_waiting ? "waiting" : "pending"},
+                            {"error", err_msg},
+                            {"completed_at", utils::time_to_string(now)}
+                        });
+                    }
+                    std::cout << "[QueueManager] Job status: " << job_id
+                              << " | " << (went_waiting ? "waiting" : "pending")
+                              << " -> failed (" << err_msg << ")" << std::endl;
+                }
+                save_state();
+                continue;
+            }
+        }
+
+        // Step 2: Flip to Processing. Broadcast previous_status accurately
+        // (either 'pending' or 'waiting') so the frontend can trace the
+        // transition.
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            auto it = jobs_.find(job_id);
+            if (it == jobs_.end() ||
+                (it->second.status != QueueStatus::Pending &&
+                 it->second.status != QueueStatus::Waiting)) {
+                // Cancelled while we were waiting for the model.
+                continue;
+            }
+            const std::string prev = queue_status_to_string(it->second.status);
+            it->second.status = QueueStatus::Processing;
+            it->second.started_at = utils::get_time_now();
+            job_start_time = it->second.started_at;
+
+            if (auto* ws = get_websocket_server()) {
+                ws->broadcast(WSEventType::JobStatusChanged, {
+                    {"job_id", job_id},
+                    {"status", "processing"},
+                    {"previous_status", prev},
+                    {"started_at", utils::time_to_string(it->second.started_at)}
+                });
+            }
+
+            std::cout << "[QueueManager] Job status: " << job_id
+                      << " | " << prev << " -> processing"
+                      << " | type=" << generation_type_to_string(job_type)
+                      << " | remaining_in_queue=" << pending_queue_.size() << std::endl;
+        }
 
         // Step 2: Set progress tracking (with progress lock only)
         {
@@ -1710,8 +1797,9 @@ void QueueManager::load_state() {
             for (const auto& j : state["items"]) {
                 QueueItem item = QueueItem::from_json(j);
                 
-                // Reset processing jobs to pending
-                if (item.status == QueueStatus::Processing) {
+                // Reset processing/waiting jobs to pending on restart
+                if (item.status == QueueStatus::Processing ||
+                    item.status == QueueStatus::Waiting) {
                     item.status = QueueStatus::Pending;
                     pending_queue_.push(item.job_id);
                 } else if (item.status == QueueStatus::Pending) {

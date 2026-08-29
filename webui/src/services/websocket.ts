@@ -29,7 +29,7 @@ export interface JobAddedData {
 
 export interface JobStatusChangedData {
   job_id: string
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  status: 'pending' | 'waiting' | 'processing' | 'completed' | 'failed' | 'cancelled'
   previous_status: string
   outputs?: string[]
   error?: string

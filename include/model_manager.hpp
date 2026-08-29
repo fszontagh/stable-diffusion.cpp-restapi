@@ -313,6 +313,34 @@ public:
     bool is_loading() const { return model_loading_.load(); }
 
     /**
+     * Returns true if a load is either already in-flight (model_loading_)
+     * or has been marked pending by the request handler (load_pending_)
+     * but the loader thread hasn't picked up yet. Callers that need to
+     * wait/gate on "a load is happening or about to happen" should use
+     * this instead of is_loading().
+     */
+    bool is_loading_or_pending() const {
+        return model_loading_.load() || load_pending_.load();
+    }
+
+    /**
+     * Mark that a load is about to start. Called synchronously by the
+     * request handler BEFORE detaching the loader thread so the queue
+     * worker + concurrent /models/load callers see the pending state
+     * during the window between std::thread(...).detach() and the
+     * detached thread actually flipping model_loading_ to true.
+     */
+    void mark_load_pending() { load_pending_.store(true); }
+
+    /**
+     * Clear the pending marker. Cleared automatically at every exit
+     * point in load_model() (via the clear_loading lambda); exposed for
+     * completeness / manual cleanup by the request handler if the
+     * detach itself throws before the loader thread runs.
+     */
+    void clear_load_pending() { load_pending_.store(false); }
+
+    /**
      * Last load failure message, or empty string if the most recent load
      * succeeded. Cleared at the start of every load. Used by the
      * synchronous wait flow (POST /models/load?wait=true) to surface a
@@ -475,6 +503,7 @@ private:
     sd_ctx_t* context_ = nullptr;
     std::atomic<bool> model_loaded_{false};  // Lock-free check for is_model_loaded
     std::atomic<bool> model_loading_{false}; // Lock-free check for loading in progress
+    std::atomic<bool> load_pending_{false};  // Set by request handler before spawning loader thread, cleared inside load_model
     std::atomic<int> loading_step_{0};       // Current loading step (from sd.cpp callback)
     std::atomic<int> loading_total_steps_{0}; // Total loading steps (from sd.cpp callback)
     std::string loaded_model_name_;

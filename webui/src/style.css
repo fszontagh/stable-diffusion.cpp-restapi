@@ -468,6 +468,11 @@ a:focus-visible {
   color: var(--bg-primary);
 }
 
+.badge-waiting {
+  background: #d97706;
+  color: white;
+}
+
 .badge-processing {
   background: var(--accent-primary);
   color: var(--bg-primary);

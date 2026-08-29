@@ -1243,6 +1243,7 @@ async function sendImageToUpscale(outputPath: string) {
         <select v-model="statusFilter" class="filter-select">
           <option value="all">All</option>
           <option value="pending">Pending</option>
+          <option value="waiting">Waiting for model</option>
           <option value="processing">Processing</option>
           <option value="completed">Completed</option>
           <option value="failed">Failed</option>
@@ -1613,6 +1614,12 @@ async function sendImageToUpscale(outputPath: string) {
               </button>
             </div>
 
+            <!-- Waiting for model load -->
+            <div v-else-if="job.status === 'waiting'" class="job-pending-indicator">
+              <span class="pending-icon">&#9203;</span>
+              <span class="pending-text">Waiting for model to load...</span>
+            </div>
+
             <!-- Pending indicator -->
             <div v-else-if="job.status === 'pending'" class="job-pending-indicator">
               <span class="pending-icon">&#9203;</span>
@@ -1656,7 +1663,7 @@ async function sendImageToUpscale(outputPath: string) {
               Details
             </button>
             <button
-              v-if="job.status === 'pending'"
+              v-if="job.status === 'pending' || job.status === 'waiting'"
               class="btn btn-danger btn-sm"
               @click="cancelJob(job.job_id)"
               :disabled="cancelling === job.job_id"

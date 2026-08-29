@@ -43,7 +43,7 @@ inline const std::vector<std::string> RNG_TYPE_VALUES = {
 };
 
 inline const std::vector<std::string> JOB_STATUS_VALUES = {
-    "pending", "processing", "completed", "failed", "cancelled", "deleted"
+    "pending", "waiting", "processing", "completed", "failed", "cancelled", "deleted"
 };
 
 inline const std::vector<std::string> JOB_TYPE_VALUES = {

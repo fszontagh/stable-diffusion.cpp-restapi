@@ -709,7 +709,7 @@ Tags: `Queue`
 
 | in | name | type | required | description |
 |---|---|---|---|---|
-| query | `status` | enum (`pending`, `processing`, `completed`, `failed`, `cancelled`, `deleted`) |  | Filter by job status |
+| query | `status` | enum (`pending`, `waiting`, `processing`, `completed`, `failed`, `cancelled`, `deleted`) |  | Filter by job status |
 | query | `type` | enum (`txt2img`, `img2img`, `txt2vid`, `upscale`, `convert`, `model_download`, `model_hash`) |  | Filter by job type |
 | query | `search` | string |  | Search in prompt/params |
 | query | `architecture` | string |  | Filter by model architecture |

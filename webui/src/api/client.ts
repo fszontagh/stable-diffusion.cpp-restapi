@@ -411,7 +411,7 @@ export interface JobModelSettings {
 export interface Job {
   job_id: string
   type: 'txt2img' | 'img2img' | 'txt2vid' | 'upscale' | 'convert' | 'model_download' | 'model_hash'
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'deleted'
+  status: 'pending' | 'waiting' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'deleted'
   progress: JobProgress
   created_at: string
   started_at?: string

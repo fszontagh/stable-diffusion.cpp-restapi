@@ -617,8 +617,8 @@ void ModelManager::auto_unload_loop() {
         AutoUnloadSettings s = get_auto_unload_settings();
         int64_t now = now_unix_seconds();
 
-        // Skip everything if a load is in progress — don't fight the loader.
-        if (model_loading_.load()) continue;
+        // Skip everything if a load is in progress or pending - don't fight the loader.
+        if (model_loading_.load() || load_pending_.load()) continue;
 
         auto try_unload = [&](AutoUnloadKind kind,
                               const AutoUnloadPerKind& cfg,
@@ -905,6 +905,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     // Helper to clear loading state on exit
     auto clear_loading = [this]() {
         model_loading_ = false;
+        load_pending_ = false;
         loading_model_name_.clear();
         loading_step_ = 0;
         loading_total_steps_ = 0;
@@ -1449,6 +1450,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         if (!verify_gpu_runtime(gpu_err)) {
             last_load_error_ = "GPU runtime not ready: " + gpu_err;
             std::cerr << "[ModelManager] " << last_load_error_ << std::endl;
+            clear_loading();
             return false;
         }
     }

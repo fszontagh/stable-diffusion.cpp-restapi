@@ -1414,7 +1414,7 @@ Get jobs with filtering, pagination, and optional date grouping.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `status` | string | `"all"` | Filter by status: `pending`, `processing`, `completed`, `failed`, `cancelled`, `all` |
+| `status` | string | `"all"` | Filter by status: `pending`, `waiting`, `processing`, `completed`, `failed`, `cancelled`, `all`. `waiting` = the worker dequeued the job but a `POST /models/load` is in progress; the job auto-transitions to `processing` when the load finishes, or to `failed` with `"Model load failed: ..."` if the load errored. |
 | `type` | string | `"all"` | Filter by type: `txt2img`, `img2img`, `txt2vid`, `upscale`, `convert`, `model_download`, `model_hash`, `all` |
 | `search` | string | - | Search in prompt/negative_prompt (case-insensitive) |
 | `architecture` | string | - | Filter by model architecture (case-insensitive partial match) |
@@ -2946,7 +2946,7 @@ All messages are JSON with this structure:
 | Event | Description |
 |-------|-------------|
 | `job_added` | New job added to queue |
-| `job_status_changed` | Job status changed (pending/processing/completed/failed/cancelled) |
+| `job_status_changed` | Job status changed (pending/waiting/processing/completed/failed/cancelled). A `pending -> waiting` transition means a `POST /models/load` is in flight; the job will auto-advance to `processing` when the load succeeds, or to `failed` if it errored. |
 | `job_progress` | Generation progress update (step/total_steps) |
 | `job_preview` | Live preview image during generation |
 | `job_cancelled` | Job was cancelled |

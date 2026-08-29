@@ -50,6 +50,7 @@ sdcpp-restapi is a long-running C++ HTTP server that wraps the stable-diffusion.
 | **TAESD** | Tiny AutoEncoder for Stable Diffusion — a tiny fast VAE used for **preview generation** during sampling. Not for final output. |
 | **Job** | A queued operation: `txt2img`, `img2img`, `txt2vid`, `upscale`, `convert`, `model_download`, `model_hash`. Identified by a UUID `job_id`. |
 | **Recycle bin** | Soft-delete mechanism for jobs. `status=deleted` with a `deleted_at` timestamp. Auto-purged after `retention_minutes` (default 7 days). |
+| **Waiting for model** | `status=waiting` - the worker dequeued the job but a `POST /models/load` is in flight. The worker polls the load; on success it auto-transitions the job to `processing`, on load failure to `failed` with `"Model load failed: <reason>"`. Callers can safely fire a load request and a batch of generation requests back-to-back; the queue does the right thing. |
 | **Preview mode** | How progress previews are rendered: `none`, `proj` (latent projection), `tae` (TAESD decode — default), `vae` (full VAE — slow). |
 | **Architecture default** | A generation field whose default comes from `data/model_architectures.json`, not from a hardcoded constant. Marked in the OpenAPI schema with `x-architecture-default: true`. |
 

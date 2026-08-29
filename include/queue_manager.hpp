@@ -27,6 +27,7 @@ class ModelManager;
  */
 enum class QueueStatus {
     Pending,
+    Waiting,      // Dequeued but blocked waiting for an in-progress model load
     Processing,
     Completed,
     Failed,

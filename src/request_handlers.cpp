@@ -1327,9 +1327,11 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
             } catch (...) { /* fall through to default */ }
         }
 
-        // Reject if a load is already in progress - saves the user from
-        // queuing on a context_mutex_ that will hold for minutes.
-        if (model_manager_.is_loading()) {
+        // Reject if a load is already in progress OR pending - saves the
+        // user from queuing on a context_mutex_ that will hold for minutes,
+        // and closes the race between mark_load_pending() and the detached
+        // loader thread actually flipping model_loading_.
+        if (model_manager_.is_loading_or_pending()) {
             send_error(res,
                 "Another model is already loading. Wait for it to finish "
                 "or call /models/unload first.", 409);
@@ -1356,6 +1358,14 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
                   << params.model_name
                   << (wait ? " timeout=" + std::to_string(timeout_sec) + "s" : "")
                   << std::endl;
+
+        // Mark pending BEFORE detaching so the queue worker and any
+        // concurrent /models/load caller see "a load is imminent" during
+        // the window between std::thread(...).detach() and the detached
+        // thread actually entering load_model() and flipping
+        // model_loading_ to true. load_model() clears the flag on every
+        // exit path via its clear_loading lambda.
+        model_manager_.mark_load_pending();
 
         // Detach: the load runs to completion regardless of whether the
         // HTTP request stays open. ModelManager::load_model handles its
@@ -1404,7 +1414,7 @@ void RequestHandlers::handle_load_model(const httplib::Request& req, httplib::Re
         // very fast validation failure could race the poll and we'd
         // observe is_loading()==false before it ever went true.
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        while (model_manager_.is_loading()) {
+        while (model_manager_.is_loading_or_pending()) {
             if (std::chrono::steady_clock::now() >= deadline) {
                 // Caller's timeout exceeded. The load thread keeps
                 // running in the background; the WS events still fire.
