@@ -1663,12 +1663,13 @@ async function sendImageToUpscale(outputPath: string) {
               Details
             </button>
             <button
-              v-if="job.status === 'pending' || job.status === 'waiting'"
+              v-if="job.status === 'pending' || job.status === 'waiting' || job.status === 'processing'"
               class="btn btn-danger btn-sm"
               @click="cancelJob(job.job_id)"
               :disabled="cancelling === job.job_id"
+              :title="job.status === 'processing' ? 'Ask sd.cpp to stop mid-generation (takes effect at next denoiser step)' : 'Cancel this queued job'"
             >
-              {{ cancelling === job.job_id ? '...' : 'Cancel' }}
+              {{ cancelling === job.job_id ? '...' : (job.status === 'processing' ? 'Stop' : 'Cancel') }}
             </button>
             <button
               v-if="job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled'"
@@ -1895,12 +1896,13 @@ async function sendImageToUpscale(outputPath: string) {
                   Details
                 </button>
                 <button
-                  v-if="job.status === 'pending'"
+                  v-if="job.status === 'pending' || job.status === 'waiting' || job.status === 'processing'"
                   class="btn btn-danger btn-sm"
                   @click="cancelJob(job.job_id)"
                   :disabled="cancelling === job.job_id"
+                  :title="job.status === 'processing' ? 'Ask sd.cpp to stop mid-generation (takes effect at next denoiser step)' : 'Cancel this queued job'"
                 >
-                  {{ cancelling === job.job_id ? '...' : 'Cancel' }}
+                  {{ cancelling === job.job_id ? '...' : (job.status === 'processing' ? 'Stop' : 'Cancel') }}
                 </button>
                 <button
                   v-if="job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled'"

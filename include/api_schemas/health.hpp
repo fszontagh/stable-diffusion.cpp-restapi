@@ -21,6 +21,8 @@ struct HealthResponse {
             .optional_field("model_type", schema::FieldType::String, "Type of loaded model")
             .optional_field("model_architecture", schema::FieldType::String, "Detected architecture")
             .object_field("loaded_components", "Loaded model components (vae, clip_l, etc.)")
+            .optional_field("supports_image_generation", schema::FieldType::Boolean, "True when the loaded model can serve /txt2img and /img2img (sd_ctx_supports_image_generation). False during load and when no model is loaded.", false)
+            .optional_field("supports_video_generation", schema::FieldType::Boolean, "True when the loaded model can serve /txt2vid (sd_ctx_supports_video_generation). Lets a UI enable/disable the video tab based on server-authoritative capability instead of architecture-name pattern matching.", false)
             .optional_field("upscaler_loaded", schema::FieldType::Boolean, "Whether an upscaler is loaded")
             .optional_field("upscaler_name", schema::FieldType::String, "Loaded upscaler name")
             .optional_field("ws_enabled", schema::FieldType::Boolean, "Whether WebSocket is enabled")

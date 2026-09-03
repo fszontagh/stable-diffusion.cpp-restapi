@@ -1082,6 +1082,8 @@ void RequestHandlers::handle_health(const httplib::Request& req, httplib::Respon
         {"model_type", loaded_info["model_type"]},
         {"model_architecture", loaded_info["model_architecture"]},
         {"loaded_components", loaded_info["loaded_components"]},
+        {"supports_image_generation", loaded_info.value("supports_image_generation", false)},
+        {"supports_video_generation", loaded_info.value("supports_video_generation", false)},
         {"load_options", loaded_info.contains("load_options") ? loaded_info["load_options"] : nlohmann::json(nullptr)},
         {"username", username},
         {"upscaler_loaded", loaded_info["upscaler_loaded"]},
@@ -3778,7 +3780,11 @@ void RequestHandlers::handle_update_preview_settings(const httplib::Request& req
     }
 
     // Validate parameters
-    if (interval < 1) interval = 1;
+    // Interval semantics (leejet PR #1915): positive N previews every Nth
+    // denoiser step; negative N previews only the completed logical step
+    // whose index is -N; 0 previews only the final completed step of the
+    // first pass (base-resolution or high-noise). Clamp both directions.
+    if (interval < -100) interval = -100;
     if (interval > 100) interval = 100;
     if (max_size < 64) max_size = 64;
     if (max_size > 1024) max_size = 1024;

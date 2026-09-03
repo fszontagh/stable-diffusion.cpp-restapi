@@ -1865,6 +1865,19 @@ std::mutex& ModelManager::get_context_mutex() {
     return context_mutex_;
 }
 
+bool ModelManager::cancel_generation(int mode) {
+    // Read context_ without taking context_mutex_. Cancellation MUST be
+    // async-safe with respect to the running generate_image call, which
+    // holds context_mutex_ for the entire generation - waiting on it
+    // here would deadlock. sd_cancel_generation is itself designed to
+    // be called from another thread; it just flips an atomic flag that
+    // the denoiser loop polls.
+    sd_ctx_t* ctx = context_;
+    if (ctx == nullptr) return false;
+    sd_cancel_generation(ctx, static_cast<sd_cancel_mode_t>(mode));
+    return true;
+}
+
 std::string ModelManager::get_lora_dir() const {
     return config_.paths.lora;
 }
@@ -1946,6 +1959,15 @@ nlohmann::json ModelManager::get_loaded_models_info() const {
     }
     
     result["loaded_components"] = components;
+
+    // Server-authoritative capabilities of the currently-loaded model.
+    // Lets the WebUI enable/disable the txt2vid tab (or the image tabs)
+    // based on what the model actually supports, rather than pattern-
+    // matching the architecture name. Only sampled when a model is
+    // loaded; both are false during the loading window since context_
+    // isn't fully wired yet.
+    result["supports_image_generation"] = context_ != nullptr && sd_ctx_supports_image_generation(context_);
+    result["supports_video_generation"] = context_ != nullptr && sd_ctx_supports_video_generation(context_);
 
     // Include the load options used when loading the model
     if (!loaded_options_.empty()) {

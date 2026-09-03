@@ -35,7 +35,10 @@ inline const std::vector<std::string> MODEL_TYPE_VALUES = {
 
 inline const std::vector<std::string> WEIGHT_TYPE_VALUES = {
     "f32", "f16", "bf16", "q8_0", "q5_0", "q5_1", "q4_0", "q4_1",
-    "q4_k", "q5_k", "q6_k", "q8_k", "q3_k", "q2_k", "mxfp4", "nvfp4", "q1_0"
+    "q4_k", "q5_k", "q6_k", "q8_k", "q3_k", "q2_k", "mxfp4", "nvfp4",
+    "q1_0",
+    // leejet PRs #1913 + #1916 - Q2_0, native FP8 matmul.
+    "q2_0", "f8_e4m3", "f8_e5m2"
 };
 
 inline const std::vector<std::string> RNG_TYPE_VALUES = {

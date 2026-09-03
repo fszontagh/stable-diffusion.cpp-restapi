@@ -635,7 +635,7 @@
     },
     "HiDream-O1": {
       "name": "HiDream O1",
-      "description": "HiDream O1 image model (Comfy-Org). Self-contained checkpoint \u2014 bundles diffusion, Qwen2 text/vision conditioner, and FakeVAE. Defaults below match the Dev (distilled) variant; for the Full variant raise cfg_scale to ~5.0 and steps to ~28.",
+      "description": "HiDream O1 image model (Comfy-Org). Self-contained checkpoint — bundles diffusion, Qwen2 text/vision conditioner, and FakeVAE. Defaults below match the Dev (distilled) variant; for the Full variant raise cfg_scale to ~5.0 and steps to ~28.",
       "aliases": [
         "HiDream O1",
         "HiDream-O1-Image",
@@ -725,7 +725,7 @@
     },
     "Ernie-Image": {
       "name": "ERNIE-Image",
-      "description": "Baidu ERNIE-Image (and Turbo). Runs on \u2264 4 GB VRAM. Uses the FLUX.2 VAE and Ministral-3-3B-Instruct as the LLM text encoder. Defaults target the Turbo variant; for the full model raise cfg to ~5.0 and steps to ~20.",
+      "description": "Baidu ERNIE-Image (and Turbo). Runs on ≤ 4 GB VRAM. Uses the FLUX.2 VAE and Ministral-3-3B-Instruct as the LLM text encoder. Defaults target the Turbo variant; for the full model raise cfg to ~5.0 and steps to ~20.",
       "aliases": [
         "Ernie Image",
         "Ernie-Image",
@@ -762,7 +762,7 @@
       ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (FLUX.2 VAE)",
-        "llm": "GPT-OSS-20B (GGUF, ~20 GB on disk \u2014 needs significant RAM)"
+        "llm": "GPT-OSS-20B (GGUF, ~20 GB on disk — needs significant RAM)"
       },
       "optionalComponents": {},
       "loadOptions": {
@@ -870,7 +870,7 @@
     },
     "SeFi-Image-Turbo": {
       "name": "SeFi-Image (Turbo)",
-      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, TURBO variants (1B-turbo / 2B-turbo / 5B-turbo) \u2014 4 steps, CFG 1.0 (distilled). Now in leejet/master (PR #1707 merged via 03e9a22).",
+      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, TURBO variants (1B-turbo / 2B-turbo / 5B-turbo) — 4 steps, CFG 1.0 (distilled). Now in leejet/master (PR #1707 merged via 03e9a22).",
       "aliases": [
         "sefi-turbo",
         "sefi_turbo",
@@ -930,7 +930,7 @@
     },
     "SeFi-Image-Base": {
       "name": "SeFi-Image (Base)",
-      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, BASE variants (1B-Base / 2B-Base / 5B-Base) \u2014 50 steps, CFG 4.0. Now in leejet/master (PR #1707 merged via 03e9a22).",
+      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, BASE variants (1B-Base / 2B-Base / 5B-Base) — 50 steps, CFG 4.0. Now in leejet/master (PR #1707 merged via 03e9a22).",
       "aliases": [
         "sefi-base",
         "sefi_base",
@@ -989,7 +989,7 @@
     },
     "SeFi-Image-RL": {
       "name": "SeFi-Image (RL)",
-      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, RL-finetuned variant (5B-RL) \u2014 50 steps, CFG 4.0. Now in leejet/master (PR #1707 merged via 03e9a22).",
+      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, RL-finetuned variant (5B-RL) — 50 steps, CFG 4.0. Now in leejet/master (PR #1707 merged via 03e9a22).",
       "aliases": [
         "sefi-rl",
         "sefi_rl",
@@ -1049,7 +1049,7 @@
     },
     "Krea2-Raw": {
       "name": "Krea2 (Raw)",
-      "description": "Krea2 diffusion transformer (Raw variant) \u2014 50 steps, CFG 4.0. Uses Wan 2.1 VAE and Qwen3-VL 4B encoder. Added in leejet/master via PR #1705.",
+      "description": "Krea2 diffusion transformer (Raw variant) — 50 steps, CFG 4.0. Uses Wan 2.1 VAE and Qwen3-VL 4B encoder. Added in leejet/master via PR #1705.",
       "aliases": [
         "krea2-raw",
         "krea2_raw",
@@ -1100,7 +1100,7 @@
     },
     "Krea2-Turbo": {
       "name": "Krea2 (Turbo)",
-      "description": "Krea2 diffusion transformer (Turbo variant) \u2014 4 steps, CFG 1.0. Uses Wan 2.1 VAE and Qwen3-VL 4B encoder. Added in leejet/master via PR #1705.",
+      "description": "Krea2 diffusion transformer (Turbo variant) — 4 steps, CFG 1.0. Uses Wan 2.1 VAE and Qwen3-VL 4B encoder. Added in leejet/master via PR #1705.",
       "aliases": [
         "krea2-turbo",
         "krea2_turbo",
@@ -1182,12 +1182,24 @@
       },
       "componentScoring": {
         "vae": [
-          { "regex": "flux2[_.\\-]?ae", "score": 110 },
-          { "regex": "flux2.*vae", "score": 90 }
+          {
+            "regex": "flux2[_.\\-]?ae",
+            "score": 110
+          },
+          {
+            "regex": "flux2.*vae",
+            "score": 90
+          }
         ],
         "llm": [
-          { "regex": "mistral[_.\\-]?small.*instruct", "score": 100 },
-          { "regex": "qwen3[_.\\-]?vl", "score": 90 }
+          {
+            "regex": "mistral[_.\\-]?small.*instruct",
+            "score": 100
+          },
+          {
+            "regex": "qwen3[_.\\-]?vl",
+            "score": 90
+          }
         ]
       }
     },
@@ -1255,9 +1267,18 @@
       },
       "componentScoring": {
         "motion_module": [
-          { "regex": "mm[_.\\-]?sd15[_.\\-]?v3", "score": 110 },
-          { "regex": "animatediff.*v3", "score": 100 },
-          { "regex": "animate.*diff", "score": 80 }
+          {
+            "regex": "mm[_.\\-]?sd15[_.\\-]?v3",
+            "score": 110
+          },
+          {
+            "regex": "animatediff.*v3",
+            "score": 100
+          },
+          {
+            "regex": "animate.*diff",
+            "score": 80
+          }
         ]
       }
     },
@@ -1295,9 +1316,18 @@
       },
       "componentScoring": {
         "motion_module": [
-          { "regex": "mm[_.\\-]?sd15[_.\\-]?v2", "score": 110 },
-          { "regex": "animatediff.*v2", "score": 100 },
-          { "regex": "animate.*diff", "score": 70 }
+          {
+            "regex": "mm[_.\\-]?sd15[_.\\-]?v2",
+            "score": 110
+          },
+          {
+            "regex": "animatediff.*v2",
+            "score": 100
+          },
+          {
+            "regex": "animate.*diff",
+            "score": 70
+          }
         ]
       }
     },
@@ -1336,8 +1366,14 @@
       },
       "componentScoring": {
         "motion_module": [
-          { "regex": "^pid", "score": 110 },
-          { "regex": "pid[_.\\-]?sd15", "score": 100 }
+          {
+            "regex": "^pid",
+            "score": 110
+          },
+          {
+            "regex": "pid[_.\\-]?sd15",
+            "score": 100
+          }
         ]
       }
     },
@@ -1429,6 +1465,39 @@
       },
       "match": {
         "nameRegex": "minimax.?h3|minimax_h3"
+      }
+    },
+    "LTX-2.5": {
+      "name": "LTX 2.5",
+      "description": "Lightricks LTX 2.5 video model (leejet PR #1893). Generates frames + optional audio. Requires the CONV variant of the video VAE (the default file is a diffusion decoder that is not supported). Uses Gemma4-12B-with-proj text encoder (larger than LTX 2.3's Gemma-3). No embeddings_connectors file is needed - the projection is embedded in the text encoder file.",
+      "aliases": [
+        "LTX-2.5",
+        "LTX2.5",
+        "ltx-2.5",
+        "ltx2.5",
+        "ltx25"
+      ],
+      "requiredComponents": {
+        "vae": "ltx-2.5 video VAE, conv variant (safetensors)",
+        "audio_vae": "ltx-2.5 audio VAE (safetensors)",
+        "llm": "gemma4-12b-with-proj-ltx-2.5 (safetensors or GGUF)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "params_backend": "*=cpu"
+      },
+      "generationDefaults": {
+        "cfg_scale": 3.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "ltx2",
+        "width": 1280,
+        "height": 720,
+        "video_frames": 121,
+        "fps": 24,
+        "negative_prompt": "worst quality, low quality, blurry, distorted, artifacts"
       }
     }
   },

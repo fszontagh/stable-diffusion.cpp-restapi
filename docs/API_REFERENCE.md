@@ -1364,6 +1364,8 @@ Server health and status information
 | `model_name` | string |  |  | Name of loaded model |
 | `model_type` | string |  |  | Type of loaded model |
 | `status` | string | yes |  | Server status (ok) |
+| `supports_image_generation` | boolean |  | false | True when the loaded model can serve /txt2img and /img2img (sd_ctx_supports_image_generation). False during load and when no model is loaded. |
+| `supports_video_generation` | boolean |  | false | True when the loaded model can serve /txt2vid (sd_ctx_supports_video_generation). Lets a UI enable/disable the video tab based on server-authoritative capability instead of architecture-name pattern matching. |
 | `upscaler_loaded` | boolean |  |  | Whether an upscaler is loaded |
 | `upscaler_name` | string |  |  | Loaded upscaler name |
 | `version` | string | yes |  | Server version string |
@@ -1478,7 +1480,7 @@ Model loading options
 | `tensor_type_rules` | string |  |  | Custom tensor type rules string |
 | `vae_conv_direct` | boolean |  | false | Direct VAE convolution |
 | `vae_format` | enum (`auto`, `flux`, `sd3`, `flux2`, `wan`) |  | auto | VAE weight format override (auto = sd.cpp detects from the file) |
-| `weight_type` | enum (`f32`, `f16`, `bf16`, `q8_0`, `q5_0`, `q5_1`, `q4_0`, `q4_1`, `q4_k`, `q5_k`, `q6_k`, `q8_k`, `q3_k`, `q2_k`, `mxfp4`, `nvfp4`, `q1_0`) |  |  | Weight precision type |
+| `weight_type` | enum (`f32`, `f16`, `bf16`, `q8_0`, `q5_0`, `q5_1`, `q4_0`, `q4_1`, `q4_k`, `q5_k`, `q6_k`, `q8_k`, `q3_k`, `q2_k`, `mxfp4`, `nvfp4`, `q1_0`, `q2_0`, `f8_e4m3`, `f8_e5m2`) |  |  | Weight precision type |
 
 ### schema `LoadUpscalerRequest` <a id="schema-loadupscalerrequest"></a>
 
@@ -1609,7 +1611,7 @@ Preview generation settings
 | field | type | required | default | description |
 |---|---|---|---|---|
 | `enabled` | boolean | yes |  | Whether live preview is enabled |
-| `interval` | integer | yes |  | Preview interval (every N steps) |
+| `interval` | integer | yes |  | Preview interval. Positive N = preview every Nth denoiser step; negative N = preview only the completed logical step -N; 0 = preview only the final completed step of the first pass. Range [-100, 100]. |
 | `max_size` | integer |  |  | Maximum preview dimension |
 | `mode` | enum (`none`, `proj`, `tae`, `vae`) | yes |  | Preview decode mode |
 | `quality` | integer |  |  | JPEG quality (1-100) |
@@ -1739,7 +1741,7 @@ Update preview settings
 | field | type | required | default | description |
 |---|---|---|---|---|
 | `enabled` | boolean |  |  | Enable/disable live preview |
-| `interval` | integer |  |  | Preview interval (every N steps) |
+| `interval` | integer |  |  | Preview interval. Positive N = preview every Nth denoiser step; negative N = preview only the completed logical step -N; 0 = preview only the final completed step of the first pass. Range [-100, 100]. |
 | `max_size` | integer |  |  | Maximum preview dimension |
 | `mode` | enum (`none`, `proj`, `tae`, `vae`) |  |  | Preview decode mode |
 | `quality` | integer |  |  | JPEG quality (1-100) |

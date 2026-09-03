@@ -384,6 +384,22 @@ public:
      * Get mutex for locking context during generation
      */
     std::mutex& get_context_mutex();
+
+    /**
+     * Request cancellation of the currently-running generation.
+     * Wraps sd_cancel_generation(). Fire-and-forget: sd.cpp sets an
+     * internal flag that its denoiser loop polls between steps, so
+     * cancellation is not instant - it takes effect at the next
+     * step boundary (typically <200ms). Returns false if no context
+     * is loaded. Callable from any thread; specifically does NOT take
+     * context_mutex_ (that would deadlock against the generation call
+     * still holding it).
+     *
+     * mode: SD_CANCEL_ALL (default) = stop as soon as possible,
+     * SD_CANCEL_NEW_LATENTS = finish the current image but skip the
+     * rest of the batch, SD_CANCEL_RESET = clear a pending cancel.
+     */
+    bool cancel_generation(int mode = 0 /* SD_CANCEL_ALL */);
     
     /**
      * Get the LoRA directory path

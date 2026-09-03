@@ -669,36 +669,65 @@ std::vector<std::string> QueueManager::get_distinct_titles() const {
 }
 
 bool QueueManager::cancel_job(const std::string& job_id) {
-    std::lock_guard<std::mutex> lock(queue_mutex_);
+    // Snapshot status under lock, decide action, release lock BEFORE calling
+    // sd_cancel_generation. The generation worker holds context_mutex_ while
+    // running; the cancel call itself is atomic-flag-only and takes no locks,
+    // but keeping queue_mutex_ held while poking into ModelManager would risk
+    // ordering issues down the line.
+    QueueStatus prev_status;
+    GenerationType job_type;
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        auto it = jobs_.find(job_id);
+        if (it == jobs_.end()) {
+            std::cout << "[QueueManager] Cancel failed: job " << job_id << " not found" << std::endl;
+            return false;
+        }
+        prev_status = it->second.status;
+        job_type = it->second.type;
 
-    auto it = jobs_.find(job_id);
-    if (it == jobs_.end()) {
-        std::cout << "[QueueManager] Cancel failed: job " << job_id << " not found" << std::endl;
-        return false;
+        if (prev_status != QueueStatus::Pending &&
+            prev_status != QueueStatus::Waiting &&
+            prev_status != QueueStatus::Processing) {
+            std::cout << "[QueueManager] Cancel failed: job " << job_id
+                      << " is " << queue_status_to_string(prev_status)
+                      << " (already finished)" << std::endl;
+            return false;
+        }
+
+        // Flip status to Cancelled optimistically for all three cases.
+        // For Pending/Waiting the worker will skip the job when it next
+        // looks at it. For Processing the worker checks status after
+        // generate_image returns and honours the pre-set Cancelled instead
+        // of writing Completed/Failed - so the UI reflects the cancel
+        // immediately even though sd.cpp still needs a step-boundary tick
+        // to actually stop.
+        it->second.status = QueueStatus::Cancelled;
+        it->second.completed_at = std::chrono::system_clock::now();
+        save_state();
+
+        if (auto* ws = get_websocket_server()) {
+            ws->broadcast(WSEventType::JobCancelled, {
+                {"job_id", job_id},
+                {"completed_at", utils::time_to_string(it->second.completed_at)}
+            });
+        }
     }
 
-    if (it->second.status != QueueStatus::Pending &&
-        it->second.status != QueueStatus::Waiting) {
-        std::cout << "[QueueManager] Cancel failed: job " << job_id
-                  << " is " << queue_status_to_string(it->second.status)
-                  << " (only pending/waiting jobs can be cancelled)" << std::endl;
-        return false;
-    }
-
-    it->second.status = QueueStatus::Cancelled;
-    it->second.completed_at = std::chrono::system_clock::now();
-    save_state();
-
-    // Broadcast job cancelled event via WebSocket
-    if (auto* ws = get_websocket_server()) {
-        ws->broadcast(WSEventType::JobCancelled, {
-            {"job_id", job_id},
-            {"completed_at", utils::time_to_string(it->second.completed_at)}
-        });
+    if (prev_status == QueueStatus::Processing) {
+        // Request mid-generation abort via sd.cpp's SD_CANCEL_ALL. Takes effect
+        // at the next denoiser step boundary (~200ms typical). The worker
+        // observes the shortened result and marks the job cancelled when
+        // generate_image returns.
+        bool ok = model_manager_.cancel_generation(/*SD_CANCEL_ALL*/ 0);
+        std::cout << "[QueueManager] Mid-generation cancel requested: " << job_id
+                  << " (sd_cancel_generation=" << (ok ? "sent" : "no-ctx") << ")"
+                  << std::endl;
+        return ok;
     }
 
     std::cout << "[QueueManager] Job cancelled: " << job_id
-              << " | type=" << generation_type_to_string(it->second.type) << std::endl;
+              << " | type=" << generation_type_to_string(job_type) << std::endl;
     return true;
 }
 
@@ -1100,6 +1129,25 @@ void QueueManager::worker_thread() {
             std::cerr << "[QueueManager] Job error: " << job_id << " | " << e.what() << std::endl;
         }
 
+        // Detect mid-generation cancel: cancel_job on a Processing job flips
+        // status to Cancelled optimistically (the client wants the abort
+        // visible immediately). Read back here so the final-status write
+        // below respects it. Also clear the sticky sd.cpp cancel flag so
+        // it doesn't leak into the next job.
+        bool was_cancelled_mid_generation = false;
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            auto it = jobs_.find(job_id);
+            if (it != jobs_.end() && it->second.status == QueueStatus::Cancelled) {
+                was_cancelled_mid_generation = true;
+            }
+        }
+        if (was_cancelled_mid_generation) {
+            // SD_CANCEL_RESET = 2 - clear any pending cancel state on the ctx
+            // so the next generation starts clean.
+            model_manager_.cancel_generation(/*SD_CANCEL_RESET*/ 2);
+        }
+
         // Calculate duration
         auto job_end_time = utils::get_time_now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(job_end_time - job_start_time).count();
@@ -1122,12 +1170,24 @@ void QueueManager::worker_thread() {
                 it->second.progress = final_progress;
 
                 // Set completed_at FIRST so we can include it in the
-                // broadcast — frontend uses it to switch from the live
+                // broadcast - frontend uses it to switch from the live
                 // elapsed-time counter to the static duration display.
                 it->second.completed_at = job_end_time;
                 const std::string completed_at_iso = utils::time_to_string(job_end_time);
 
-                if (success) {
+                // Mid-generation cancel: cancel_job set status=Cancelled
+                // optimistically. Don't stomp on it with Completed/Failed.
+                // Just record whatever partial outputs came back and log.
+                // Falls through to the Step-5 cleanup + save_state at the
+                // bottom of the worker loop so it doesn't leak progress
+                // tracking or preview buffers.
+                if (was_cancelled_mid_generation) {
+                    if (success) it->second.outputs = outputs;
+                    std::cout << "[QueueManager] Job status: " << job_id
+                              << " | processing -> cancelled (mid-gen)"
+                              << " | duration=" << std::fixed << std::setprecision(1) << duration_sec << "s"
+                              << " | outputs=" << (success ? outputs.size() : 0) << std::endl;
+                } else if (success) {
                     it->second.status = QueueStatus::Completed;
                     it->second.outputs = outputs;
 

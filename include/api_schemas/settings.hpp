@@ -10,7 +10,7 @@ struct PreviewSettingsResponse {
         return schema::SchemaBuilder("PreviewSettingsResponse", "Preview generation settings")
             .required_field("enabled", schema::FieldType::Boolean, "Whether live preview is enabled")
             .required_enum("mode", "Preview decode mode", PREVIEW_MODE_VALUES)
-            .required_field("interval", schema::FieldType::Integer, "Preview interval (every N steps)")
+            .required_field("interval", schema::FieldType::Integer, "Preview interval. Positive N = preview every Nth denoiser step; negative N = preview only the completed logical step -N; 0 = preview only the final completed step of the first pass. Range [-100, 100].")
             .optional_field("max_size", schema::FieldType::Integer, "Maximum preview dimension")
             .optional_field("quality", schema::FieldType::Integer, "JPEG quality (1-100)")
             .build();
@@ -22,7 +22,7 @@ struct UpdatePreviewSettingsRequest {
         return schema::SchemaBuilder("UpdatePreviewSettingsRequest", "Update preview settings")
             .optional_field("enabled", schema::FieldType::Boolean, "Enable/disable live preview")
             .enum_field("mode", "Preview decode mode", PREVIEW_MODE_VALUES)
-            .optional_field("interval", schema::FieldType::Integer, "Preview interval (every N steps)")
+            .optional_field("interval", schema::FieldType::Integer, "Preview interval. Positive N = preview every Nth denoiser step; negative N = preview only the completed logical step -N; 0 = preview only the final completed step of the first pass. Range [-100, 100].")
             .optional_field("max_size", schema::FieldType::Integer, "Maximum preview dimension")
             .optional_field("quality", schema::FieldType::Integer, "JPEG quality (1-100)")
             .build();

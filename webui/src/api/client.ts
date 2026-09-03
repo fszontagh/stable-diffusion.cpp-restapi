@@ -111,6 +111,11 @@ export interface HealthResponse {
     llm_vision: string | null
   }
   load_options?: LoadOptions
+  // Server-authoritative capability flags for the loaded model
+  // (sd_ctx_supports_image_generation / sd_ctx_supports_video_generation).
+  // Both false when no model is loaded or during the loading window.
+  supports_image_generation?: boolean
+  supports_video_generation?: boolean
   upscaler_loaded: boolean
   upscaler_name: string | null
   ws_enabled?: boolean
