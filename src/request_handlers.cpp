@@ -1681,8 +1681,13 @@ void RequestHandlers::submit_generation_jobs(const httplib::Request& req,
                                               httplib::Response& res,
                                               int generation_type_int) {
     try {
-        if (!model_manager_.is_model_loaded()) {
-            send_error(res, "No model loaded", 400);
+        // Allow submission when a load is in flight (or pending kickoff) -
+        // the queue worker parks the job in Waiting and dispatches once
+        // the load completes, or fails the job with the actual load-error
+        // reason. Reject only when nothing is loaded and nothing is
+        // being loaded.
+        if (!model_manager_.is_model_loaded() && !model_manager_.is_loading_or_pending()) {
+            send_error(res, "No model loaded and none is being loaded", 400);
             return;
         }
 
