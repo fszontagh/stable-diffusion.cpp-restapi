@@ -366,6 +366,21 @@ int main(int argc, char* argv[]) {
         httplib::Server& server = *server_ptr;
         g_server = &server;
 
+        // HSTS: after the first successful HTTPS visit the browser upgrades
+        // every subsequent http://<host>:<port>/... to https:// internally
+        // before the network sees it - so a typo like http://<host>:8077
+        // (which would otherwise ERR_EMPTY_RESPONSE because port 8077 speaks
+        // only TLS) is transparently repaired. max-age=63072000 = 2 years,
+        // per the HSTS preload list defaults. No includeSubDomains here -
+        // the server binds one host, and subdomains are the user's problem.
+        // Only sent when SSL is on; over plain HTTP the browser ignores it
+        // by spec anyway, and setting it would just be noise.
+        if (config.server.ssl_enabled) {
+            server.set_default_headers({
+                {"Strict-Transport-Security", "max-age=63072000"}
+            });
+        }
+
         // Set server options.
         // 50 GiB ceiling so multipart model uploads (POST /models/upload) can
         // accept large checkpoints. Image uploads remain orders of magnitude
