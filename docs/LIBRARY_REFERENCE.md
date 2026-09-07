@@ -105,8 +105,9 @@ typedef struct {
     const char* params_backend;           // Global params placement, e.g. "*=cpu"
     const char* model_args;               // Architecture-specific key=value knobs
     bool diffusion_flash_attn;            // Enable flash attention
-    bool stream_layers;                   // Stream diffusion layers when model exceeds VRAM
-    float max_vram;                       // Streaming VRAM budget in GiB
+    bool disable_prefetch;                // Disable async next-segment weight prefetch (default: false)
+    bool disable_segmented_compute;       // Force monolithic graph execution (default: false)
+    const char* max_vram;                 // Optional per-device GiB budget (0 = use live free VRAM)
 } sd_ctx_params_t;
 ```
 

@@ -327,7 +327,8 @@ Check server status, loaded model, and all loaded components.
         "backend": "",
         "params_backend": "",
         "model_args": "",
-        "stream_layers": false,
+        "disable_prefetch": false,
+        "disable_segmented_compute": false,
         "max_vram": 0,
         "tensor_type_rules": ""
     },
@@ -418,7 +419,7 @@ Check server status, loaded model, and all loaded components.
 | `upscaler_loaded` | boolean | Whether an upscaler is currently loaded |
 | `upscaler_name` | string\|null | Name of loaded upscaler model, or null |
 | `ws_enabled` | boolean | Whether the WebSocket endpoint is compiled in and listening (clients connect to `ws://<host>:<port>/ws` on the same port as the REST API) |
-| `load_options` | object | The full set of load options the currently-loaded model was loaded with - the same field set as `LoadOptions` in `/openapi.json` (e.g. `n_threads`, `flash_attn`, `diffusion_flash_attn`, `enable_mmap`, `vae_conv_direct`, `diffusion_conv_direct`, `weight_type`, `vae_format`, `rng_type`, `sampler_rng_type`, `prediction`, `lora_apply_mode`, `tae_preview_only`, `eager_load`, `rpc_servers`, `backend`, `params_backend`, `model_args`, `stream_layers`, `max_vram`, `tensor_type_rules`). Empty object `{}` when no model is loaded. Useful for the WebUI to restore "Edit" form state from the actual server side. |
+| `load_options` | object | The full set of load options the currently-loaded model was loaded with - the same field set as `LoadOptions` in `/openapi.json` (e.g. `n_threads`, `flash_attn`, `diffusion_flash_attn`, `enable_mmap`, `vae_conv_direct`, `diffusion_conv_direct`, `weight_type`, `vae_format`, `rng_type`, `sampler_rng_type`, `prediction`, `lora_apply_mode`, `tae_preview_only`, `eager_load`, `rpc_servers`, `backend`, `params_backend`, `model_args`, `disable_prefetch`, `disable_segmented_compute`, `max_vram`, `tensor_type_rules`). Empty object `{}` when no model is loaded. Useful for the WebUI to restore "Edit" form state from the actual server side. |
 | `memory` | object | System, process, and GPU memory information (see [Memory](#memory)) |
 | `features` | object | Feature flags |
 | `features.experimental_offload` | boolean | Whether experimental VRAM offloading is compiled in |
@@ -759,12 +760,13 @@ Concurrency: only one load can be in flight at a time. A second `POST /models/lo
 | `params_backend` | string | "" | Global params placement, e.g. `"*=cpu"` to hold model weights on CPU RAM |
 | `model_args` | string | "" | Comma-separated architecture-specific `key=value` knobs (Chroma DiT/T5 masking, Qwen-Image conditioning, etc.). See `/openapi.json` for the current set. |
 
-**Layer streaming** (requires `-DSD_EXPERIMENTAL_OFFLOAD=ON` build; check `/health` `features.experimental_offload`). Use these to run models that don't fit in VRAM by streaming diffusion layers one at a time:
+**Streaming execution.** Prefetch-streamed segmented execution is the default in upstream sd.cpp now (`stream_layers` was removed - segmented compute + async prefetch just run). Use `max_vram` to cap the per-device managed-weight budget; the planner picks a residency split from it. The two advanced switches below let you opt out of the default behavior:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `stream_layers` | boolean | false | Enable per-layer streaming of the diffusion model |
-| `max_vram` | number | 0 | Streaming VRAM budget in GiB. Pair with `stream_layers: true`; the streaming planner handles prefetch and eviction internally. |
+| `max_vram` | number | 0 | Optional per-device GiB budget for managed weights and runner buffers. 0 = no explicit budget (sd.cpp uses live free VRAM). Positive N caps managed residency at N GiB. The old "-1 = auto" sentinel is gone; negative values are coerced to 0. |
+| `disable_prefetch` | boolean | false | Disable sd.cpp's asynchronous next-segment weight prefetch (leejet PR #1905). Flip on only if the extra copy-engine traffic hurts throughput on your setup. |
+| `disable_segmented_compute` | boolean | false | Force monolithic graph execution even when the automatic graph cutter would fit better (leejet PR #1942). Bypasses the planner - typically only useful for A/B testing. |
 
 Per-generation VAE tiling (`vae_tiling`, `vae_tile_size_x/y`, `vae_tile_overlap`) and `flow_shift`, `circular_x`, `circular_y` now live on the generation request, not on load. See the txt2img / img2img / txt2vid schemas in `/openapi.json`.
 

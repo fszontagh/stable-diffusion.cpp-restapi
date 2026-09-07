@@ -74,8 +74,8 @@ const rows = ref<Row[]>(parse(props.modelValue ?? ''))
 const rawMode = ref(false)
 const rawValue = ref(props.modelValue ?? '')
 
-// External model-value updates (architecture preset apply, stream_layers
-// watcher auto-filling params_backend, etc.) need to re-parse into rows
+// External model-value updates (architecture preset apply, restored job
+// snapshot, etc.) need to re-parse into rows
 // so the UI reflects the new value. Guard against the value we just
 // emitted ourselves — otherwise typing in raw mode would race.
 watch(

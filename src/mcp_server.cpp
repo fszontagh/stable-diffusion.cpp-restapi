@@ -277,9 +277,10 @@ json McpServer::handle_list_tools() {
         {"qwen_image_zero_cond_t", {{"type", "boolean"}, {"description", "Qwen-Image: zero the conditional T branch (Qwen-Image only)"}}},
         {"backend", {{"type", "string"}, {"description", "Main compute backend. Use \"diffusion=cuda0,vae=cpu\" for per-component CPU placement (replaces keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu)."}}},
         {"params_backend", {{"type", "string"}, {"description", "Parameter storage backend. Set to \"*=cpu\" for the global \"keep all weights in RAM\" mode (replaces offload_to_cpu)."}}},
-        {"max_vram", {{"type", "number"}, {"description", "GiB budget for graph-cut segmented param offload (0 = disabled)"}}},
-        {"stream_layers", {{"type", "boolean"}, {"description", "Engage residency+async-prefetch streaming on top of max_vram (no effect without max_vram > 0)"}}},
-        {"eager_load", {{"type", "boolean"}, {"description", "Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs with stream_layers on a CPU params backend."}}}
+        {"max_vram", {{"type", "number"}, {"description", "Optional per-device GiB budget for managed weights and runner buffers. 0 = no explicit budget (sd.cpp uses live free VRAM). Positive N caps managed residency at N GiB."}}},
+        {"disable_prefetch", {{"type", "boolean"}, {"description", "Disable asynchronous next-segment weight prefetch (leejet PR #1905). Prefetching is on by default. Set true only if the extra copy-engine traffic hurts throughput."}}},
+        {"disable_segmented_compute", {{"type", "boolean"}, {"description", "Force monolithic graph execution even when the automatic graph cutter would fit better (leejet PR #1942). Set true to bypass the planner - typically only useful for A/B testing."}}},
+        {"eager_load", {{"type", "boolean"}, {"description", "Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs with prefetch streaming on a CPU params backend."}}}
 #ifdef SDCPP_EXPERIMENTAL_OFFLOAD
         ,
         // Experimental VRAM offloading (only when built with SD_EXPERIMENTAL_OFFLOAD=ON)

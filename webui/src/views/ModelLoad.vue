@@ -73,8 +73,10 @@ const loadParams = ref<LoadModelParams>({
     tae_preview_only: false,
     force_sdxl_vae_conv_scale: false,
     max_vram: 0,
-    // Residency-aware streaming (unified in leejet master post-1ceb5bd).
-    stream_layers: false,
+    // Prefetch-streamed segmented execution is the default in leejet master;
+    // these two switches opt out.
+    disable_prefetch: false,
+    disable_segmented_compute: false,
     // Eager-load params at model-load time (leejet PR #1687). Default true
     // in the restapi — long-lived server, first generation should be fast.
     eager_load: true,
@@ -361,7 +363,7 @@ onMounted(async () => {
       isAutoDetected.value = true
       // Only apply raw architecture defaults if we did NOT restore prior user
       // options — otherwise the detected arch's loadOptions would clobber
-      // values like stream_layers / params_backend the user already chose.
+      // values like params_backend / disable_prefetch the user already chose.
       if (!restoredFromPriorLoad) {
         applyArchitectureOptions(detected)
       }
@@ -388,16 +390,10 @@ watch(selectedArchitecture, () => {
   }
 })
 
-// Convenience: when the user enables stream_layers, default params_backend
-// to "*=cpu" if it's empty. This mirrors sd-cli's --offload-to-cpu helper,
-// which prepends "*=cpu" to params_backend. We never *clear* params_backend
-// when stream_layers flips off — the user may have set a custom value
-// independently (e.g. "vae=cpu") that we shouldn't stomp.
-watch(() => loadParams.value.options?.stream_layers, (enabled) => {
-  if (enabled && loadParams.value.options && !loadParams.value.options.params_backend) {
-    loadParams.value.options.params_backend = '*=cpu'
-  }
-})
+// Prefetch-streamed segmented execution is on by default upstream now;
+// there's no user-facing "turn streaming on" toggle to hang a params_backend
+// auto-fill off. If the user wants "all weights in RAM, stream on demand"
+// they set params_backend="*=cpu" (or use the Keep All In RAM toggle below).
 
 // Convenience toggle for the most common params_backend pattern. Ticked →
 // the entire string becomes "*=cpu" (global "keep all weights in RAM").
@@ -970,33 +966,45 @@ function onKeepAllInRam(e: Event) {
         </div>
       </details>
 
-      <!-- Layer Streaming. Unified `stream_layers` + `max_vram` API is the
-           only streaming UI now — the legacy multi-mode offload_mode +
-           streaming_* tuning was dropped upstream. Works natively on leejet
-           master and the fork's unified-streaming branch. -->
+      <!-- Streaming execution. Prefetch-streamed segmented compute is the
+           DEFAULT upstream now (stream_layers was removed). These two
+           switches opt out. The legacy multi-mode offload_mode + streaming_*
+           tuning was dropped upstream and has been removed from the UI. -->
       <details class="card section-card accordion">
-        <summary class="accordion-header">Layer Streaming</summary>
+        <summary class="accordion-header">Streaming Execution (advanced)</summary>
         <div class="accordion-content">
+          <p class="form-hint" style="margin-bottom: 0.75rem;">
+            sd.cpp streams weight segments with async prefetch by default -
+            the planner picks a residency split from <code>max_vram</code> and
+            overlaps next-segment H2D copy with current-segment compute. Pair
+            with <code>params_backend='*=cpu'</code> to keep all weights in RAM
+            and stream into VRAM on demand. Only touch these switches if you
+            need to opt out of the default behavior.
+          </p>
           <div class="form-group">
             <label class="form-checkbox">
-              <input v-model="loadParams.options!.stream_layers" type="checkbox" />
-              <span>Stream layers (residency + async prefetch)</span>
+              <input v-model="loadParams.options!.disable_prefetch" type="checkbox" />
+              <span>Disable prefetch (advanced)</span>
             </label>
             <small class="form-hint">
-              Engages sd.cpp's residency-aware streaming planner. The planner decides which
-              transformer segments stay resident vs streamed, and overlaps next-segment H2D copy
-              with current-segment compute. Pairs naturally with
-              <code>params_backend='*=cpu'</code> and <code>max_vram &gt; 0</code>.
-              When you tick this and <code>params_backend</code> is empty, the form auto-fills
-              <code>*=cpu</code> (mirrors sd-cli's <code>--offload-to-cpu</code> shortcut).
+              Disable the asynchronous next-segment weight prefetch (leejet
+              PR #1905). Flip on only if the extra copy-engine traffic hurts
+              throughput on your specific backend.
             </small>
           </div>
-          <div v-if="loadParams.options!.stream_layers && !loadParams.options!.max_vram" class="form-hint" style="color: var(--color-warning, #c80);">
-            ⚠ stream_layers is enabled but max_vram is 0 — set max_vram in the
-            Memory Management group (typically ~80% of free VRAM) for streaming to engage.
+          <div class="form-group">
+            <label class="form-checkbox">
+              <input v-model="loadParams.options!.disable_segmented_compute" type="checkbox" />
+              <span>Disable segmented compute (advanced)</span>
+            </label>
+            <small class="form-hint">
+              Force monolithic graph execution even when the automatic graph
+              cutter would fit better (leejet PR #1942). Bypasses the planner
+              entirely - typically only useful for A/B testing.
+            </small>
           </div>
           <!-- Eager-load (leejet PR #1687). Lives in this group because the
-               whole point is to pre-warm the params backend for streaming runs —
+               whole point is to pre-warm the params backend for streaming runs -
                the first generation skips lazy fault-in. Default on. -->
           <div class="form-group">
             <label class="form-checkbox">
@@ -1007,7 +1015,7 @@ function onKeepAllInRam(e: Event) {
               Pre-loads all weights into the params backend during
               <code>/models/load</code> instead of lazily on first generation
               (sd.cpp PR #1687). The restapi is a long-lived server, so the
-              first request after load should be fast — that's why this is on
+              first request after load should be fast - that's why this is on
               by default. Untick if you'd rather move that load cost to the
               first generation.
             </small>

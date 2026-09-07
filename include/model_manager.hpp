@@ -118,12 +118,15 @@ struct ModelLoadParams {
     // flow_shift / vae_tiling are per-generation now, not load-time — see the
     // request schemas + sd_wrapper for where they're wired into sd_sample_params_t /
     // sd_tiling_params_t respectively.
-    float max_vram = 0.0f;                      // GiB budget for graph-cut segmented param offload (0 = disabled).
-                                                 // Lives on sd_ctx_params_t (not the offload struct) and is
-                                                 // available on both OFFLOAD=ON and OFFLOAD=OFF builds. When
-                                                 // set, sd.cpp partitions the diffusion graph so peak weight
-                                                 // residency stays under this budget — independent of
-                                                 // offload_mode, can be combined with it.
+    float max_vram = 0.0f;                      // Optional per-device GiB budget for managed weights and
+                                                 // runner buffers. 0 means "no explicit budget - use live
+                                                 // free VRAM", matching upstream sd_ctx_params_t.max_vram
+                                                 // after the leejet rework of the field's semantics.
+                                                 // Positive N caps managed residency at N GiB. Available on
+                                                 // both OFFLOAD=ON and OFFLOAD=OFF builds; can be combined
+                                                 // with legacy offload_mode on the fork build. Negative
+                                                 // values (the old "-1 = auto" sentinel) are no longer
+                                                 // meaningful upstream - the restapi coerces them to 0.
     std::string weight_type;                    // Weight type (f32, f16, q8_0, q4_0, etc.)
     std::string tensor_type_rules;              // Per-tensor weight rules (e.g., "^vae\.=f16")
 
@@ -144,19 +147,26 @@ struct ModelLoadParams {
     int streaming_keep_layers_behind = 0;       // Layers to keep after execution (for skip connections)
     size_t streaming_min_free_vram_mb = 0;      // Minimum VRAM to keep free during streaming (MB)
 #else
-    // ── feature/unified-streaming field (new minimal API) ──────────────────
-    // Single bool that engages sd.cpp's residency-aware streaming planner on
-    // top of max_vram. Has no effect when max_vram == 0 — the planner uses
-    // the max_vram budget to decide which layers stay resident vs streamed,
-    // with async H2D prefetch overlapping next-segment load against current
-    // segment compute.
-    bool stream_layers = false;
+    // ── feature/unified-streaming path (new minimal API) ───────────────────
+    // Prefetch-streamed execution is now the DEFAULT upstream (stream_layers
+    // was removed). The planner picks a residency split based on max_vram
+    // and overlaps next-segment H2D copy with current-segment compute; use
+    // the two switches below to opt out.
+    //
+    // disable_prefetch: turn off the async next-segment weight prefetch.
+    // Set true only if the extra copy-engine traffic hurts throughput on
+    // your particular backend.
+    bool disable_prefetch = false;
+    // disable_segmented_compute: force monolithic graph execution even when
+    // the automatic graph cutter would fit memory better. Bypasses the
+    // planner - useful only for A/B testing.
+    bool disable_segmented_compute = false;
 #endif
 
     // Eager-load params into the params backend at model-load time instead of
-    // lazily on first use (leejet PR #1687). Pairs naturally with stream_layers
-    // on a CPU params backend — the first generation no longer pays for
-    // lazy fault-in. No effect when the params backend matches the compute
+    // lazily on first use (leejet PR #1687). Pairs naturally with prefetch
+    // streaming on a CPU params backend - the first generation no longer pays
+    // for lazy fault-in. No effect when the params backend matches the compute
     // backend (then load is always eager anyway).
     //
     // Default is `true` in the restapi — upstream sd_ctx_params_t.eager_load

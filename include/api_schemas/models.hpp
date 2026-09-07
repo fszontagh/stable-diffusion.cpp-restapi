@@ -44,7 +44,7 @@ struct LoadOptions {
             .optional_field("diffusion_flash_attn", schema::FieldType::Boolean, "Enable flash attention specifically for the diffusion model (UNet/DiT/Flux)", false)
             .optional_field("enable_mmap", schema::FieldType::Boolean, "Enable memory-mapped file access", true)
             .optional_field("tae_preview_only", schema::FieldType::Boolean, "Use TAESD for preview only", false)
-            .optional_field("max_vram", schema::FieldType::Number, "GiB budget for graph-cut segmented param offload (0 = disabled)", 0)
+            .optional_field("max_vram", schema::FieldType::Number, "Optional per-device GiB budget for managed weights and runner buffers. 0 = no explicit budget (sd.cpp uses live free VRAM). Positive N caps managed residency at N GiB. The old '-1 = auto' sentinel is gone upstream; negative values are coerced to 0.", 0)
             .enum_field("weight_type", "Weight precision type", WEIGHT_TYPE_VALUES)
             .optional_field("tensor_type_rules", schema::FieldType::String, "Custom tensor type rules string")
             .enum_field("rng_type", "Random number generator type", RNG_TYPE_VALUES, "cuda")
@@ -80,10 +80,13 @@ struct LoadOptions {
             .optional_field("streaming_keep_layers_behind", schema::FieldType::Integer, "Layers to keep after execution", 0)
             .optional_field("streaming_min_free_vram_mb", schema::FieldType::Integer, "Min free VRAM during streaming (MB)", 0)
 #else
-            // ── feature/unified-streaming field (new minimal API) ──────────
-            .optional_field("stream_layers", schema::FieldType::Boolean, "Engage residency+async-prefetch streaming on top of max_vram. Requires max_vram > 0; no effect when max_vram == 0. sd.cpp's planner picks the residency split automatically and overlaps next-segment H2D with current-segment compute.", false)
+            // ── feature/unified-streaming fields (new minimal API) ─────────
+            // Prefetch-streamed segmented execution is on by default upstream;
+            // these two switches opt out.
+            .optional_field("disable_prefetch", schema::FieldType::Boolean, "Disable asynchronous next-segment weight prefetch. Prefetching is on by default (leejet PR #1905 made it native). Set true if the extra copy-engine traffic hurts throughput on your setup.", false)
+            .optional_field("disable_segmented_compute", schema::FieldType::Boolean, "Force monolithic graph execution even when the automatic graph cutter would fit better (leejet PR #1942). Set true to bypass the planner - typically only useful for A/B testing.", false)
 #endif
-            .optional_field("eager_load", schema::FieldType::Boolean, "Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs naturally with stream_layers on a CPU params backend - the first generation no longer pays for lazy fault-in. Restapi defaults to true (long-lived server: first request after load should be fast); upstream sd-cli defaults to false (one-shot tool).", true)
+            .optional_field("eager_load", schema::FieldType::Boolean, "Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs naturally with prefetch streaming on a CPU params backend - the first generation no longer pays for lazy fault-in. Restapi defaults to true (long-lived server: first request after load should be fast); upstream sd-cli defaults to false (one-shot tool).", true)
             ;
         return builder.build();
     }

@@ -142,17 +142,24 @@
     },
     "max_vram": {
       "label": "Max VRAM (GiB)",
-      "description": "GiB budget for graph-cut segmented param offload (PR #1476). When set, sd.cpp partitions the diffusion graph so peak weight residency stays under this budget. Lives on `sd_ctx_params_t` and is independent of `offload_mode` — they can be combined. 0 = disabled.",
+      "description": "Optional per-device GiB budget for managed weights and runner buffers on `sd_ctx_params_t`. 0 = no explicit budget (sd.cpp uses live free VRAM). Positive N caps managed residency at N GiB. The old `-1 = auto` sentinel is gone upstream. Independent of `offload_mode`; the two can be combined on the fork build.",
       "type": "number",
       "default": 0.0,
-      "recommended": "0 (disabled) by default. Set to slightly less than your total VRAM (e.g. 10 on a 12 GiB card) when the model still OOMs at the smallest sample step. Combines well with `offload_mode = layer_streaming`."
+      "recommended": "0 by default. Set to slightly less than your total VRAM (e.g. 10 on a 12 GiB card) when the model still OOMs. Combines well with `offload_mode = layer_streaming` on the fork build."
     },
-    "stream_layers": {
-      "label": "Stream Layers (unified-streaming)",
-      "description": "Engage sd.cpp's residency+async-prefetch streaming on top of the `max_vram` budget. The planner picks the resident/streamed split automatically and overlaps next-segment H2D with current-segment compute, so per-step overhead is much lower than the legacy per-layer streaming. Only exposed when restapi is built with `-DSD_UNIFIED_STREAMING=ON` against the fork's `feature/unified-streaming` branch. Has no effect when `max_vram == 0`.",
+    "disable_prefetch": {
+      "label": "Disable prefetch (advanced)",
+      "description": "Disable sd.cpp's asynchronous next-segment weight prefetch. Prefetching is on by default upstream (leejet PR #1905 made it native), overlapping next-segment H2D copy with current-segment compute. Set true if the extra copy-engine traffic hurts throughput on your setup.",
       "type": "boolean",
       "default": false,
-      "recommended": "On with `max_vram` set to ~80% of your free VRAM. Replaces the legacy `offload_mode=layer_streaming` workflow — don't combine the two (they target different fork branches)."
+      "recommended": "Leave off. Only flip on if you can measure that the prefetch traffic is slowing you down on your specific backend."
+    },
+    "disable_segmented_compute": {
+      "label": "Disable segmented compute (advanced)",
+      "description": "Force monolithic graph execution even when sd.cpp's automatic graph cutter would fit memory better (leejet PR #1942). Bypasses the planner entirely - typically only useful for A/B testing or when the planner picks a bad split on a novel architecture.",
+      "type": "boolean",
+      "default": false,
+      "recommended": "Leave off. Flip on only when you're deliberately comparing planner vs monolithic execution."
     },
     "vae_format": {
       "label": "VAE Format Override",
@@ -179,7 +186,7 @@
       "type": "text",
       "default": "",
       "description": "Where param tensors live (replaces offload_to_cpu). '*=cpu' keeps all weights in host RAM and streams into VRAM on demand.",
-      "recommended": "Empty by default. '*=cpu' with stream_layers=true + max_vram > 0 for very large models on limited VRAM."
+      "recommended": "Empty by default. '*=cpu' + max_vram set for very large models on limited VRAM - prefetch-streamed segmented execution then kicks in automatically."
     },
     "model_args": {
       "label": "Model args",

@@ -933,8 +933,8 @@ function cancelReloadSelector() {
 //
 // 1. **Pre-#11a4228 snapshots** were captured before loaded_options_ echoed
 //    `backend` / `params_backend` / `rpc_servers`. Reloading on Z-Image bf16
-//    (or anything that ran with CPU-side params) hits OOM because
-//    stream_layers=true but params_backend is missing.
+//    (or anything that ran with CPU-side params) hits OOM because the
+//    stream_layers/params_backend pairing is missing.
 //
 // 2. **Pre-alignment snapshots** carry legacy fields the strict backend
 //    allowlist now rejects (`keep_clip_on_cpu`, `offload_to_cpu`,
@@ -942,9 +942,9 @@ function cancelReloadSelector() {
 //    them as-is would 400.
 //
 // Translates legacy bool flags to the new backend-spec strings (mirroring
-// sd-cli's prepare_backend_assignments), applies the stream_layers →
-// params_backend="*=cpu" auto-fill rule from ModelLoad.vue, and strips dead
-// keys before handing the result to /models/load.
+// sd-cli's prepare_backend_assignments), promotes any snapshot's
+// stream_layers=true into params_backend="*=cpu" (the modern equivalent),
+// and strips dead keys before handing the result to /models/load.
 function normalizeLegacyLoadOptions(input: unknown): LoadModelParams['options'] {
   if (!input || typeof input !== 'object') return {}
   const opts: Record<string, unknown> = { ...(input as Record<string, unknown>) }
@@ -963,8 +963,9 @@ function normalizeLegacyLoadOptions(input: unknown): LoadModelParams['options'] 
   if (opts.keep_controlnet_on_cpu === true && !backendParts.some((p) => /\bcontrolnet=cpu\b/.test(p))) backendParts.push('controlnet=cpu')
   if (backendParts.length > 0) opts.backend = backendParts.join(',')
 
-  // stream_layers=true without params_backend → fill with "*=cpu" (matches
-  // the in-form auto-watcher in ModelLoad.vue).
+  // stream_layers is removed upstream (prefetch-streamed segmented execution
+  // is on by default now). Old snapshots with stream_layers=true had the
+  // implicit "*=cpu" pairing; preserve that migration for restore.
   if (opts.stream_layers === true && !opts.params_backend) {
     opts.params_backend = '*=cpu'
   }
@@ -979,6 +980,9 @@ function normalizeLegacyLoadOptions(input: unknown): LoadModelParams['options'] 
     'reload_cond_stage', 'reload_diffusion',
     'log_offload_events', 'min_offload_size_mb', 'target_free_vram_mb',
     'streaming_prefetch_layers', 'streaming_keep_layers_behind', 'streaming_min_free_vram_mb',
+    // stream_layers was removed upstream in the prefetch/segmented-compute
+    // rework - prefetch-streamed execution is the default now.
+    'stream_layers',
   ]
   for (const k of dead) delete opts[k]
 

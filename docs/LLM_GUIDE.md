@@ -217,8 +217,9 @@ Submitted to `POST /models/load`. Key fields (full list in `include/model_manage
 | `backend` | Per-component placement string, e.g. `"te=cpu,vae=cpu,controlnet=cpu"` | empty |
 | `params_backend` | Global param placement, e.g. `"*=cpu"` to hold weights on CPU RAM | empty |
 | `model_args` | Comma-separated architecture-specific `key=value` knobs (Chroma DiT/T5 masking, Qwen-Image conditioning, etc.) | empty |
-| `stream_layers` | Stream diffusion layers when model exceeds VRAM | `false` |
-| `max_vram` | Streaming VRAM budget (GiB); pair with `stream_layers: true` | 0 |
+| `max_vram` | Per-device managed-weight budget (GiB). 0 = no explicit budget, use live free VRAM. Positive N = cap at N GiB. | 0 |
+| `disable_prefetch` | Disable async next-segment weight prefetch. Prefetching is on by default upstream (leejet PR #1905). | `false` |
+| `disable_segmented_compute` | Force monolithic graph execution and bypass the automatic graph cutter (leejet PR #1942). | `false` |
 
 For the authoritative list, see `LoadOptions` in `GET /openapi.json`.
 
@@ -293,15 +294,17 @@ There are two independent controls:
 - `backend` string, e.g. `"te=cpu"` to keep the text encoder on CPU, `"te=cpu,vae=cpu,controlnet=cpu"` to hold multiple components on CPU RAM.
 - `params_backend: "*=cpu"` to hold all model params on CPU RAM.
 
-**Layer streaming** (for models larger than VRAM, requires `cmake -DSD_EXPERIMENTAL_OFFLOAD=ON`; check `/health` -> `features.experimental_offload`):
-- `stream_layers: true` enables per-layer streaming of the diffusion model.
-- `max_vram: <GiB>` sets the streaming VRAM budget. Together with `eager_load`, this lets sd.cpp plan prefetch and eviction internally.
+**Streaming execution** (works everywhere - prefetch-streamed segmented compute is on by default upstream):
+- `max_vram: <GiB>` caps the per-device managed-weight budget. sd.cpp's planner then picks a residency split; the rest streams in from the params backend with async prefetch overlapping compute.
+- `params_backend: "*=cpu"` keeps all weights in host RAM and streams into VRAM on demand.
+- `eager_load: true` (restapi default) pre-warms the params backend so the first generation doesn't pay for lazy fault-in.
+- Advanced opt-outs: `disable_prefetch: true` (skip async next-segment prefetch, PR #1905) and `disable_segmented_compute: true` (force monolithic graph, PR #1942). Neither is normally needed.
 
 When to recommend which:
 - Plenty of VRAM: no options needed.
 - Moderate pressure: `backend: "te=cpu"` (keep the LLM/CLIP off the GPU).
 - Tight pressure: also `backend: "vae=cpu"` and consider per-generation `vae_tiling: true`.
-- Model larger than VRAM: `stream_layers: true` with `max_vram` set to your GPU's usable budget.
+- Model larger than VRAM: `params_backend: "*=cpu"` with `max_vram` set to your GPU's usable budget - streaming just runs.
 
 ### Cache acceleration
 
@@ -370,7 +373,7 @@ Previews are broadcast over WebSocket as `job_preview` events and are also avail
 |---|---|---|
 | "Generate an image of X" | txt2img via REST or MCP | Check a model is loaded (`/health`). If not, ask which architecture they want and load it. Then POST `/txt2img` with their prompt; poll `/queue/{job_id}` or watch WebSocket. |
 | "The output is just noise/garbage" | Wrong sampler/scheduler for the architecture, or `cfg_scale` way off | Quote the preset's `generationDefaults` for the loaded architecture; reset those specific fields. |
-| "I'm running out of VRAM" | Move components to CPU or stream layers | Start with `backend: "te=cpu"` to push the text encoder off the GPU; add `,vae=cpu` and per-generation `vae_tiling: true` for tighter budgets. If the model itself exceeds VRAM, check `features.experimental_offload` and use `stream_layers: true` with `max_vram: <GiB>`. Suggesting a Q8/Q4 quantized model is also fair game. |
+| "I'm running out of VRAM" | Move components to CPU or stream weights | Start with `backend: "te=cpu"` to push the text encoder off the GPU; add `,vae=cpu` and per-generation `vae_tiling: true` for tighter budgets. If the model itself exceeds VRAM, use `params_backend: "*=cpu"` with `max_vram: <GiB>` - prefetch-streamed segmented execution is on by default upstream, so the planner just runs. Suggesting a Q8/Q4 quantized model is also fair game. |
 | "I want it faster" | Step count + sampler + cache | Suggest a distilled/turbo variant (LCM, Flux Schnell, SDXS, Z-Image Turbo) with their preset's low step count. Optionally enable `cache_mode: "spectrum"`. |
 | "My LoRA isn't applying" | LoRA syntax | Confirm the prompt contains `<lora:name:weight>`. The file must be in `paths.lora`. |
 | "How do I use ControlNet?" | Load ControlNet component + pass `control_image_base64` | Load model with `controlnet: "..."`. Include `control_image_base64` and optionally `control_strength` in the generation request. |

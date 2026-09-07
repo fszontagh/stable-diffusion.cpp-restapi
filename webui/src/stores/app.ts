@@ -256,7 +256,8 @@ export const useAppStore = defineStore('app', () => {
   // Feature flags
   const experimentalOffloadEnabled = computed(() => health.value?.features?.experimental_offload ?? false)
   // True when the experimental build uses the fork's `feature/unified-streaming`
-  // branch (single `stream_layers` toggle on top of `max_vram`). False = legacy
+  // branch (prefetch-streamed segmented execution is on by default; opt-outs
+  // are `disable_prefetch` / `disable_segmented_compute`). False = legacy
   // `feature/vram-offloading-v2` (multi-mode offload_mode + streaming_* tuning).
   // Only meaningful when experimentalOffloadEnabled is true.
   const unifiedStreamingEnabled = computed(() => health.value?.features?.unified_streaming ?? false)

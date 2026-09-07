@@ -67,7 +67,8 @@ static lora_apply_mode_t string_to_lora_apply_mode(const std::string& str) {
 // The legacy offload helpers (string_to_offload_mode, string_to_vram_estimation)
 // only exist on the feature/vram-offloading-v2 fork branch. The unified-streaming
 // branch dropped the sd_offload_mode_t / sd_vram_estimation_t enums entirely
-// in favor of a single bool stream_layers + max_vram budget. Gate both helpers
+// in favor of default-on prefetch-streamed segmented execution with
+// disable_prefetch / disable_segmented_compute opt-outs. Gate both helpers
 // with the negation of SDCPP_UNIFIED_STREAMING to skip them on the new variant.
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
 static sd_offload_mode_t string_to_offload_mode(const std::string& str) {
@@ -353,8 +354,9 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
             "log_offload_events", "min_offload_size_mb", "target_free_vram_mb",
             "streaming_prefetch_layers",
             "streaming_keep_layers_behind", "streaming_min_free_vram_mb",
-            // feature/unified-streaming fields:
-            "stream_layers",
+            // feature/unified-streaming fields (post-rename): prefetch
+            // streaming is on by default; opt out via these two switches.
+            "disable_prefetch", "disable_segmented_compute",
             // leejet PR #1687 — eager-load params at model-load time
             "eager_load",
         };
@@ -366,8 +368,13 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.vae_conv_direct = opts.value("vae_conv_direct", false);
         params.diffusion_conv_direct = opts.value("diffusion_conv_direct", false);
         params.tae_preview_only = opts.value("tae_preview_only", false);
-        // 0.0 = disabled (sd.cpp default).
+        // 0 = no explicit budget (sd.cpp uses live free VRAM). Negative
+        // values used to mean "-1 = auto" upstream; that sentinel is gone,
+        // so coerce anything negative back to 0 to match the new contract.
         params.max_vram = opts.value("max_vram", 0.0f);
+        if (params.max_vram < 0.0f) {
+            params.max_vram = 0.0f;
+        }
         params.weight_type = opts.value("weight_type", "");
         validate_enum_load("weight_type", params.weight_type, api::WEIGHT_TYPE_VALUES);
         params.tensor_type_rules = opts.value("tensor_type_rules", "");
@@ -446,11 +453,11 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.streaming_min_free_vram_mb = opts.value("streaming_min_free_vram_mb", 0);
 #else
         // ── feature/unified-streaming path ───────────────────────────────
-        // The new fork branch removed sd_offload_config_t entirely. Streaming
-        // is engaged via a single stream_layers bool on top of the existing
-        // max_vram budget — sd.cpp's planner picks the residency split, runs
-        // async H2D prefetch for the next segment while computing the current.
-        params.stream_layers = opts.value("stream_layers", false);
+        // sd_offload_config_t is gone. Prefetch-streamed segmented execution
+        // is the default now; these two switches opt out.
+        params.disable_prefetch = opts.value("disable_prefetch", false);
+        params.disable_segmented_compute =
+            opts.value("disable_segmented_compute", false);
 #endif
         // Default true — see ModelLoadParams.eager_load comment for why
         // the restapi flips the upstream default.
@@ -1383,15 +1390,17 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     // "host:port" pairs in sd.cpp's own format. Empty → nullptr → local.
     ctx_params.rpc_servers = params.rpc_servers.empty() ? nullptr : params.rpc_servers.c_str();
 
-    // max_vram became a string in leejet PR #1660 (bb90bfa) so it can carry
-    // backend-specific budgets like "cuda:8,cpu:0" alongside the legacy float
-    // semantics. Restapi keeps the input contract as float (preserves
-    // ModelLoadParams.max_vram and the WebUI numeric input) and formats it
-    // here. The local string must outlive new_sd_ctx() — keep it function-
-    // scoped, not block-scoped. Special values: 0.0 → nullptr (disabled,
-    // matches the previous behavior); negative → "-N" auto-detect sentinel.
+    // max_vram is a string on sd_ctx_params_t so it can carry per-device
+    // budgets like "cuda:8,cpu:0". Restapi keeps the input contract as a
+    // float (preserves ModelLoadParams.max_vram and the WebUI numeric input)
+    // and formats it here. The local string must outlive new_sd_ctx() -
+    // keep it function-scoped, not block-scoped. Semantics after the leejet
+    // rename: 0.0 -> nullptr, meaning "no explicit budget, use live free
+    // VRAM". Positive N -> "N" GiB cap on managed weights + runner buffers.
+    // Negative values (the old "-1 = auto" sentinel) are no longer valid;
+    // ModelLoadParams::from_json coerces them to 0 before we get here.
     std::string max_vram_str;
-    if (params.max_vram != 0.0f) {
+    if (params.max_vram > 0.0f) {
         std::ostringstream oss;
         oss << params.max_vram;
         max_vram_str = oss.str();
@@ -1419,10 +1428,10 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.offload_config.streaming_min_free_vram = params.streaming_min_free_vram_mb * 1024 * 1024;  // Convert MB to bytes
 #else
     // ── feature/unified-streaming path ───────────────────────────────────
-    // Single bool toggles the new residency+async-prefetch path. Requires
-    // max_vram > 0 to do anything — sd.cpp logs a notice and silently no-ops
-    // if max_vram is 0.
-    ctx_params.stream_layers = params.stream_layers;
+    // Prefetch-streamed segmented execution is the DEFAULT upstream now.
+    // These two switches opt out of it.
+    ctx_params.disable_prefetch = params.disable_prefetch;
+    ctx_params.disable_segmented_compute = params.disable_segmented_compute;
 #endif
     ctx_params.eager_load = params.eager_load;
 
@@ -1438,7 +1447,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
               << ", offload_mode=" << params.offload_mode
 #else
-              << ", stream_layers=" << (params.stream_layers ? "true" : "false")
+              << ", disable_prefetch=" << (params.disable_prefetch ? "true" : "false")
+              << ", disable_segmented_compute=" << (params.disable_segmented_compute ? "true" : "false")
 #endif
               << std::endl;
 
@@ -1493,8 +1503,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
             // No captured logs → most likely a silent OOM during ggml_init /
             // tensor allocation. The hint about quantized models / offloading
             // is the actionable advice for that case.
-            reason = "insufficient memory — try a quantized model, lower max_vram, "
-                     "or enable params_backend=*=cpu + stream_layers for offloading";
+            reason = "insufficient memory - try a quantized model, set max_vram, "
+                     "or enable params_backend=*=cpu so weights stream from RAM";
         } else {
             // Classify the captured errors into a one-line top-level reason,
             // then append the raw log lines so the WebUI / queue surface
@@ -1510,8 +1520,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
                          "architecture not supported by this build)";
             } else if (contains("out of memory") || contains("OOM") ||
                        contains("CUDA error") || contains("ggml_cuda_compute_forward")) {
-                reason = "insufficient memory — try a quantized model, lower max_vram, "
-                         "or enable params_backend=*=cpu + stream_layers for offloading";
+                reason = "insufficient memory - try a quantized model, set max_vram, "
+                         "or enable params_backend=*=cpu so weights stream from RAM";
             } else if (contains("unknown") && contains("architecture")) {
                 reason = "model architecture not recognized by this build";
             } else if (contains("no such file") || contains("does not exist") ||
@@ -1582,9 +1592,9 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["vae_conv_direct"] = params.vae_conv_direct;
     loaded_options_["diffusion_conv_direct"] = params.diffusion_conv_direct;
     loaded_options_["tae_preview_only"] = params.tae_preview_only;
-    // Always emit max_vram so 0 (= disabled) round-trips correctly to
-    // the WebUI Edit form — otherwise a user who enabled it then unset
-    // it back to 0 wouldn't see the flag clear in the restored state.
+    // Always emit max_vram so 0 (= no explicit budget) round-trips correctly
+    // to the WebUI Edit form - otherwise a user who set a cap then unset it
+    // back to 0 wouldn't see the cap clear in the restored state.
     loaded_options_["max_vram"] = params.max_vram;
     if (!params.weight_type.empty()) {
         loaded_options_["weight_type"] = params.weight_type;
@@ -1633,8 +1643,9 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["streaming_keep_layers_behind"] = params.streaming_keep_layers_behind;
     loaded_options_["streaming_min_free_vram_mb"] = params.streaming_min_free_vram_mb;
 #else
-    // ── feature/unified-streaming echoes back the single new field ──────────
-    loaded_options_["stream_layers"] = params.stream_layers;
+    // ── feature/unified-streaming echoes back the two opt-out switches ──────
+    loaded_options_["disable_prefetch"] = params.disable_prefetch;
+    loaded_options_["disable_segmented_compute"] = params.disable_segmented_compute;
 #endif
     loaded_options_["eager_load"] = params.eager_load;
 

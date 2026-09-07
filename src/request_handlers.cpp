@@ -1101,10 +1101,11 @@ void RequestHandlers::handle_health(const httplib::Request& req, httplib::Respon
             {"experimental_offload", false},
 #endif
             // Distinguishes which fork branch backs the experimental_offload
-            // build. true → fork's feature/unified-streaming (single
-            // stream_layers + max_vram); false → fork's feature/vram-offloading-v2
-            // (legacy offload_mode + offload_config). Only meaningful when
-            // experimental_offload is true.
+            // build. true -> fork's feature/unified-streaming (prefetch-
+            // streamed segmented execution by default; opt-outs are
+            // disable_prefetch / disable_segmented_compute); false -> fork's
+            // feature/vram-offloading-v2 (legacy offload_mode + offload_config).
+            // Only meaningful when experimental_offload is true.
 #ifdef SDCPP_UNIFIED_STREAMING
             {"unified_streaming", true},
 #else

@@ -67,7 +67,8 @@ function formatOptionLabel(key: string): string {
     params_backend: 'Params Backend',
     rpc_servers: 'RPC Servers',
     qwen_image_zero_cond_t: 'Qwen-Image Zero Cond t',
-    stream_layers: 'Stream Layers',
+    disable_prefetch: 'Disable Prefetch',
+    disable_segmented_compute: 'Disable Segmented Compute',
     ip_adapter: 'IP-Adapter',
     ip_adapter_strength: 'IP-Adapter Strength'
   }
@@ -83,7 +84,7 @@ function formatOptionValue(value: unknown): string {
 
 // Important settings to show prominently
 const importantSettings = [
-  'weight_type', 'flash_attn', 'max_vram', 'stream_layers',
+  'weight_type', 'flash_attn', 'max_vram',
   'backend', 'params_backend', 'lora_apply_mode'
 ]
 </script>

@@ -1094,6 +1094,16 @@ void QueueManager::worker_thread() {
             it->second.started_at = utils::get_time_now();
             job_start_time = it->second.started_at;
 
+            // Re-snapshot model_settings now that the model is actually
+            // loaded. Jobs enqueued during a load capture an empty snapshot
+            // at add_job time; without this refresh the queue item would
+            // record no model info at all, so the WebUI Reload button
+            // could not restore the model that ran the job.
+            if (it->second.model_settings.empty() ||
+                !it->second.model_settings.contains("model_name")) {
+                it->second.model_settings = model_manager_.get_loaded_models_info();
+            }
+
             if (auto* ws = get_websocket_server()) {
                 ws->broadcast(WSEventType::JobStatusChanged, {
                     {"job_id", job_id},

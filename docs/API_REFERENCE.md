@@ -1463,11 +1463,13 @@ Model loading options
 | `backend` | string |  |  | Main compute backend override (empty = sd.cpp picks). Use per-component placement here too - e.g. "diffusion=cuda0,vae=cpu" - that's how per-component CPU keeping is expressed now (formerly keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu). |
 | `diffusion_conv_direct` | boolean |  | false | Direct diffusion convolution |
 | `diffusion_flash_attn` | boolean |  | false | Enable flash attention specifically for the diffusion model (UNet/DiT/Flux) |
-| `eager_load` | boolean |  | true | Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs naturally with stream_layers on a CPU params backend - the first generation no longer pays for lazy fault-in. Restapi defaults to true (long-lived server: first request after load should be fast); upstream sd-cli defaults to false (one-shot tool). |
+| `disable_prefetch` | boolean |  | false | Disable asynchronous next-segment weight prefetch. Prefetching is on by default (leejet PR #1905 made it native). Set true if the extra copy-engine traffic hurts throughput on your setup. |
+| `disable_segmented_compute` | boolean |  | false | Force monolithic graph execution even when the automatic graph cutter would fit better (leejet PR #1942). Set true to bypass the planner - typically only useful for A/B testing. |
+| `eager_load` | boolean |  | true | Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs naturally with prefetch streaming on a CPU params backend - the first generation no longer pays for lazy fault-in. Restapi defaults to true (long-lived server: first request after load should be fast); upstream sd-cli defaults to false (one-shot tool). |
 | `enable_mmap` | boolean |  | true | Enable memory-mapped file access |
 | `flash_attn` | boolean |  | true | Enable flash attention for CLIP/T5/conditioner |
 | `lora_apply_mode` | enum (`auto`, `immediately`, `at_runtime`) |  | auto | LoRA application mode |
-| `max_vram` | number |  | 0 | GiB budget for graph-cut segmented param offload (0 = disabled) |
+| `max_vram` | number |  | 0 | Optional per-device GiB budget for managed weights and runner buffers. 0 = no explicit budget (sd.cpp uses live free VRAM). Positive N caps managed residency at N GiB. The old '-1 = auto' sentinel is gone upstream; negative values are coerced to 0. |
 | `model_args` | string |  |  | Model-specific args (key=value list) - replaces the old chroma_*/qwen_image_zero_cond_t individual load flags. |
 | `n_threads` | integer |  | -1 | Number of CPU threads (-1 for auto) |
 | `params_backend` | string |  |  | Parameter storage backend override (empty = same as backend). Set to "*=cpu" for the global "keep all weights in RAM" mode that was previously offload_to_cpu. |
@@ -1475,7 +1477,6 @@ Model loading options
 | `rng_type` | enum (`cuda`, `std_default`, `cpu`) |  | cuda | Random number generator type |
 | `rpc_servers` | string |  |  | RPC distributed-backend node list, comma-separated host:port pairs (leejet PR #1629). Empty = no RPC. |
 | `sampler_rng_type` | string |  |  | Sampler-specific RNG type |
-| `stream_layers` | boolean |  | false | Engage residency+async-prefetch streaming on top of max_vram. Requires max_vram > 0; no effect when max_vram == 0. sd.cpp's planner picks the residency split automatically and overlaps next-segment H2D with current-segment compute. |
 | `tae_preview_only` | boolean |  | false | Use TAESD for preview only |
 | `tensor_type_rules` | string |  |  | Custom tensor type rules string |
 | `vae_conv_direct` | boolean |  | false | Direct VAE convolution |

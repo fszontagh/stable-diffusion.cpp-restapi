@@ -23,7 +23,11 @@ export interface LoadOptions {
   diffusion_conv_direct?: boolean
   tae_preview_only?: boolean
   force_sdxl_vae_conv_scale?: boolean
-  /** GiB budget for graph-cut segmented param offload. 0 = disabled. */
+  /**
+   * Optional per-device GiB budget for managed weights and runner buffers.
+   * 0 = no explicit budget (sd.cpp uses live free VRAM). Positive N caps
+   * managed residency at N GiB. The old "-1 = auto" sentinel is gone.
+   */
   max_vram?: number
   weight_type?: string
   tensor_type_rules?: string
@@ -51,9 +55,10 @@ export interface LoadOptions {
   rpc_servers?: string
   // qwen_image_zero_cond_t consolidated into `model_args` in leejet PR #1757.
 
-  // Residency-aware streaming planner (leejet master + unified-streaming fork).
-  // Pairs naturally with params_backend='*=cpu' and max_vram > 0.
-  stream_layers?: boolean
+  // Prefetch-streamed segmented execution is the DEFAULT upstream now
+  // (stream_layers was removed). These two switches opt out.
+  disable_prefetch?: boolean
+  disable_segmented_compute?: boolean
   // Pre-load all params into the params backend at model-load time instead of
   // lazily on first use (leejet PR #1687). Restapi defaults to true.
   eager_load?: boolean
@@ -125,10 +130,10 @@ export interface HealthResponse {
     /**
      * True when the binary was built with -DSD_UNIFIED_STREAMING=ON against
      * the fork's `feature/unified-streaming` branch. Only meaningful when
-     * `experimental_offload` is also true. The canonical streaming UI is
-     * the `stream_layers` boolean either way — the legacy multi-mode
-     * vocabulary (offload_mode, streaming_*) no longer exists upstream and
-     * has been dropped from the WebUI.
+     * `experimental_offload` is also true. Streaming is the default runtime
+     * behavior now (no toggle) - the legacy multi-mode vocabulary
+     * (offload_mode, streaming_*) no longer exists upstream and has been
+     * dropped from the WebUI.
      */
     unified_streaming?: boolean
     mcp?: boolean

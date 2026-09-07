@@ -172,8 +172,8 @@ Manage the currently loaded diffusion model.
 - `params_backend` (string): global param placement, e.g. `"*=cpu"` to hold model params on CPU RAM.
 - `model_args` (string): comma-separated architecture-specific `key=value` knobs (Chroma DiT/T5 masking, Qwen-Image conditioning, etc.); see `/openapi.json` for the current set.
 
-*Streaming (for models larger than VRAM):*
-`stream_layers` (bool), `max_vram` (GiB budget). Set `stream_layers: true` together with `max_vram` to enable per-layer streaming; the streaming planner handles prefetch and eviction internally.
+*Streaming (default runtime behavior in upstream sd.cpp):*
+`max_vram` (GiB budget on managed weights + runner buffers; 0 = use live free VRAM). Prefetch-streamed segmented execution is on by default; the planner picks a residency split from `max_vram`. Advanced opt-outs: `disable_prefetch` (skip async next-segment prefetch, leejet PR #1905) and `disable_segmented_compute` (force monolithic graph, leejet PR #1942).
 
 The authoritative list of load fields is `LoadOptions` in `GET /openapi.json`.
 
@@ -193,8 +193,8 @@ The authoritative list of load fields is `LoadOptions` in `GET /openapi.json`.
       "vae": "ae.safetensors",
       "llm": "Qwen3-4b-Z-Engineer-V2.gguf",
       "flash_attn": true,
-      "stream_layers": true,
       "max_vram": 8,
+      "params_backend": "*=cpu",
       "backend": "te=cpu,vae=cpu"
     }
   }
