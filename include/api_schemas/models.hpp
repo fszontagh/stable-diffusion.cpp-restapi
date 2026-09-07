@@ -44,6 +44,7 @@ struct LoadOptions {
             .optional_field("diffusion_flash_attn", schema::FieldType::Boolean, "Enable flash attention specifically for the diffusion model (UNet/DiT/Flux)", false)
             .optional_field("enable_mmap", schema::FieldType::Boolean, "Enable memory-mapped file access", true)
             .optional_field("tae_preview_only", schema::FieldType::Boolean, "Use TAESD for preview only", false)
+            .optional_field("force_sdxl_vae_conv_scale", schema::FieldType::Boolean, "Force sd.cpp's SDXL VAE conv-output scaling correction (sd_ctx_params_t.force_sdxl_vae_conv_scale). Rare interoperability knob for some SDXL VAE variants where the default auto-detect misses the scale factor; leave false unless a specific model doc says otherwise.", false)
             .optional_field("max_vram", schema::FieldType::Number, "Optional per-device GiB budget for managed weights and runner buffers. 0 = no explicit budget (sd.cpp uses live free VRAM). Positive N caps managed residency at N GiB. The old '-1 = auto' sentinel is gone upstream; negative values are coerced to 0.", 0)
             .enum_field("weight_type", "Weight precision type", WEIGHT_TYPE_VALUES)
             .optional_field("tensor_type_rules", schema::FieldType::String, "Custom tensor type rules string")

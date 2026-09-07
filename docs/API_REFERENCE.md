@@ -1290,6 +1290,7 @@ Common generation parameters
 | `eta` | number |  | 0.0 | Eta for DDIM-like samplers |
 | `extra_sample_args` | string |  |  | Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs). When scheduler=beta, accepts beta_alpha=X,beta_beta=Y for custom beta-distribution parameters (leejet PR #1834). When sampler=lms, accepts lms_max_order=N (1-4, default 4) to configure the linear multi-step order (leejet PR #1885). |
 | `extra_tiling_args` | string |  |  | Extra key=value tiling args (passed through to sd.cpp's tiling parser, model-specific) |
+| `flow_shift` | number |  | 3.0 | Flow-matching shift (sd_sample_params_t.flow_shift). Applies to Flux/SD3/Wan/LTX etc.; ignored on classic samplers. |
 | `height` | integer |  |  | Image height in pixels (default from model_architectures.json) |
 | `hires_denoising_strength` | number |  | 0.4 | Hires denoising strength |
 | `hires_enabled` | boolean |  | false | Enable sd.cpp's native two-pass hi-res-fix refine |
@@ -1313,6 +1314,7 @@ Common generation parameters
 | `qwen_image_layers` | integer |  | 0 | Qwen-Image layered rendering (image path only; 0 = disabled) |
 | `ref_image_args` | string |  |  | Comma-separated k=v flags for reference-image processing (e.g. resize_before_vae=0,ref_index_mode=increase). See sd.cpp docs. |
 | `ref_images` | array<string> |  |  | Reference images as base64 strings |
+| `ref_images_count` | integer |  | 0 | Server-populated echo of ref_images.length. Accepted on submit for round-trip fidelity when reloading a job snapshot; ignored during generation. Do not set from scratch. |
 | `sampler` | enum (`euler`, `euler_a`, `heun`, `dpm2`, `dpm++2s_a`, `dpm++2m`, `dpm++2mv2`, `ipndm`, `ipndm_v`, `lcm`, `ddim_trailing`, `tcd`, `res_multistep`, `res_2s`, `er_sde`, `euler_cfg_pp`, `euler_a_cfg_pp`, `euler_ge`, `dpm++2m_sde`, `dpm++2m_sde_bt`, `lms`) |  |  | Sampling algorithm (default from model_architectures.json) |
 | `scheduler` | enum (`discrete`, `karras`, `exponential`, `ays`, `gits`, `sgm_uniform`, `simple`, `smoothstep`, `kl_optimal`, `lcm`, `bong_tangent`, `ltx2`, `logit_normal`, `flux`, `flux2`, `beta`, `normal`) |  |  | Noise scheduler (default from model_architectures.json) |
 | `seed` | integer |  | -1 | RNG seed (-1 for random) |
@@ -1468,6 +1470,7 @@ Model loading options
 | `eager_load` | boolean |  | true | Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs naturally with prefetch streaming on a CPU params backend - the first generation no longer pays for lazy fault-in. Restapi defaults to true (long-lived server: first request after load should be fast); upstream sd-cli defaults to false (one-shot tool). |
 | `enable_mmap` | boolean |  | true | Enable memory-mapped file access |
 | `flash_attn` | boolean |  | true | Enable flash attention for CLIP/T5/conditioner |
+| `force_sdxl_vae_conv_scale` | boolean |  | false | Force sd.cpp's SDXL VAE conv-output scaling correction (sd_ctx_params_t.force_sdxl_vae_conv_scale). Rare interoperability knob for some SDXL VAE variants where the default auto-detect misses the scale factor; leave false unless a specific model doc says otherwise. |
 | `lora_apply_mode` | enum (`auto`, `immediately`, `at_runtime`) |  | auto | LoRA application mode |
 | `max_vram` | number |  | 0 | Optional per-device GiB budget for managed weights and runner buffers. 0 = no explicit budget (sd.cpp uses live free VRAM). Positive N caps managed residency at N GiB. The old '-1 = auto' sentinel is gone upstream; negative values are coerced to 0. |
 | `model_args` | string |  |  | Model-specific args (key=value list) - replaces the old chroma_*/qwen_image_zero_cond_t individual load flags. |
@@ -1690,7 +1693,6 @@ Extends: [GenerationRequestBase](#schema-generationrequestbase)
 |---|---|---|---|---|
 | `control_frames` | array<string> |  |  | Control frames as base64 strings |
 | `end_image_base64` | string |  |  | Ending frame image as base64 |
-| `flow_shift` | number |  | 3.0 | Flow matching shift parameter |
 | `fps` | integer |  | 16 | Output video frames per second |
 | `high_noise_cfg_scale` | number |  | 7.0 | CFG scale for high-noise phase |
 | `high_noise_custom_sigmas` | array<number> |  |  | Custom sigma schedule for high-noise phase |
@@ -1762,11 +1764,13 @@ Result of a model file upload
 
 ### schema `UpscaleRequest` <a id="schema-upscalerequest"></a>
 
-Image upscaling request
+Image upscaling request. Provide either image_base64 (raw upload) OR job_id + image_index (upscale an existing job's Nth output without re-uploading it).
 
 | field | type | required | default | description |
 |---|---|---|---|---|
-| `image_base64` | string | yes |  | Image to upscale as base64 |
+| `image_base64` | string |  |  | Image to upscale as base64. Mutually exclusive with job_id. |
+| `image_index` | integer |  | 0 | Index into job_id's outputs array (0-based). Required when job_id is set. |
+| `job_id` | string |  |  | Existing job UUID whose output to upscale. Requires image_index. Convenience alternative to re-uploading via image_base64 (avoids the round-trip for MCP-style callers). |
 | `repeats` | integer |  | 1 | Number of upscale passes |
 | `tile_size` | integer |  | 128 | Processing tile size |
 | `title` | string |  |  | Optional display title for the queue job |

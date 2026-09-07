@@ -419,7 +419,7 @@ Check server status, loaded model, and all loaded components.
 | `upscaler_loaded` | boolean | Whether an upscaler is currently loaded |
 | `upscaler_name` | string\|null | Name of loaded upscaler model, or null |
 | `ws_enabled` | boolean | Whether the WebSocket endpoint is compiled in and listening (clients connect to `ws://<host>:<port>/ws` on the same port as the REST API) |
-| `load_options` | object | The full set of load options the currently-loaded model was loaded with - the same field set as `LoadOptions` in `/openapi.json` (e.g. `n_threads`, `flash_attn`, `diffusion_flash_attn`, `enable_mmap`, `vae_conv_direct`, `diffusion_conv_direct`, `weight_type`, `vae_format`, `rng_type`, `sampler_rng_type`, `prediction`, `lora_apply_mode`, `tae_preview_only`, `eager_load`, `rpc_servers`, `backend`, `params_backend`, `model_args`, `disable_prefetch`, `disable_segmented_compute`, `max_vram`, `tensor_type_rules`). Empty object `{}` when no model is loaded. Useful for the WebUI to restore "Edit" form state from the actual server side. |
+| `load_options` | object | The full set of load options the currently-loaded model was loaded with - the same field set as `LoadOptions` in `/openapi.json` (e.g. `n_threads`, `flash_attn`, `diffusion_flash_attn`, `enable_mmap`, `vae_conv_direct`, `diffusion_conv_direct`, `weight_type`, `vae_format`, `rng_type`, `sampler_rng_type`, `prediction`, `lora_apply_mode`, `tae_preview_only`, `force_sdxl_vae_conv_scale`, `eager_load`, `rpc_servers`, `backend`, `params_backend`, `model_args`, `disable_prefetch`, `disable_segmented_compute`, `max_vram`, `tensor_type_rules`). Empty object `{}` when no model is loaded. Useful for the WebUI to restore "Edit" form state from the actual server side. |
 | `memory` | object | System, process, and GPU memory information (see [Memory](#memory)) |
 | `features` | object | Feature flags |
 | `features.experimental_offload` | boolean | Whether experimental VRAM offloading is compiled in |
@@ -1315,6 +1315,8 @@ Upscale an image using ESRGAN. Requires an upscaler model to be loaded.
 
 **Request Body:**
 
+Provide either `image_base64` (raw upload) **or** `job_id` + `image_index` (upscale the Nth output of an existing job without re-uploading it):
+
 ```json
 {
     "image_base64": "/9j/4AAQSkZJRg...",
@@ -1324,11 +1326,21 @@ Upscale an image using ESRGAN. Requires an upscaler model to be loaded.
 }
 ```
 
+```json
+{
+    "job_id": "550e8400-e29b-41d4-a716-446655440003",
+    "image_index": 0,
+    "upscale_factor": 4
+}
+```
+
 **Parameters:**
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `image_base64` | string | Yes | - | Base64-encoded input image |
+| `image_base64` | string | Cond. | - | Base64-encoded input image. Mutually exclusive with `job_id`. |
+| `job_id` | string | Cond. | - | UUID of an existing job whose output to upscale. Convenience shortcut so a caller doesn't have to fetch + re-upload the file. Requires `image_index`. |
+| `image_index` | integer | Cond. | 0 | 0-based index into the referenced job's outputs array. Required when `job_id` is set; ignored otherwise. |
 | `title` | string | No | `""` | Optional display title attached to the queue job (same semantics as `/txt2img`). |
 | `upscale_factor` | integer | No | 4 | Target upscale factor |
 | `tile_size` | integer | No | 128 | Tile size for processing (VRAM optimization) |

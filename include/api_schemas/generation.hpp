@@ -21,6 +21,8 @@ struct GenerationRequestBase {
             .optional_field("distilled_guidance", schema::FieldType::Number, "Distilled guidance scale (Flux/distilled models)", 3.5)
             .optional_field("eta", schema::FieldType::Number, "Eta for DDIM-like samplers", 0.0)
             .optional_field("shifted_timestep", schema::FieldType::Integer, "Shifted timestep value (NitroFusion: 250-500)", 0)
+            .optional_field("flow_shift", schema::FieldType::Number, "Flow-matching shift (sd_sample_params_t.flow_shift). Applies to Flux/SD3/Wan/LTX etc.; ignored on classic samplers.", 3.0)
+            .optional_field("ref_images_count", schema::FieldType::Integer, "Server-populated echo of ref_images.length. Accepted on submit for round-trip fidelity when reloading a job snapshot; ignored during generation. Do not set from scratch.", 0)
             .optional_field("extra_sample_args", schema::FieldType::String, "Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs). When scheduler=beta, accepts beta_alpha=X,beta_beta=Y for custom beta-distribution parameters (leejet PR #1834). When sampler=lms, accepts lms_max_order=N (1-4, default 4) to configure the linear multi-step order (leejet PR #1885).")
             .optional_field("seed", schema::FieldType::Integer, "RNG seed (-1 for random)", -1)
             .arch_default_enum("sampler", "Sampling algorithm", SAMPLER_VALUES)
@@ -126,7 +128,6 @@ struct Txt2VidRequest {
             .inherits("GenerationRequestBase")
             .optional_field("video_frames", schema::FieldType::Integer, "Number of video frames to generate", 33)
             .optional_field("fps", schema::FieldType::Integer, "Output video frames per second", 16)
-            .optional_field("flow_shift", schema::FieldType::Number, "Flow matching shift parameter", 3.0)
             .optional_field("init_image_base64", schema::FieldType::String, "Starting frame image as base64")
             .optional_field("end_image_base64", schema::FieldType::String, "Ending frame image as base64")
             .optional_field("strength", schema::FieldType::Number, "Denoising strength for init image", 0.75)
@@ -161,8 +162,10 @@ struct Txt2VidRequest {
 
 struct UpscaleRequest {
     static schema::SchemaDescriptor schema() {
-        return schema::SchemaBuilder("UpscaleRequest", "Image upscaling request")
-            .required_field("image_base64", schema::FieldType::String, "Image to upscale as base64")
+        return schema::SchemaBuilder("UpscaleRequest", "Image upscaling request. Provide either image_base64 (raw upload) OR job_id + image_index (upscale an existing job's Nth output without re-uploading it).")
+            .optional_field("image_base64", schema::FieldType::String, "Image to upscale as base64. Mutually exclusive with job_id.")
+            .optional_field("job_id", schema::FieldType::String, "Existing job UUID whose output to upscale. Requires image_index. Convenience alternative to re-uploading via image_base64 (avoids the round-trip for MCP-style callers).")
+            .optional_field("image_index", schema::FieldType::Integer, "Index into job_id's outputs array (0-based). Required when job_id is set.", 0)
             .optional_field("title", schema::FieldType::String, "Optional display title for the queue job", "")
             .optional_field("upscale_factor", schema::FieldType::Integer, "Upscale factor", 4)
             .optional_field("tile_size", schema::FieldType::Integer, "Processing tile size", 128)
