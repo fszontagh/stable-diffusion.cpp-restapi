@@ -1095,12 +1095,15 @@ void QueueManager::worker_thread() {
             job_start_time = it->second.started_at;
 
             // Re-snapshot model_settings now that the model is actually
-            // loaded. Jobs enqueued during a load capture an empty snapshot
-            // at add_job time; without this refresh the queue item would
-            // record no model info at all, so the WebUI Reload button
-            // could not restore the model that ran the job.
-            if (it->second.model_settings.empty() ||
-                !it->second.model_settings.contains("model_name")) {
+            // loaded. Jobs enqueued during a load capture the /health-style
+            // payload with model_name=null (because no model was loaded
+            // yet); the key IS present, so a `contains("model_name")` guard
+            // would false-positive. Check for an actual non-null string.
+            const bool have_model_name =
+                it->second.model_settings.contains("model_name") &&
+                it->second.model_settings["model_name"].is_string() &&
+                !it->second.model_settings["model_name"].get<std::string>().empty();
+            if (!have_model_name) {
                 it->second.model_settings = model_manager_.get_loaded_models_info();
             }
 
