@@ -298,7 +298,7 @@ else()
         FetchContent_Declare(
             stable-diffusion
             GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        d8fb10c02977c8ca999f3fb4e02df9ecf10f7ba6
+            GIT_TAG        b68d58624d227682eb4b95ef8bcf569cd1311eb5
             GIT_SHALLOW    FALSE
             GIT_SUBMODULES ${SDCPP_SUBMODULES}
             GIT_SUBMODULES_RECURSE TRUE
@@ -340,16 +340,55 @@ if(NOT SDCPP_USING_LOCAL_SOURCE AND NOT stable-diffusion_POPULATED)
         file(WRITE "${SD_HEADER_PATH}" "${SD_HEADER_CONTENT}")
     endif()
 
-    # Patch impl — add implementation if not already present.
+    # Patch impl — add implementation if not already present. The primary
+    # attempt uses `return DISCRETE_SCHEDULER;\n}` as an anchor, which was
+    # the closing brace of str_to_scheduler in older sd.cpp checkouts. When
+    # the pipeline split (leejet PR #1957) reshaped stable-diffusion.cpp the
+    # anchor line stayed but its trailing brace moved, so the REPLACE ends
+    # up being a no-op. Detect that by re-scanning for the function name
+    # after the REPLACE - if it still isn't there, append the impl to the
+    # end of the file, which works regardless of internal restructuring
+    # because model_version_to_str + SDVersion are already in scope via
+    # the pipeline/diffusion_engine.h include stable-diffusion.cpp always
+    # keeps.
+    # CMake bracket-argument [==[...]==] preserves semicolons and \n literals
+    # verbatim; a normal double-quoted string here would list-collapse the
+    # concatenation on semicolons and eat every one of them in the C++ body.
+    set(SD_VERSION_NAME_IMPL [==[
+
+
+// sdcpp-restapi patch: expose loaded-model architecture name to the C API.
+// Injected by the restapi build script; see the accompanying header patch.
+const char* sd_get_model_version_name(const sd_ctx_t* sd_ctx) {
+    if (sd_ctx != nullptr && sd_ctx->sd != nullptr) {
+        if (sd_ctx->sd->version < VERSION_COUNT) {
+            return model_version_to_str[sd_ctx->sd->version];
+        }
+    }
+    return "Unknown";
+}
+]==])
     file(READ "${SD_CPP_PATH}" SD_CPP_CONTENT)
     string(FIND "${SD_CPP_CONTENT}" "sd_get_model_version_name" SD_CPP_PATCHED)
     if(SD_CPP_PATCHED EQUAL -1)
-        message(STATUS "Patching ${SD_CPP_PATH} — adding sd_get_model_version_name impl")
+        message(STATUS "Patching ${SD_CPP_PATH} — adding sd_get_model_version_name impl (anchor pass)")
         string(REPLACE
             "    return DISCRETE_SCHEDULER;\n}"
-            "    return DISCRETE_SCHEDULER;\n}\n\nconst char* sd_get_model_version_name(const sd_ctx_t* sd_ctx) {\n    if (sd_ctx != nullptr && sd_ctx->sd != nullptr) {\n        if (sd_ctx->sd->version < VERSION_COUNT) {\n            return model_version_to_str[sd_ctx->sd->version];\n        }\n    }\n    return \"Unknown\";\n}"
+            "    return DISCRETE_SCHEDULER;\n}${SD_VERSION_NAME_IMPL}"
             SD_CPP_CONTENT "${SD_CPP_CONTENT}")
         file(WRITE "${SD_CPP_PATH}" "${SD_CPP_CONTENT}")
+        # Verify the anchor matched. If not, fall back to appending at EOF -
+        # after the pipeline split the `return DISCRETE_SCHEDULER;\n}` line
+        # is no longer immediately followed by a closing brace, so the
+        # REPLACE above misses. EOF append is safe because the function
+        # doesn't reference anything not already visible at the top level
+        # of stable-diffusion.cpp.
+        file(READ "${SD_CPP_PATH}" SD_CPP_CONTENT_RECHECK)
+        string(FIND "${SD_CPP_CONTENT_RECHECK}" "sd_get_model_version_name" SD_CPP_STILL_MISSING)
+        if(SD_CPP_STILL_MISSING EQUAL -1)
+            message(STATUS "Patching ${SD_CPP_PATH} — anchor moved, appending impl at EOF instead")
+            file(APPEND "${SD_CPP_PATH}" "${SD_VERSION_NAME_IMPL}")
+        endif()
     endif()
 
     # Now add the subdirectory
