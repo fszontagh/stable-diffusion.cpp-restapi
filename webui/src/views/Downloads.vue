@@ -211,6 +211,21 @@ watch(civitaiId, (newId) => {
 const archFilter = ref('')
 const inFlight = ref<Record<string, boolean>>({})
 
+// Re-scan models whenever a model_download job flips to completed - the
+// backend already rescans on its own, but this pulls the fresh list into
+// the store so the "Already downloaded" chip appears without a manual
+// reload. Debounced trivially by tracking which job IDs we've already
+// reacted to.
+const seenCompleted = new Set<string>()
+watch(downloadJobs, (jobs) => {
+  for (const j of jobs) {
+    if (j.type === 'model_download' && j.status === 'completed' && !seenCompleted.has(j.job_id)) {
+      seenCompleted.add(j.job_id)
+      appStore.fetchModels?.().catch(() => { /* fine */ })
+    }
+  }
+}, { deep: true })
+
 onMounted(async () => {
   if (!appStore.architectures) {
     try { await appStore.fetchArchitectures() } catch { /* handled elsewhere */ }
@@ -298,6 +313,35 @@ function isAlreadyDownloaded(entry: ArchitectureDownload): boolean {
   const target = entry.filename ? entry.filename.split('/').pop()?.toLowerCase() : ''
   if (!target) return false
   return list.some(m => (m.name.split('/').pop() ?? '').toLowerCase() === target)
+}
+
+/**
+ * Look for an in-flight or queued download job that matches this entry.
+ * Matched by (repo_id + filename) for single-file HF, (repo_id + bundle) for
+ * HF directory bundles, url for direct-URL entries, model_id for CivitAI.
+ * A job is "in progress" while its status is pending or processing; a job
+ * that has already completed shows up via the scanned-models list instead.
+ */
+function entryQueuedJob(entry: ArchitectureDownload) {
+  const items = appStore.queue?.items ?? []
+  for (const job of items) {
+    if (job.type !== 'model_download') continue
+    if (job.status !== 'pending' && job.status !== 'processing') continue
+    const p = (job.params ?? {}) as Record<string, unknown>
+    if (entry.source === 'huggingface') {
+      if (p.repo_id !== entry.repo_id) continue
+      if (entry.bundle === 'directory') {
+        if (p.bundle === 'directory') return job
+      } else {
+        if (p.filename === entry.filename) return job
+      }
+    } else if (entry.source === 'civitai' && entry.model_id) {
+      if (p.model_id === entry.model_id) return job
+    } else if (entry.source === 'url' && entry.url) {
+      if (p.url === entry.url) return job
+    }
+  }
+  return null
 }
 
 function sourceBadgeLabel(entry: ArchitectureDownload): string {
@@ -425,15 +469,29 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
                 <span v-if="isAlreadyDownloaded(entry)" class="already-downloaded">
                   &#10003; Already downloaded
                 </span>
-                <button
-                  v-else
-                  type="button"
-                  class="btn-primary"
-                  :disabled="!!inFlight[preset.id + '::' + entry.id]"
-                  @click="downloadArchEntry(preset, entry)"
-                >
-                  {{ inFlight[preset.id + '::' + entry.id] ? 'Starting...' : 'Download' }}
-                </button>
+                <template v-else>
+                  <button
+                    v-if="entryQueuedJob(entry)"
+                    type="button"
+                    class="btn-secondary"
+                    disabled
+                    :title="'Job ' + (entryQueuedJob(entry)?.job_id.slice(0, 8) ?? '')"
+                  >
+                    <span v-if="entryQueuedJob(entry)?.status === 'processing'">
+                      Downloading{{ entryQueuedJob(entry)?.progress?.step ? ' ' + entryQueuedJob(entry)?.progress?.step + '%' : '...' }}
+                    </span>
+                    <span v-else>Queued</span>
+                  </button>
+                  <button
+                    v-else
+                    type="button"
+                    class="btn-primary"
+                    :disabled="!!inFlight[preset.id + '::' + entry.id]"
+                    @click="downloadArchEntry(preset, entry)"
+                  >
+                    {{ inFlight[preset.id + '::' + entry.id] ? 'Starting...' : 'Download' }}
+                  </button>
+                </template>
               </div>
             </div>
           </div>
