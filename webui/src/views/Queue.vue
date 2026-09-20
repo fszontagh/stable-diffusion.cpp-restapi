@@ -519,6 +519,17 @@ function getDownloadTargetType(job: Job): string {
   return (job.params?.model_type as string | undefined) ?? ''
 }
 
+// One-line summary of what a model_hash job is hashing. Falls back to the
+// linked download job's target when the hash job's params haven't been
+// stitched with a file_path yet (very brief window right after enqueue).
+function getHashTitle(job: Job): string {
+  const p = (job.params ?? {}) as Record<string, string | undefined>
+  if (p.skip === 'directory-bundle') return 'Skipped (directory bundle)'
+  if (p.file_name) return p.file_name
+  if (p.file_path) return p.file_path.split('/').pop() ?? p.file_path
+  return 'Waiting for download to finish...'
+}
+
 // Larger glyph for non-generation jobs (used in the visual area in place of a thumbnail)
 function getNonGenerationOutputIcon(type: string): string {
   const icons: Record<string, string> = {
@@ -1477,6 +1488,14 @@ async function sendImageToUpscale(outputPath: string) {
               <span class="prompt-text" :title="getDownloadTitle(job)">
                 <strong v-if="getDownloadTargetType(job)">{{ getDownloadTargetType(job) }}</strong>
                 {{ truncateText(getDownloadTitle(job), 140) }}
+              </span>
+            </div>
+
+            <!-- Hash details (for model_hash jobs) -->
+            <div v-else-if="job.type === 'model_hash'" class="job-prompt">
+              <span class="prompt-text" :title="getHashTitle(job)">
+                <strong>hash</strong>
+                {{ truncateText(getHashTitle(job), 140) }}
               </span>
             </div>
 
