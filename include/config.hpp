@@ -144,6 +144,22 @@ struct AuthConfig {
     bool allow_public_outputs = true;
 };
 
+/**
+ * Model-scanning configuration.
+ *
+ * hf_directory_bundles: when true (the default), scan_directory detects
+ * Hugging Face repo directories (a subdir that contains
+ * model.safetensors.index.json, or config.json + .safetensors shards, or a
+ * tokenizer.json) and reports the directory as ONE model rather than
+ * emitting one entry per shard. sd.cpp accepts the directory path as
+ * --model for these architectures (SenseNova U1.5 today, more coming).
+ * Set to false to restore the pre-2026-09 flat-file scan behaviour if a
+ * user's on-disk layout produces false positives.
+ */
+struct ScanningConfig {
+    bool hf_directory_bundles = true;
+};
+
 struct McpConfig {
     // Gates the MCP `image` tool, which returns generated image bytes inline
     // (base64) so a vision-capable model can actually see the result. OFF by
@@ -178,6 +194,7 @@ struct Config {
     RecycleBinConfig recycle_bin;
     AuthConfig auth;
     McpConfig mcp;
+    ScanningConfig scanning;
 
     // When true, jobs created via expand_prompt write outputs into
     // <output>/<group_id>/<job_id>/ instead of flat <output>/<job_id>/. Lets

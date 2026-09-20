@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { api, type DownloadParams, type CivitAIModelInfo, type HuggingFaceModelInfo } from '../api/client'
+import { ref, computed, watch, onMounted } from 'vue'
+import { api, type DownloadParams, type CivitAIModelInfo, type HuggingFaceModelInfo, type ArchitecturePreset, type ArchitectureDownload } from '../api/client'
 import { useAppStore } from '../stores/app'
 
 const appStore = useAppStore()
+
+// Top-level mode. Manual keeps the existing URL/CivitAI/HF form.
+// "architecture" reads the download catalog from data/model_architectures.json
+// (via /architectures) and offers one card per canonical file.
+const mode = ref<'manual' | 'architecture'>('manual')
 
 // Source type selection
 const sourceType = ref<'url' | 'civitai' | 'huggingface'>('url')
@@ -195,6 +200,94 @@ watch(civitaiId, (newId) => {
     civitaiInfo.value = null
   }
 })
+
+// -------------------- By-Architecture tab --------------------
+//
+// Populates from /architectures once on mount, keeps only presets that have
+// a non-empty downloads[] array, groups their download entries by component
+// so the UI can render one heading per slot (diffusion / vae / t5xxl / ...).
+// A per-entry "downloading" flag prevents accidental double-submits.
+
+const archFilter = ref('')
+const inFlight = ref<Record<string, boolean>>({})
+
+onMounted(async () => {
+  if (!appStore.architectures) {
+    try { await appStore.fetchArchitectures() } catch { /* handled elsewhere */ }
+  }
+})
+
+const archsWithDownloads = computed(() => {
+  const all = appStore.architectures?.architectures ?? {}
+  const list: ArchitecturePreset[] = []
+  const needle = archFilter.value.trim().toLowerCase()
+  for (const preset of Object.values(all)) {
+    if (!preset.downloads || preset.downloads.length === 0) continue
+    if (needle) {
+      const hay = (preset.id + ' ' + preset.name + ' ' + (preset.description ?? '')).toLowerCase()
+      if (!hay.includes(needle)) continue
+    }
+    list.push(preset)
+  }
+  return list.sort((a, b) => a.name.localeCompare(b.name))
+})
+
+function groupByComponent(entries: ArchitectureDownload[]): Array<{ component: string; items: ArchitectureDownload[] }> {
+  const map = new Map<string, ArchitectureDownload[]>()
+  for (const e of entries) {
+    const key = e.component || 'other'
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(e)
+  }
+  return Array.from(map.entries())
+    .map(([component, items]) => ({ component, items }))
+    .sort((a, b) => a.component.localeCompare(b.component))
+}
+
+function sourceBadgeLabel(entry: ArchitectureDownload): string {
+  if (entry.source === 'huggingface' && entry.bundle === 'directory') return 'HF (dir)'
+  if (entry.source === 'huggingface') return 'HF'
+  if (entry.source === 'civitai') return 'CivitAI'
+  return 'URL'
+}
+
+async function downloadArchEntry(preset: ArchitecturePreset, entry: ArchitectureDownload): Promise<void> {
+  const key = `${preset.id}::${entry.id}`
+  if (inFlight.value[key]) return
+  inFlight.value[key] = true
+  error.value = null
+  success.value = null
+
+  const params: DownloadParams = {
+    source: entry.source,
+    model_type: entry.target_type as DownloadParams['model_type']
+  }
+  if (entry.source === 'url' && entry.url) {
+    params.url = entry.url
+    if (entry.filename) params.filename = entry.filename
+  } else if (entry.source === 'civitai' && entry.model_id) {
+    params.model_id = entry.model_id
+  } else if (entry.source === 'huggingface' && entry.repo_id) {
+    params.repo_id = entry.repo_id
+    if (entry.revision) params.revision = entry.revision
+    if (entry.bundle === 'directory') {
+      params.bundle = 'directory'
+      if (entry.include_patterns) params.include_patterns = entry.include_patterns
+      if (entry.exclude_patterns) params.exclude_patterns = entry.exclude_patterns
+    } else if (entry.filename) {
+      params.filename = entry.filename
+    }
+  }
+
+  try {
+    const res = await api.downloadModel(params)
+    success.value = `Started: ${entry.label} (job ${res.download_job_id.slice(0, 8)})`
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    inFlight.value[key] = false
+  }
+}
 </script>
 
 <template>
@@ -204,8 +297,92 @@ watch(civitaiId, (newId) => {
       Download models from URLs, CivitAI, or HuggingFace. Downloaded models will be saved to the appropriate folder.
     </p>
 
-    <!-- Source Tabs -->
-    <div class="source-tabs">
+    <!-- Mode Tabs: Manual (existing free-form form) vs By Architecture (curated catalog) -->
+    <div class="mode-tabs">
+      <button
+        :class="['mode-tab', { active: mode === 'manual' }]"
+        @click="mode = 'manual'"
+      >Manual</button>
+      <button
+        :class="['mode-tab', { active: mode === 'architecture' }]"
+        @click="mode = 'architecture'"
+      >By Architecture</button>
+    </div>
+
+    <!-- By Architecture: curated catalog from data/model_architectures.json -->
+    <div v-if="mode === 'architecture'" class="architecture-catalog">
+      <div class="catalog-filter">
+        <input
+          v-model="archFilter"
+          type="text"
+          placeholder="Filter architectures (name / description)"
+        />
+      </div>
+
+      <div v-if="error" class="message error">{{ error }}</div>
+      <div v-if="success" class="message success">{{ success }}</div>
+
+      <div v-if="archsWithDownloads.length === 0" class="no-jobs">
+        <p v-if="!appStore.architectures">Loading architectures...</p>
+        <p v-else-if="archFilter">No architecture matches "{{ archFilter }}".</p>
+        <p v-else>No architectures with download catalogs yet.</p>
+      </div>
+
+      <div
+        v-for="preset in archsWithDownloads"
+        :key="preset.id"
+        class="arch-card"
+      >
+        <div class="arch-header">
+          <h2>{{ preset.name }}</h2>
+          <code class="arch-id">{{ preset.id }}</code>
+        </div>
+        <p v-if="preset.description" class="arch-description">{{ preset.description }}</p>
+
+        <div
+          v-for="group in groupByComponent(preset.downloads ?? [])"
+          :key="group.component"
+          class="component-group"
+        >
+          <h3 class="component-heading">{{ group.component }}</h3>
+          <div class="download-cards">
+            <div
+              v-for="entry in group.items"
+              :key="entry.id"
+              class="download-card"
+            >
+              <div class="download-card-head">
+                <span class="download-label">
+                  <span v-if="entry.recommended" class="recommended-star" title="Recommended">&#9733;</span>
+                  {{ entry.label }}
+                </span>
+                <span class="source-badge">{{ sourceBadgeLabel(entry) }}</span>
+              </div>
+              <div class="download-meta">
+                <span v-if="entry.repo_id"><code>{{ entry.repo_id }}</code></span>
+                <span v-if="entry.filename && entry.bundle !== 'directory'">/ {{ entry.filename }}</span>
+                <span v-if="entry.bundle === 'directory'" class="dir-note">(whole repo)</span>
+                <span v-if="entry.size_bytes" class="download-size">{{ formatFileSize(entry.size_bytes) }}</span>
+              </div>
+              <p v-if="entry.notes" class="download-notes">{{ entry.notes }}</p>
+              <div class="download-actions">
+                <button
+                  type="button"
+                  class="btn-primary"
+                  :disabled="!!inFlight[preset.id + '::' + entry.id]"
+                  @click="downloadArchEntry(preset, entry)"
+                >
+                  {{ inFlight[preset.id + '::' + entry.id] ? 'Starting...' : 'Download' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Source Tabs (Manual mode) -->
+    <div v-if="mode === 'manual'" class="source-tabs">
       <button
         v-for="src in [
           { value: 'url', label: 'Direct URL' },
@@ -220,7 +397,7 @@ watch(civitaiId, (newId) => {
       </button>
     </div>
 
-    <form @submit.prevent="submitDownload" class="download-form">
+    <form v-if="mode === 'manual'" @submit.prevent="submitDownload" class="download-form">
       <!-- URL Source -->
       <div v-if="sourceType === 'url'" class="form-section">
         <label for="url">Model URL</label>
@@ -426,6 +603,176 @@ h1 {
 .page-description {
   color: var(--text-secondary);
   margin-bottom: 24px;
+}
+
+.mode-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: var(--bg-secondary);
+  padding: 4px;
+  border-radius: var(--border-radius);
+}
+
+.mode-tab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+}
+
+.mode-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.mode-tab.active {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.catalog-filter {
+  margin-bottom: 16px;
+}
+
+.catalog-filter input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.arch-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.arch-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.arch-header h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 18px;
+}
+
+.arch-id {
+  color: var(--text-secondary);
+  font-size: 12px;
+  background: var(--bg-hover);
+  padding: 2px 6px;
+  border-radius: var(--border-radius-sm);
+}
+
+.arch-description {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
+.component-group {
+  margin-top: 14px;
+}
+
+.component-heading {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin: 0 0 8px;
+}
+
+.download-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.download-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 12px;
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.download-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.download-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recommended-star {
+  color: var(--accent-primary);
+}
+
+.source-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.download-meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.download-meta code {
+  background: var(--bg-hover);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.dir-note {
+  font-style: italic;
+}
+
+.download-size {
+  margin-left: auto;
+}
+
+.download-notes {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.download-actions {
+  margin-top: 6px;
 }
 
 .source-tabs {

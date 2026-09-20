@@ -2008,14 +2008,40 @@ std::vector<std::string> QueueManager::process_model_download_unlocked(
 
         } else if (source == "huggingface" || source == "hf") {
             std::string repo_id = params.value("repo_id", "");
-            std::string filename = params.value("filename", "");
+            std::string bundle = params.value("bundle", "");
             std::string revision = params.value("revision", "main");
 
-            if (repo_id.empty() || filename.empty()) {
-                throw std::runtime_error("HuggingFace repo_id and filename are required");
+            if (repo_id.empty()) {
+                throw std::runtime_error("HuggingFace repo_id is required");
             }
-            result = download_manager.download_from_huggingface(
-                repo_id, filename, model_type, subfolder, revision, progress_callback);
+
+            if (bundle == "directory") {
+                // Whole-repo download for HF-directory-bundle architectures
+                // (SenseNova U1.5 etc). filename is ignored; the bundle
+                // captures every file that passes the glob filters.
+                std::vector<std::string> include_patterns;
+                std::vector<std::string> exclude_patterns;
+                if (params.contains("include_patterns") && params["include_patterns"].is_array()) {
+                    for (const auto& p : params["include_patterns"]) {
+                        if (p.is_string()) include_patterns.push_back(p.get<std::string>());
+                    }
+                }
+                if (params.contains("exclude_patterns") && params["exclude_patterns"].is_array()) {
+                    for (const auto& p : params["exclude_patterns"]) {
+                        if (p.is_string()) exclude_patterns.push_back(p.get<std::string>());
+                    }
+                }
+                result = download_manager.download_hf_directory(
+                    repo_id, model_type, revision,
+                    include_patterns, exclude_patterns, progress_callback);
+            } else {
+                std::string filename = params.value("filename", "");
+                if (filename.empty()) {
+                    throw std::runtime_error("HuggingFace filename is required for single-file downloads");
+                }
+                result = download_manager.download_from_huggingface(
+                    repo_id, filename, model_type, subfolder, revision, progress_callback);
+            }
 
         } else {
             // Direct URL download
@@ -2045,13 +2071,23 @@ std::vector<std::string> QueueManager::process_model_download_unlocked(
 
         outputs.push_back(result.file_path);
 
-        // Update hash job with file path and add to pending queue
+        // Update hash job with file path and add to pending queue.
+        // For HF directory bundles we skip hashing entirely: sd.cpp reads the
+        // whole tree on load anyway, and per-shard hashing of a 30+ GB bundle
+        // is minutes of pointless work. Mark the hash job succeeded with a
+        // "n/a" placeholder so the caller can tell the difference between
+        // "hash skipped by design" and "hash job hung".
+        bool is_bundle = result.metadata.contains("bundle") &&
+                         result.metadata["bundle"] == "directory";
         if (!hash_job_id.empty()) {
             std::lock_guard<std::mutex> lock(queue_mutex_);
             if (jobs_.count(hash_job_id)) {
                 jobs_[hash_job_id].params["file_path"] = result.file_path;
                 jobs_[hash_job_id].params["file_name"] = result.file_name;
                 jobs_[hash_job_id].params["metadata"] = result.metadata;
+                if (is_bundle) {
+                    jobs_[hash_job_id].params["skip"] = "directory-bundle";
+                }
                 pending_queue_.push(hash_job_id);
             }
             queue_cv_.notify_one();
@@ -2077,6 +2113,15 @@ std::vector<std::string> QueueManager::process_model_hash_unlocked(
     const std::string& /*job_id*/
 ) {
     std::vector<std::string> outputs;
+
+    // HF directory bundles skip hashing by design (see process_model_download
+    // for rationale). Complete the linked job cleanly with a marker so the
+    // caller can distinguish it from a real hash.
+    if (params.value("skip", std::string("")) == "directory-bundle") {
+        update_progress(100, 100);
+        outputs.push_back("directory-bundle");
+        return outputs;
+    }
 
     std::string file_path = params.value("file_path", "");
     if (file_path.empty()) {

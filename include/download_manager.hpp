@@ -139,6 +139,41 @@ public:
     );
 
     /**
+     * Download an entire Hugging Face repository as a directory bundle.
+     *
+     * Enumerates the repo tree via the HF API, then downloads every file
+     * that passes the include/exclude filters into
+     * `<target_dir>/<repo_basename>/`. Progress is aggregated across all
+     * files so the queue observer sees one smooth job. On any per-file
+     * failure the partially-populated directory is deleted so we never
+     * leave a half-installed bundle behind.
+     *
+     * Required for architectures whose "model" is a directory rather than
+     * a single file (SenseNova U1.5, and future upstream additions like
+     * LLada image once merged). The resulting directory path is what
+     * gets passed to sd.cpp as --model.
+     *
+     * @param repo_id HuggingFace repo `owner/name`.
+     * @param model_type Target model type; picks the storage root.
+     * @param revision Git revision, default "main".
+     * @param include_patterns Optional glob whitelist. Empty = accept all.
+     * @param exclude_patterns Optional glob blacklist applied after include.
+     *        Defaults to a small set (*.md, *.png, .gitattributes) if empty.
+     * @param progress_callback Aggregated (downloaded_bytes, total_bytes,
+     *        speed) across every file in the bundle.
+     * @return DownloadResult with file_path set to the bundle directory
+     *         and metadata.files listing the relative paths that landed.
+     */
+    DownloadResult download_hf_directory(
+        const std::string& repo_id,
+        const std::string& model_type,
+        const std::string& revision = "main",
+        const std::vector<std::string>& include_patterns = {},
+        const std::vector<std::string>& exclude_patterns = {},
+        DownloadProgressCallback progress_callback = nullptr
+    );
+
+    /**
      * Get model info from CivitAI without downloading
      * @param model_id CivitAI model ID (or model_id:version_id)
      * @return Model info if found

@@ -209,6 +209,17 @@ void from_json(const nlohmann::json& j, McpConfig& c) {
     c.image_jpeg_quality = j.value("image_jpeg_quality", 85);
 }
 
+// ScanningConfig JSON serialization
+void to_json(nlohmann::json& j, const ScanningConfig& c) {
+    j = nlohmann::json{
+        {"hf_directory_bundles", c.hf_directory_bundles}
+    };
+}
+
+void from_json(const nlohmann::json& j, ScanningConfig& c) {
+    c.hf_directory_bundles = j.value("hf_directory_bundles", true);
+}
+
 // Config JSON serialization
 void to_json(nlohmann::json& j, const Config& c) {
     j = nlohmann::json{
@@ -220,6 +231,7 @@ void to_json(nlohmann::json& j, const Config& c) {
         {"recycle_bin", c.recycle_bin},
         {"auth", c.auth},
         {"mcp", c.mcp},
+        {"scanning", c.scanning},
         {"output_group_folders", c.output_group_folders}
     };
 }
@@ -248,6 +260,9 @@ void from_json(const nlohmann::json& j, Config& c) {
     }
     if (j.contains("mcp")) {
         c.mcp = j["mcp"].get<McpConfig>();
+    }
+    if (j.contains("scanning")) {
+        c.scanning = j["scanning"].get<ScanningConfig>();
     }
     if (j.contains("output_group_folders")) {
         c.output_group_folders = j["output_group_folders"].get<bool>();

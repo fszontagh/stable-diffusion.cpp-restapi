@@ -1477,6 +1477,13 @@ export interface DownloadParams {
   repo_id?: string   // For HuggingFace
   filename?: string  // For HuggingFace or custom filename
   revision?: string  // For HuggingFace
+  // Whole-repo HF directory download (SenseNova U1.5 etc). When present the
+  // entire repo tree lands under <target_type_dir>/<repo-basename>/ and
+  // filename is ignored. Optional glob filters override the default excludes
+  // (*.md, *.png, README, .gitattributes).
+  bundle?: 'directory'
+  include_patterns?: string[]
+  exclude_patterns?: string[]
 }
 
 export interface DownloadResponse {
@@ -1560,6 +1567,33 @@ export interface ArchitectureMatchRule {
   nameRegex?: string
 }
 
+/**
+ * One downloadable file (or HF-directory bundle) belonging to an architecture.
+ * The `component` field matches a key in requiredComponents/optionalComponents
+ * so the UI can group cards by component. `target_type` is the model_type the
+ * download manager writes into. For `bundle: "directory"` the entire HF repo
+ * tree lands under <target_type_dir>/<repo-basename>/ and `filename` is
+ * ignored.
+ */
+export interface ArchitectureDownload {
+  id: string
+  label: string
+  component: string
+  target_type: 'checkpoint' | 'diffusion' | 'vae' | 'lora' | 'clip' | 't5' | 'embedding' | 'controlnet' | 'llm' | 'esrgan' | 'taesd' | 'motion_module' | 'adetailer' | 'ip_adapter'
+  source: 'url' | 'civitai' | 'huggingface'
+  url?: string
+  model_id?: string
+  repo_id?: string
+  filename?: string
+  revision?: string
+  bundle?: 'directory'
+  include_patterns?: string[]
+  exclude_patterns?: string[]
+  size_bytes?: number
+  recommended?: boolean
+  notes?: string
+}
+
 export interface ArchitecturePreset {
   id: string
   name: string
@@ -1572,6 +1606,7 @@ export interface ArchitecturePreset {
   generationDefaults: Record<string, unknown>
   match?: ArchitectureMatchRule
   componentScoring?: Partial<Record<'vae' | 'clip' | 't5' | 'llm' | 'controlnet' | 'taesd', ComponentScoringRule[]>>
+  downloads?: ArchitectureDownload[]
 }
 
 export interface ArchitecturesResponse {

@@ -50,7 +50,14 @@ struct ModelInfo {
     std::string file_extension; // "safetensors", "gguf", "ckpt"
     size_t file_size = 0;
     std::string hash;           // SHA256, computed on demand
-    
+
+    // True when this "model" is actually a Hugging Face repo directory
+    // rather than a single file (SenseNova U1.5, and future bundle-style
+    // architectures). sd.cpp accepts the directory as --model for these
+    // architectures. full_path points at the directory; file_size is the
+    // aggregated size of the files inside.
+    bool is_directory = false;
+
     nlohmann::json to_json() const;
 };
 

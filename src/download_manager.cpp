@@ -774,4 +774,183 @@ DownloadResult DownloadManager::download_from_huggingface(
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// HF directory bundle download
+// ---------------------------------------------------------------------------
+
+namespace {
+// Minimal glob -> regex translator for include/exclude patterns. Supports
+// `*` (any characters except '/'), `**` (any characters including '/'), and
+// `?` (single character). Everything else is escaped so patterns behave
+// predictably against arbitrary repo paths.
+std::regex glob_to_regex(const std::string& pattern) {
+    std::string re;
+    re.reserve(pattern.size() * 2);
+    for (size_t i = 0; i < pattern.size(); ++i) {
+        char c = pattern[i];
+        if (c == '*') {
+            if (i + 1 < pattern.size() && pattern[i + 1] == '*') {
+                re += ".*";
+                ++i;
+            } else {
+                re += "[^/]*";
+            }
+        } else if (c == '?') {
+            re += "[^/]";
+        } else if (std::strchr(".^$+()[]{}|\\", c)) {
+            re += '\\';
+            re += c;
+        } else {
+            re += c;
+        }
+    }
+    return std::regex("^" + re + "$", std::regex::ECMAScript);
+}
+
+bool any_glob_matches(const std::string& path, const std::vector<std::string>& patterns) {
+    for (const auto& p : patterns) {
+        if (std::regex_match(path, glob_to_regex(p))) return true;
+    }
+    return false;
+}
+} // anonymous namespace
+
+DownloadResult DownloadManager::download_hf_directory(
+    const std::string& repo_id,
+    const std::string& model_type,
+    const std::string& revision,
+    const std::vector<std::string>& include_patterns,
+    const std::vector<std::string>& exclude_patterns,
+    DownloadProgressCallback progress_callback
+) {
+    DownloadResult result;
+
+    try {
+        // Repo basename becomes the destination subdirectory name. "owner/name"
+        // -> "name". If someone passes just "name" we still get a usable path.
+        std::string repo_basename = repo_id;
+        auto slash = repo_id.find('/');
+        if (slash != std::string::npos && slash + 1 < repo_id.size()) {
+            repo_basename = repo_id.substr(slash + 1);
+        }
+
+        std::string base_dir = get_model_directory(model_type);
+        std::string dest_dir = (fs::path(base_dir) / repo_basename).string();
+
+        // Refuse to write into an existing non-empty directory. Silent overwrite
+        // could mix shards from two revisions of the same repo, which sd.cpp
+        // would then load without warning. Make the user decide.
+        if (fs::exists(dest_dir) && fs::is_directory(dest_dir) && !fs::is_empty(dest_dir)) {
+            result.error_message = "Target directory already populated: " + dest_dir +
+                " (delete or rename first)";
+            return result;
+        }
+        if (!ensure_directory(dest_dir)) {
+            result.error_message = "Failed to create directory: " + dest_dir;
+            return result;
+        }
+
+        // Ask HF for the recursive tree. Public API, no auth needed for
+        // public repos; if HF_TOKEN is set in the environment curl picks it up
+        // via CURLOPT_HTTPAUTH only in http_get variants we haven't wired yet,
+        // so private repos are out of scope for this initial cut.
+        std::string tree_url = "https://huggingface.co/api/models/" + repo_id +
+            "/tree/" + revision + "?recursive=true";
+        std::string tree_body = http_get(tree_url, 60);
+        auto tree = nlohmann::json::parse(tree_body);
+        if (!tree.is_array()) {
+            result.error_message = "Unexpected HF tree response shape for " + repo_id;
+            return result;
+        }
+
+        // Default exclude list keeps repo readmes and preview images out of
+        // the model dir. Explicit exclude_patterns from the JSON preset REPLACE
+        // this default (callers who need those files can pass an empty vector).
+        std::vector<std::string> effective_excludes = exclude_patterns;
+        if (effective_excludes.empty()) {
+            effective_excludes = {"*.md", "*.png", "*.jpg", "*.jpeg", "*.gif",
+                                  ".gitattributes", "LICENSE*", "README*"};
+        }
+
+        // Filter and total-size pass. We need the total up front so the
+        // aggregated progress callback can report meaningful percentages.
+        struct Entry { std::string path; size_t size; };
+        std::vector<Entry> files;
+        size_t total_bytes = 0;
+        for (const auto& node : tree) {
+            if (!node.contains("type") || node["type"].get<std::string>() != "file") continue;
+            if (!node.contains("path")) continue;
+            std::string path = node["path"].get<std::string>();
+            if (!include_patterns.empty() && !any_glob_matches(path, include_patterns)) continue;
+            if (any_glob_matches(path, effective_excludes)) continue;
+            size_t sz = node.contains("size") && node["size"].is_number() ?
+                node["size"].get<size_t>() : 0;
+            files.push_back({path, sz});
+            total_bytes += sz;
+        }
+
+        if (files.empty()) {
+            result.error_message = "HF repo " + repo_id + " has no downloadable files after filtering";
+            fs::remove_all(dest_dir);
+            return result;
+        }
+
+        // Sequential download with aggregate progress. sequential (not parallel)
+        // to keep the per-file speed accurate and to avoid hammering the HF CDN
+        // with 20+ concurrent connections. Big shards dominate wall time anyway.
+        size_t downloaded_bytes = 0;
+        std::vector<std::string> landed;
+        auto per_file_progress = [&](size_t file_done, size_t /*file_total*/, size_t speed) {
+            if (progress_callback) {
+                progress_callback(downloaded_bytes + file_done, total_bytes, speed);
+            }
+        };
+
+        for (const auto& entry : files) {
+            std::string file_url = "https://huggingface.co/" + repo_id +
+                "/resolve/" + revision + "/" + entry.path;
+            // Preserve relative path inside the bundle so index files
+            // (model.safetensors.index.json) can find their shards.
+            fs::path rel(entry.path);
+            std::string subdir = (fs::path(dest_dir) / rel.parent_path()).string();
+            if (!ensure_directory(subdir)) {
+                result.error_message = "Failed to create subdir: " + subdir;
+                fs::remove_all(dest_dir);
+                return result;
+            }
+            DownloadResult one = download_file(file_url, subdir, rel.filename().string(),
+                                               per_file_progress);
+            if (!one.success) {
+                result.error_message = "Failed to download " + entry.path + ": " + one.error_message;
+                fs::remove_all(dest_dir);
+                return result;
+            }
+            downloaded_bytes += entry.size ? entry.size : one.file_size;
+            landed.push_back(entry.path);
+        }
+
+        result.success = true;
+        result.file_path = dest_dir;
+        result.file_name = repo_basename;
+        result.file_size = downloaded_bytes;
+        result.content_type = "application/x-directory";
+        nlohmann::json file_list = nlohmann::json::array();
+        for (const auto& p : landed) file_list.push_back(p);
+        result.metadata = {
+            {"source", "huggingface"},
+            {"bundle", "directory"},
+            {"repo_id", repo_id},
+            {"revision", revision},
+            {"model_type", model_type},
+            {"files", file_list},
+            {"file_count", landed.size()}
+        };
+
+    } catch (const std::exception& e) {
+        result.error_message = e.what();
+    }
+
+    return result;
+}
+
 } // namespace sdcpp

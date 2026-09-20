@@ -1,3 +1,6 @@
+# Local-only working notes / design specs from the superpowers skill
+docs/superpowers/
+
 # Build directories
 build/
 cmake-build-*/

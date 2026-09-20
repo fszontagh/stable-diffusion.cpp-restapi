@@ -13,6 +13,7 @@
 #include <cctype>
 #include <cmath>
 #include <unordered_set>
+#include <set>
 
 #include "stable-diffusion.h"
 
@@ -129,7 +130,8 @@ nlohmann::json ModelInfo::to_json() const {
         {"type", model_type_to_string(type)},
         {"file_extension", file_extension},
         {"size_bytes", file_size},
-        {"hash", hash.empty() ? nullptr : nlohmann::json(hash)}
+        {"hash", hash.empty() ? nullptr : nlohmann::json(hash)},
+        {"is_directory", is_directory}
     };
 }
 
@@ -743,16 +745,134 @@ void ModelManager::scan_models() {
     }
 }
 
+// Returns true when the given directory looks like a Hugging Face repo bundle:
+// it holds the sharded-model index, or a config.json alongside safetensors, or
+// (for the diffusion category only) a tokenizer.json that would otherwise show
+// up as a spurious "model" via recursive scanning. Cheap best-effort check;
+// false positives are recoverable via the scanning.hf_directory_bundles config
+// toggle, false negatives just fall back to file-per-shard listing.
+static bool looks_like_hf_bundle(const fs::path& dir, ModelType type) {
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec)) return false;
+
+    if (fs::exists(dir / "model.safetensors.index.json", ec)) return true;
+
+    if (fs::exists(dir / "config.json", ec)) {
+        for (const auto& entry : fs::directory_iterator(dir, ec)) {
+            if (entry.is_regular_file(ec) && entry.path().extension() == ".safetensors") {
+                return true;
+            }
+        }
+    }
+
+    // tokenizer.json alone marks a bundle only for slots where a directory
+    // could reasonably be the model (diffusion / checkpoint). t5xxl/clip/llm
+    // directories legitimately ship tokenizer files without being a "model"
+    // by our definition.
+    if ((type == ModelType::Diffusion || type == ModelType::Checkpoint) &&
+        fs::exists(dir / "tokenizer.json", ec)) {
+        // Require at least one .safetensors sibling so we don't grab a
+        // tokenizer-only auxiliary directory.
+        for (const auto& entry : fs::directory_iterator(dir, ec)) {
+            if (entry.is_regular_file(ec) && entry.path().extension() == ".safetensors") {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+// Recursively sum the sizes of every regular file under `dir`. Follows
+// symlinks the same way std::filesystem's default recursion does (i.e. file
+// symlinks yes, directory symlinks no) so the result is representative rather
+// than exhaustive - the bundle size is a UI hint, not a load-time check.
+static size_t bundle_total_size(const fs::path& dir) {
+    size_t total = 0;
+    std::error_code ec;
+    for (auto it = fs::recursive_directory_iterator(dir, ec);
+         it != fs::recursive_directory_iterator(); ++it) {
+        if (ec) break;
+        if (it->is_regular_file(ec)) {
+            auto sz = fs::file_size(it->path(), ec);
+            if (!ec) total += sz;
+        }
+    }
+    return total;
+}
+
 void ModelManager::scan_directory(const std::string& base_path, ModelType type) {
     if (base_path.empty() || !utils::directory_exists(base_path)) {
         return;
     }
 
+    // Pass 1: HF-directory bundles at any depth. A matched directory is
+    // emitted as ONE ModelInfo and its subtree is skipped in pass 2.
+    // Gated by config.scanning.hf_directory_bundles; when the toggle is off
+    // we fall through to the old file-per-shard behaviour.
+    std::set<fs::path> consumed_subtrees;
+    if (config_.scanning.hf_directory_bundles &&
+        (type == ModelType::Diffusion || type == ModelType::Checkpoint)) {
+        fs::path base(base_path);
+        std::error_code ec;
+        for (auto it = fs::recursive_directory_iterator(
+                 base, fs::directory_options::follow_directory_symlink, ec);
+             it != fs::recursive_directory_iterator(); ++it) {
+            if (ec) break;
+            if (!it->is_directory(ec)) continue;
+            // Don't recurse into a subtree we've already claimed as a bundle.
+            bool already_consumed = false;
+            for (const auto& claimed : consumed_subtrees) {
+                auto rel = fs::relative(it->path(), claimed, ec);
+                if (!ec && !rel.empty() && *rel.begin() != "..") {
+                    already_consumed = true;
+                    break;
+                }
+            }
+            if (already_consumed) {
+                it.disable_recursion_pending();
+                continue;
+            }
+            if (looks_like_hf_bundle(it->path(), type)) {
+                fs::path rel_path = fs::relative(it->path(), base, ec);
+                std::string name = ec ? it->path().filename().string() : rel_path.string();
+                // Trailing slash visually distinguishes a directory model.
+                if (!name.empty() && name.back() != '/') name += '/';
+
+                ModelInfo info;
+                info.name = name;
+                info.full_path = it->path().string();
+                info.type = type;
+                info.file_extension = "";
+                info.is_directory = true;
+                info.file_size = bundle_total_size(it->path());
+                models_[type][name] = info;
+
+                consumed_subtrees.insert(it->path());
+                it.disable_recursion_pending();
+            }
+        }
+    }
+
+    // Pass 2: existing single-file scan. Any file that landed inside a
+    // bundle's subtree is filtered out here to avoid double-listing.
     std::vector<std::string> extensions = {".safetensors", ".gguf", ".ckpt", ".pt", ".pth"};
     auto files = utils::list_files(base_path, extensions, true);
 
     for (const auto& rel_path : files) {
         std::string full_path = (fs::path(base_path) / rel_path).string();
+        // Skip files inside any consumed bundle.
+        bool inside_bundle = false;
+        for (const auto& claimed : consumed_subtrees) {
+            std::error_code ec;
+            auto rel = fs::relative(full_path, claimed, ec);
+            if (!ec && !rel.empty() && *rel.begin() != "..") {
+                inside_bundle = true;
+                break;
+            }
+        }
+        if (inside_bundle) continue;
+
         std::string ext = utils::get_file_extension(full_path);
 
         // For ESRGAN models, .pth/.pt files must be ZIP-based (PyTorch ZIP archives).

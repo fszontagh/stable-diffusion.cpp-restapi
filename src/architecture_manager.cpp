@@ -29,6 +29,9 @@ nlohmann::json ArchitecturePreset::to_json() const {
     if (!componentScoring.is_null() && !componentScoring.empty()) {
         j["componentScoring"] = componentScoring;
     }
+    if (!downloads.is_null() && !downloads.empty()) {
+        j["downloads"] = downloads;
+    }
     return j;
 }
 
@@ -139,6 +142,10 @@ void ArchitectureManager::load_from_file() {
             // Optional WebUI-driven matching + scoring rules. Forwarded as-is.
             preset.match = value.value("match", nlohmann::json::object());
             preset.componentScoring = value.value("componentScoring", nlohmann::json::object());
+            // Optional download catalog. Kept opaque here - the WebUI validates
+            // per-entry shape when it renders. An empty array is treated the
+            // same as an absent field.
+            preset.downloads = value.value("downloads", nlohmann::json::array());
 
             presets_[key] = preset;
 

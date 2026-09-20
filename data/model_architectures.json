@@ -237,7 +237,60 @@
         "scheduler": "simple",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q4km",
+          "label": "FLUX.1-dev (Q4_K GGUF, ~9 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/FLUX.1-dev-gguf",
+          "filename": "flux1-dev-q4_k.gguf",
+          "recommended": true,
+          "notes": "GGUF quant balanced for consumer GPUs"
+        },
+        {
+          "id": "diffusion-q8",
+          "label": "FLUX.1-dev (Q8_0 GGUF, ~13 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/FLUX.1-dev-gguf",
+          "filename": "flux1-dev-q8_0.gguf",
+          "notes": "Higher quality, higher VRAM"
+        },
+        {
+          "id": "vae",
+          "label": "ae.safetensors (Flux VAE)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "black-forest-labs/FLUX.1-dev",
+          "filename": "ae.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "clip-l",
+          "label": "clip_l.safetensors",
+          "component": "clip_l",
+          "target_type": "clip",
+          "source": "huggingface",
+          "repo_id": "comfyanonymous/flux_text_encoders",
+          "filename": "clip_l.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "t5xxl",
+          "label": "t5xxl_fp16.safetensors",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "comfyanonymous/flux_text_encoders",
+          "filename": "t5xxl_fp16.safetensors",
+          "recommended": true
+        }
+      ]
     },
     "Flux Schnell": {
       "name": "Flux Schnell",
@@ -455,7 +508,59 @@
         "width": 1024,
         "height": 688,
         "cache_mode": "easycache"
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-turbo-bf16",
+          "label": "Z-Image Turbo bf16 (safetensors, ~12 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/z_image_turbo",
+          "filename": "split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-turbo-q4km",
+          "label": "Z-Image Turbo (Q4_K GGUF)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/Z-Image-Turbo-GGUF",
+          "filename": "z_image_turbo-Q4_K.gguf",
+          "notes": "Smaller / lower VRAM alternative"
+        },
+        {
+          "id": "vae",
+          "label": "ae.safetensors (Flux VAE)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/z_image_turbo",
+          "filename": "split_files/vae/ae.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "llm-qwen3-4b-safetensors",
+          "label": "Qwen3 4B (safetensors)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/z_image_turbo",
+          "filename": "split_files/text_encoders/qwen_3_4b.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "llm-qwen3-4b-gguf",
+          "label": "Qwen3-4B-Instruct-2507 (Q4_K_M GGUF)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+          "filename": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "notes": "GGUF alternative for lower-VRAM setups"
+        }
+      ]
     },
     "Qwen": {
       "name": "Qwen-Image",
@@ -606,7 +711,30 @@
         "scheduler": "discrete",
         "width": 832,
         "height": 480
-      }
+      },
+      "downloads": [
+        {
+          "id": "vae",
+          "label": "wan_2.1_vae.safetensors",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/vae/wan_2.1_vae.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "t5",
+          "label": "umt5_xxl_fp16.safetensors",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/text_encoders/umt5_xxl_fp16.safetensors",
+          "recommended": true,
+          "notes": "T5-XXL variant used by every Wan variant"
+        }
+      ]
     },
     "Wan-S2V": {
       "name": "Wan 2.2 S2V (Audio+Image to Video)",
@@ -644,22 +772,63 @@
       },
       "componentScoring": {
         "vae": [
-          {
-            "regex": "wan[_.\\-]?2[._\\-]1[_.\\-]?vae",
-            "score": 100
-          },
-          {
-            "regex": "wan.*vae",
-            "score": 85
-          }
+          { "regex": "wan[_.\\-]?2[._\\-]1[_.\\-]?vae", "score": 100 },
+          { "regex": "wan.*vae", "score": 85 }
         ],
         "t5": [
-          {
-            "regex": "umt5[_.\\-]?xxl",
-            "score": 100
-          }
+          { "regex": "umt5[_.\\-]?xxl", "score": 100 }
         ]
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q4km",
+          "label": "Wan2.2-S2V-14B (Q4_K_M GGUF, ~9 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "QuantStack/Wan2.2-S2V-14B-GGUF",
+          "filename": "Wan2.2-S2V-14B-Q4_K_M.gguf",
+          "recommended": true,
+          "notes": "Balanced quality / VRAM"
+        },
+        {
+          "id": "diffusion-q8",
+          "label": "Wan2.2-S2V-14B (Q8_0 GGUF, ~15 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "QuantStack/Wan2.2-S2V-14B-GGUF",
+          "filename": "Wan2.2-S2V-14B-Q8_0.gguf",
+          "notes": "Higher quality, needs more VRAM"
+        },
+        {
+          "id": "vae",
+          "label": "wan_2.1_vae.safetensors",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/vae/wan_2.1_vae.safetensors"
+        },
+        {
+          "id": "t5",
+          "label": "umt5_xxl_fp16.safetensors",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/text_encoders/umt5_xxl_fp16.safetensors"
+        },
+        {
+          "id": "audio-encoder",
+          "label": "wav2vec2_large_english_fp16.safetensors",
+          "component": "audio_encoder",
+          "target_type": "clip",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+          "filename": "split_files/audio_encoders/wav2vec2_large_english_fp16.safetensors"
+        }
+      ]
     },
     "Anima": {
       "name": "Anima",
@@ -684,7 +853,68 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-preview-safetensors",
+          "label": "Anima preview (safetensors)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "circlestone-labs/Anima",
+          "filename": "split_files/diffusion_models/anima-preview.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-turbo-safetensors",
+          "label": "Anima Turbo v1.1 (safetensors)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "circlestone-labs/Anima",
+          "filename": "split_files/diffusion_models/anima-turbo-v1.1.safetensors"
+        },
+        {
+          "id": "diffusion-preview-q4km",
+          "label": "Anima preview (Q4_K_M GGUF)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Bedovyy/Anima-GGUF",
+          "filename": "anima-preview-Q4_K_M.gguf",
+          "notes": "Lower-VRAM alternative"
+        },
+        {
+          "id": "vae",
+          "label": "qwen_image_vae (safetensors)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "circlestone-labs/Anima",
+          "filename": "split_files/vae/qwen_image_vae.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "llm-safetensors",
+          "label": "Qwen3-0.6B-Base (safetensors)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "circlestone-labs/Anima",
+          "filename": "split_files/text_encoders/Qwen3-0.6B-Base.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "llm-gguf",
+          "label": "Qwen3-0.6B-Base (Q4_K_M GGUF)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "mradermacher/Qwen3-0.6B-Base-GGUF",
+          "filename": "Qwen3-0.6B-Base.Q4_K_M.gguf",
+          "notes": "GGUF alternative"
+        }
+      ]
     },
     "HiDream-O1": {
       "name": "HiDream O1",
@@ -1489,16 +1719,32 @@
       },
       "componentScoring": {
         "t5": [
-          {
-            "regex": "flan[_.\\-]?t5[_.\\-]?large",
-            "score": 110
-          },
-          {
-            "regex": "flan[_.\\-]?t5",
-            "score": 85
-          }
+          { "regex": "flan[_.\\-]?t5[_.\\-]?large", "score": 110 },
+          { "regex": "flan[_.\\-]?t5", "score": 85 }
         ]
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion",
+          "label": "MiniT2I b-16 diffusion (safetensors)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "MiniT2I/MiniT2I",
+          "filename": "minit2i-b-16/transformer/diffusion_pytorch_model.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "t5",
+          "label": "flan-t5-large (model.safetensors)",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "google/flan-t5-large",
+          "filename": "model.safetensors",
+          "recommended": true
+        }
+      ]
     },
     "SenseNova-U1.5": {
       "name": "SenseNova U1.5",
@@ -1529,7 +1775,20 @@
       },
       "match": {
         "architecture": "SenseNova U1.5"
-      }
+      },
+      "downloads": [
+        {
+          "id": "bundle",
+          "label": "SenseNova U1.5 8B MoT (full HF repo, ~16 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "sensenova/SenseNova-U1.5-8B-MoT",
+          "bundle": "directory",
+          "recommended": true,
+          "notes": "Whole-repo download - shards + tokenizer + index. sd.cpp loads the directory as --model."
+        }
+      ]
     },
     "Mage-Flow": {
       "name": "Mage-Flow",

@@ -167,9 +167,17 @@ struct DownloadModelRequest {
             .optional_field("model_id", schema::FieldType::String, "CivitAI model ID (format: id or id:version)")
             .optional_field("url", schema::FieldType::String, "Direct download URL")
             .optional_field("repo_id", schema::FieldType::String, "HuggingFace repository ID")
-            .optional_field("filename", schema::FieldType::String, "Target filename")
+            .optional_field("filename", schema::FieldType::String, "Target filename (single-file HF or direct URL)")
             .optional_field("subfolder", schema::FieldType::String, "Subfolder within HF repo")
             .optional_field("revision", schema::FieldType::String, "Git revision for HF repo", "main")
+            // Whole-repo directory download. When source=huggingface and bundle=directory,
+            // filename is ignored and the entire HF repo tree lands under
+            // <model_type>/<repo-basename>/. Used for architectures whose model is a
+            // directory (SenseNova U1.5, etc). include_patterns/exclude_patterns are
+            // optional glob filters over the repo-relative file paths.
+            .enum_field("bundle", "HF bundle mode (only with source=huggingface)", {"directory"})
+            .optional_field("include_patterns", schema::FieldType::Array, "Bundle-only: glob whitelist")
+            .optional_field("exclude_patterns", schema::FieldType::Array, "Bundle-only: glob blacklist (overrides the default *.md/*.png/README exclude list)")
             .build();
     }
 };
