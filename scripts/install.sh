@@ -883,8 +883,12 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=${OUTPUT_DIR} ${CONFIG_DIR}
-ReadOnlyPaths=${MODELS_DIR} ${INSTALL_DIR}/webui ${INSTALL_DIR}/docs ${INSTALL_DIR}/data
+# MODELS_DIR must be writable: the server downloads new model files into it
+# (POST /models/download and the by-architecture catalog on the Downloads
+# page). Prior to the download feature this was ReadOnly, but that turns
+# every download into a "Failed to create file" error.
+ReadWritePaths=${OUTPUT_DIR} ${CONFIG_DIR} ${MODELS_DIR}
+ReadOnlyPaths=${INSTALL_DIR}/webui ${INSTALL_DIR}/docs ${INSTALL_DIR}/data
 
 # Resource limits — set via install.sh --memory-max / --memory-high /
 # --memory-swap-max. Empty by default (no cap), preserving prior behavior.

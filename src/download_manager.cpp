@@ -750,11 +750,40 @@ DownloadResult DownloadManager::download_from_huggingface(
             return result;
         }
 
+        // Idempotency: if the file is already at the target path (which happens
+        // naturally when two architectures share a component - Flux + Chroma
+        // both pull the same t5xxl_fp16.safetensors, or the user has already
+        // installed it manually) treat the request as a no-op success. We keep
+        // the basename only for the target path lookup - the file goes under
+        // dest_dir/<basename> even when `filename` names a nested path inside
+        // the source repo (SenseNova ships everything flat, but Comfy-Org uses
+        // split_files/vae/ae.safetensors and we've been landing that as
+        // vae/ae.safetensors all along).
+        std::string basename = file_path.filename().string();
+        std::string existing_path = (fs::path(dest_dir) / basename).string();
+        if (fs::exists(existing_path) && fs::file_size(existing_path) > 0) {
+            result.success = true;
+            result.file_path = existing_path;
+            result.file_name = basename;
+            result.file_size = fs::file_size(existing_path);
+            result.metadata = {
+                {"source", "huggingface"},
+                {"repo_id", repo_id},
+                {"filename", filename},
+                {"revision", revision},
+                {"model_type", model_type},
+                {"subfolder", subfolder},
+                {"already_exists", true}
+            };
+            return result;
+        }
+
         // Construct download URL
         std::string download_url = "https://huggingface.co/" + repo_id + "/resolve/" + revision + "/" + filename;
 
-        // Download file
-        result = download_file(download_url, dest_dir, filename, progress_callback);
+        // Download file (into dest_dir under its basename, ignoring any repo
+        // sub-path that was embedded in `filename`).
+        result = download_file(download_url, dest_dir, basename, progress_callback);
 
         if (result.success) {
             result.metadata = {
@@ -837,12 +866,42 @@ DownloadResult DownloadManager::download_hf_directory(
         std::string base_dir = get_model_directory(model_type);
         std::string dest_dir = (fs::path(base_dir) / repo_basename).string();
 
-        // Refuse to write into an existing non-empty directory. Silent overwrite
-        // could mix shards from two revisions of the same repo, which sd.cpp
-        // would then load without warning. Make the user decide.
+        // Idempotency: if the bundle is already installed (a directory of the
+        // same name with contents) treat the request as a no-op success.
+        // We don't verify shard hashes here - the marker is presence + non-empty.
+        // A user who deliberately wants to re-fetch should delete or rename the
+        // directory first.
         if (fs::exists(dest_dir) && fs::is_directory(dest_dir) && !fs::is_empty(dest_dir)) {
-            result.error_message = "Target directory already populated: " + dest_dir +
-                " (delete or rename first)";
+            size_t existing_bytes = 0;
+            std::vector<std::string> existing_files;
+            std::error_code ec;
+            for (auto it = fs::recursive_directory_iterator(dest_dir, ec);
+                 it != fs::recursive_directory_iterator(); ++it) {
+                if (ec) break;
+                if (it->is_regular_file(ec)) {
+                    auto sz = fs::file_size(it->path(), ec);
+                    if (!ec) existing_bytes += sz;
+                    auto rel = fs::relative(it->path(), dest_dir, ec);
+                    if (!ec) existing_files.push_back(rel.string());
+                }
+            }
+            result.success = true;
+            result.file_path = dest_dir;
+            result.file_name = repo_basename;
+            result.file_size = existing_bytes;
+            result.content_type = "application/x-directory";
+            nlohmann::json file_list = nlohmann::json::array();
+            for (const auto& p : existing_files) file_list.push_back(p);
+            result.metadata = {
+                {"source", "huggingface"},
+                {"bundle", "directory"},
+                {"repo_id", repo_id},
+                {"revision", revision},
+                {"model_type", model_type},
+                {"files", file_list},
+                {"file_count", existing_files.size()},
+                {"already_exists", true}
+            };
             return result;
         }
         if (!ensure_directory(dest_dir)) {

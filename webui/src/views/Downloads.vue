@@ -215,6 +215,13 @@ onMounted(async () => {
   if (!appStore.architectures) {
     try { await appStore.fetchArchitectures() } catch { /* handled elsewhere */ }
   }
+  // Populate the scanned models list so we can render "Already downloaded"
+  // badges. Kept best-effort: if the fetch fails the panel just falls back
+  // to always showing the Download button, which is safe (backend still
+  // short-circuits on already-existing files).
+  if (!appStore.models) {
+    try { await appStore.fetchModels?.() } catch { /* fine */ }
+  }
 })
 
 const archsWithDownloads = computed(() => {
@@ -242,6 +249,55 @@ function groupByComponent(entries: ArchitectureDownload[]): Array<{ component: s
   return Array.from(map.entries())
     .map(([component, items]) => ({ component, items }))
     .sort((a, b) => a.component.localeCompare(b.component))
+}
+
+// Map target_type -> the ModelsResponse array key. Kept explicit because the
+// JSON's target_type values (diffusion / t5 / lora / esrgan) don't always
+// match the pluralised store keys (diffusion_models / t5 / loras / esrgan).
+const TARGET_TYPE_TO_STORE_KEY: Record<string, keyof NonNullable<typeof appStore.models> | ''> = {
+  checkpoint: 'checkpoints',
+  diffusion: 'diffusion_models',
+  vae: 'vae',
+  lora: 'loras',
+  clip: 'clip',
+  t5: 't5',
+  embedding: 'embeddings',
+  controlnet: 'controlnets',
+  llm: 'llm',
+  esrgan: 'esrgan',
+  taesd: 'taesd',
+  motion_module: 'motion_modules',
+  adetailer: 'adetailers',
+  ip_adapter: 'ip_adapters'
+}
+
+/**
+ * Cross-references the scanned models list with a download entry. For
+ * single-file HF/URL downloads, matches by basename (case-insensitive) so
+ * a user who put a file in a subfolder still gets credit. For HF directory
+ * bundles, matches by the repo basename directory name.
+ * Purely advisory: even a false positive here is safe because the backend
+ * itself short-circuits an existing target file with already_exists=true.
+ */
+function isAlreadyDownloaded(entry: ArchitectureDownload): boolean {
+  const storeKey = TARGET_TYPE_TO_STORE_KEY[entry.target_type]
+  if (!storeKey) return false
+  const models = appStore.models
+  if (!models) return false
+  const list = (models[storeKey] ?? []) as Array<{ name: string; is_directory?: boolean }>
+
+  if (entry.bundle === 'directory' && entry.repo_id) {
+    const repoBase = entry.repo_id.split('/').pop()?.toLowerCase() ?? ''
+    return list.some(m => {
+      if (!m.is_directory) return false
+      const bn = m.name.replace(/\/$/, '').split('/').pop()?.toLowerCase() ?? ''
+      return bn === repoBase
+    })
+  }
+
+  const target = entry.filename ? entry.filename.split('/').pop()?.toLowerCase() : ''
+  if (!target) return false
+  return list.some(m => (m.name.split('/').pop() ?? '').toLowerCase() === target)
 }
 
 function sourceBadgeLabel(entry: ArchitectureDownload): string {
@@ -366,7 +422,11 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
               </div>
               <p v-if="entry.notes" class="download-notes">{{ entry.notes }}</p>
               <div class="download-actions">
+                <span v-if="isAlreadyDownloaded(entry)" class="already-downloaded">
+                  &#10003; Already downloaded
+                </span>
                 <button
+                  v-else
                   type="button"
                   class="btn-primary"
                   :disabled="!!inFlight[preset.id + '::' + entry.id]"
@@ -811,6 +871,15 @@ h1 {
 
 .download-actions {
   margin-top: 6px;
+}
+
+.already-downloaded {
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .source-tabs {
