@@ -608,6 +608,59 @@
         "height": 480
       }
     },
+    "Wan-S2V": {
+      "name": "Wan 2.2 S2V (Audio+Image to Video)",
+      "description": "Wan 2.2 S2V 14B audio-to-video model. Requires the Wan 2.1 VAE, umt5-xxl text encoder, and a wav2vec2 audio encoder (wav2vec2_large_english_fp16). Added upstream via leejet/stable-diffusion.cpp#1925.",
+      "aliases": [
+        "Wan2.2 S2V",
+        "Wan 2.2 S2V",
+        "wan-s2v",
+        "wan_s2v"
+      ],
+      "requiredComponents": {
+        "vae": "wan_2.1_vae.safetensors",
+        "t5xxl": "umt5-xxl text encoder",
+        "audio_encoder": "wav2vec2_large_english_fp16.safetensors"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "params_backend": "*=cpu"
+      },
+      "generationDefaults": {
+        "cfg_scale": 6.0,
+        "steps": 30,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 832,
+        "height": 480,
+        "video_frames": 33,
+        "fps": 16,
+        "flow_shift": 3.0
+      },
+      "match": {
+        "architecture": "Wan 2.2 S2V"
+      },
+      "componentScoring": {
+        "vae": [
+          {
+            "regex": "wan[_.\\-]?2[._\\-]1[_.\\-]?vae",
+            "score": 100
+          },
+          {
+            "regex": "wan.*vae",
+            "score": 85
+          }
+        ],
+        "t5": [
+          {
+            "regex": "umt5[_.\\-]?xxl",
+            "score": 100
+          }
+        ]
+      }
+    },
     "Anima": {
       "name": "Anima",
       "description": "CircleStone Labs Anima model. Requires Qwen Image VAE and Qwen3 0.6B Base LLM as text encoder.",
@@ -1408,6 +1461,74 @@
       },
       "match": {
         "nameRegex": "hunyuan.*video.*1\\.?5|hunyuanvideo[_.\\-]?1[_.\\-]?5"
+      }
+    },
+    "MiniT2I": {
+      "name": "MiniT2I",
+      "description": "MiniT2I diffusion transformer with flan-t5-large as the text encoder. Trained at 512x512; small and fast, useful for smoke tests and low-VRAM builds. Added upstream via leejet/stable-diffusion.cpp#1683.",
+      "aliases": [
+        "MiniT2I",
+        "mini-t2i",
+        "mini_t2i",
+        "minit2i"
+      ],
+      "requiredComponents": {
+        "t5xxl": "flan-t5-large text encoder"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "diffusion_flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 6.0,
+        "steps": 100,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 512,
+        "height": 512
+      },
+      "componentScoring": {
+        "t5": [
+          {
+            "regex": "flan[_.\\-]?t5[_.\\-]?large",
+            "score": 110
+          },
+          {
+            "regex": "flan[_.\\-]?t5",
+            "score": 85
+          }
+        ]
+      }
+    },
+    "SenseNova-U1.5": {
+      "name": "SenseNova U1.5",
+      "description": "SenseNova U1.5 8B MoT: diffusion directly in RGB pixel space. Ships as a complete Hugging Face repo directory (model.safetensors.index.json + shards + tokenizer); no separate text encoder or VAE required. Trained at 2048x2048; width and height must be multiples of 32. Added upstream via leejet/stable-diffusion.cpp#1935.",
+      "aliases": [
+        "SenseNova",
+        "SenseNova U1.5",
+        "sensenova-u1.5",
+        "sensenova_u1_5",
+        "u1.5"
+      ],
+      "requiredComponents": {},
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "params_backend": "*=cpu"
+      },
+      "generationDefaults": {
+        "cfg_scale": 4.0,
+        "steps": 50,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "flow_shift": 3.0,
+        "rng": "cuda",
+        "width": 2048,
+        "height": 2048,
+        "negative_prompt": ""
+      },
+      "match": {
+        "architecture": "SenseNova U1.5"
       }
     },
     "Mage-Flow": {

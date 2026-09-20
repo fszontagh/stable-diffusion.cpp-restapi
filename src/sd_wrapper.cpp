@@ -2927,13 +2927,14 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
 
     // Generate video frames.
     // sd.cpp's generate_video API changed (PR-merged 2026-05-16+): now returns bool
-    // and writes through out-params. audio_out is left nullptr — the LTXAV audio VAE
-    // is wired separately (see save_video_audio below); for non-LTXAV models the
-    // audio_out path is never populated by sd.cpp anyway.
+    // and writes through out-params. Wan2.2 S2V (upstream #1925) added the trailing
+    // int* fps_out - populated for audio-driven video, left at 0 otherwise. audio_out
+    // is written by LTXAV and Wan-S2V; other models leave it nullptr.
     int num_frames = 0;
+    int fps_out = 0;
     sd_image_t* frames = nullptr;
     sd_audio_t* audio_out = nullptr;
-    bool video_ok = generate_video(ctx, &vid_params, &frames, &num_frames, &audio_out);
+    bool video_ok = generate_video(ctx, &vid_params, &frames, &num_frames, &audio_out, &fps_out);
 
     if (!video_ok || frames == nullptr) {
         if (audio_out) {
