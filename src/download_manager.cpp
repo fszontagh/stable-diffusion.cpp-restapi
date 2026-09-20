@@ -301,7 +301,8 @@ DownloadResult DownloadManager::download_file(
     const std::string& url,
     const std::string& dest_path,
     const std::string& expected_filename,
-    DownloadProgressCallback progress_callback
+    DownloadProgressCallback progress_callback,
+    bool allow_any_extension
 ) {
     DownloadResult result;
 
@@ -355,9 +356,10 @@ DownloadResult DownloadManager::download_file(
         filename = extract_filename(url, content_disposition);
     }
 
-    // Validate extension
+    // Validate extension - skipped for HF-directory bundle members which
+    // legitimately include JSON configs, tokenizer files, etc.
     fs::path file_path(filename);
-    if (!is_supported_extension(file_path.extension().string())) {
+    if (!allow_any_extension && !is_supported_extension(file_path.extension().string())) {
         result.error_message = "Unsupported file extension: " + file_path.extension().string();
         return result;
     }
@@ -423,6 +425,26 @@ DownloadResult DownloadManager::download_file(
     if (rc != CURLE_OK) {
         fs::remove(full_path); // Clean up partial file
         std::string msg = errbuf[0] ? std::string(errbuf) : std::string(curl_easy_strerror(rc));
+
+        // CURLE_WRITE_ERROR usually means the local write callback returned
+        // fewer bytes than curl handed it. On our side that is the ofstream
+        // failing mid-write, and the only realistic causes are the disk
+        // filling up or a filesystem quota being hit. Translate the curl
+        // message into something operators can act on.
+        if (rc == CURLE_WRITE_ERROR) {
+            std::error_code sec;
+            auto space = fs::space(dest_path, sec);
+            std::string reason = "Failed to write local file (disk full or quota exceeded)";
+            if (!sec) {
+                double free_gb = static_cast<double>(space.available) / (1024.0 * 1024.0 * 1024.0);
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%.2f", free_gb);
+                reason += " - " + std::string(buf) + " GiB free at " + dest_path;
+            }
+            result.error_message = reason;
+            return result;
+        }
+
         result.error_message = "Download failed: " + msg;
         if (http_code) {
             result.error_message += " (HTTP " + std::to_string(http_code) + ")";
@@ -977,8 +999,11 @@ DownloadResult DownloadManager::download_hf_directory(
                 fs::remove_all(dest_dir);
                 return result;
             }
+            // Bundle members include tokenizer/config JSON, index files, and
+            // occasional txt/py assets alongside the .safetensors shards; the
+            // model-extension whitelist would reject those, so bypass it here.
             DownloadResult one = download_file(file_url, subdir, rel.filename().string(),
-                                               per_file_progress);
+                                               per_file_progress, /*allow_any_extension=*/true);
             if (!one.success) {
                 result.error_message = "Failed to download " + entry.path + ": " + one.error_message;
                 fs::remove_all(dest_dir);

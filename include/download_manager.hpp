@@ -231,7 +231,12 @@ private:
         const std::string& url,
         const std::string& dest_path,
         const std::string& expected_filename,
-        DownloadProgressCallback progress_callback
+        DownloadProgressCallback progress_callback,
+        bool allow_any_extension = false  // HF-directory bundles pull JSON,
+                                          // tokenizer files, etc. alongside
+                                          // safetensors shards; caller sets
+                                          // this to bypass the model-only
+                                          // extension whitelist.
     );
 
     /**

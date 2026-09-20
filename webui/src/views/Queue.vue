@@ -496,6 +496,29 @@ function isGenerationJob(job: Job): boolean {
   return (GENERATION_JOB_TYPES as readonly string[]).includes(job.type)
 }
 
+// Human-readable descriptor for a model_download job: source + what's
+// being fetched. Used in place of the (missing) prompt line + in place of
+// the generic "Step X/Y" progress caption.
+function getDownloadTitle(job: Job): string {
+  const p = (job.params ?? {}) as Record<string, string | undefined>
+  if (p.source === 'huggingface' || p.repo_id) {
+    if (p.bundle === 'directory') {
+      return `HF bundle ${p.repo_id ?? ''}`
+    }
+    const fn = p.filename ? p.filename.split('/').pop() : ''
+    return `${p.repo_id ?? '?'} - ${fn ?? ''}`
+  }
+  if (p.source === 'civitai' || p.model_id) {
+    return `CivitAI ${p.model_id ?? ''}`
+  }
+  if (p.url) return p.url
+  return 'Download'
+}
+
+function getDownloadTargetType(job: Job): string {
+  return (job.params?.model_type as string | undefined) ?? ''
+}
+
 // Larger glyph for non-generation jobs (used in the visual area in place of a thumbnail)
 function getNonGenerationOutputIcon(type: string): string {
   const icons: Record<string, string> = {
@@ -1449,6 +1472,14 @@ async function sendImageToUpscale(outputPath: string) {
               </div>
             </div>
 
+            <!-- Download details (for model_download jobs) -->
+            <div v-else-if="job.type === 'model_download'" class="job-prompt">
+              <span class="prompt-text" :title="getDownloadTitle(job)">
+                <strong v-if="getDownloadTargetType(job)">{{ getDownloadTargetType(job) }}</strong>
+                {{ truncateText(getDownloadTitle(job), 140) }}
+              </span>
+            </div>
+
             <!-- Prompt preview (for non-convert jobs) -->
             <div v-else-if="getJobPrompt(job)" class="job-prompt">
               <span class="prompt-text" :title="getJobPrompt(job)">{{ truncateText(getJobPrompt(job), 150) }}</span>
@@ -1532,7 +1563,15 @@ async function sendImageToUpscale(outputPath: string) {
                   :show-label="true"
                 />
                 <div class="progress-details">
-                  Step {{ job.progress.step }}/{{ job.progress.total_steps }}
+                  <template v-if="job.type === 'model_download'">
+                    {{ job.progress.step }}% downloaded
+                  </template>
+                  <template v-else-if="job.type === 'model_hash'">
+                    Hashing... {{ job.progress.step }}%
+                  </template>
+                  <template v-else>
+                    Step {{ job.progress.step }}/{{ job.progress.total_steps }}
+                  </template>
                 </div>
               </div>
             </div>
