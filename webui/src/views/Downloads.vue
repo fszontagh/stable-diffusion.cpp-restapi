@@ -312,6 +312,18 @@ function isAlreadyDownloaded(entry: ArchitectureDownload): boolean {
 
   const target = entry.filename ? entry.filename.split('/').pop()?.toLowerCase() : ''
   if (!target) return false
+  // When the entry pins a subfolder, prefer a match rooted at that
+  // subfolder - otherwise two arches that both call their file
+  // model.safetensors would each look "already downloaded" after the first.
+  // Fallback still accepts a bare basename at the root, because users who
+  // installed a file manually (or from a pre-subfolder version of the JSON)
+  // shouldn't be prompted to re-fetch a multi-GB file - only ambiguous
+  // filenames like model.safetensors risk being wrongly deduped, and the
+  // backend's own basename check will catch it anyway.
+  if (entry.subfolder) {
+    const expected = (entry.subfolder + '/' + target).toLowerCase()
+    if (list.some(m => m.name.toLowerCase() === expected)) return true
+  }
   return list.some(m => (m.name.split('/').pop() ?? '').toLowerCase() === target)
 }
 
@@ -333,7 +345,8 @@ function entryQueuedJob(entry: ArchitectureDownload) {
       if (entry.bundle === 'directory') {
         if (p.bundle === 'directory') return job
       } else {
-        if (p.filename === entry.filename) return job
+        if (p.filename === entry.filename &&
+            (p.subfolder ?? '') === (entry.subfolder ?? '')) return job
       }
     } else if (entry.source === 'civitai' && entry.model_id) {
       if (p.model_id === entry.model_id) return job
@@ -368,6 +381,7 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
   } else if (entry.source === 'huggingface' && entry.repo_id) {
     params.repo_id = entry.repo_id
     if (entry.revision) params.revision = entry.revision
+    if (entry.subfolder) params.subfolder = entry.subfolder
     if (entry.bundle === 'directory') {
       params.bundle = 'directory'
       if (entry.include_patterns) params.include_patterns = entry.include_patterns

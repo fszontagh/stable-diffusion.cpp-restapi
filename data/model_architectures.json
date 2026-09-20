@@ -1733,7 +1733,9 @@
           "source": "huggingface",
           "repo_id": "MiniT2I/MiniT2I",
           "filename": "minit2i-b-16/transformer/diffusion_pytorch_model.safetensors",
-          "recommended": true
+          "subfolder": "MiniT2I",
+          "recommended": true,
+          "notes": "Lands as diffusion_models/MiniT2I/diffusion_pytorch_model.safetensors so it doesn't collide with any other 'diffusion_pytorch_model.safetensors' shipped by future architectures."
         },
         {
           "id": "t5",
@@ -1743,7 +1745,9 @@
           "source": "huggingface",
           "repo_id": "google/flan-t5-large",
           "filename": "model.safetensors",
-          "recommended": true
+          "subfolder": "flan-t5-large",
+          "recommended": true,
+          "notes": "Lands as t5xxl/flan-t5-large/model.safetensors so a T5-XXL called model.safetensors from another arch stays separate."
         }
       ]
     },

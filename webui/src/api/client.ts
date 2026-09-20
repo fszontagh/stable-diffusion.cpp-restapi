@@ -1586,6 +1586,12 @@ export interface ArchitectureDownload {
   repo_id?: string
   filename?: string
   revision?: string
+  // Optional subdirectory beneath <target_type_dir>. Used to disambiguate
+  // files that ship with generic names (diffusion_pytorch_model.safetensors,
+  // model.safetensors) so two different architectures don't stomp each other.
+  // If unset, the file lands directly under the model-type root and the
+  // basename must be unique enough on its own.
+  subfolder?: string
   bundle?: 'directory'
   include_patterns?: string[]
   exclude_patterns?: string[]
