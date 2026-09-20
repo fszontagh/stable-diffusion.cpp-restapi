@@ -4240,6 +4240,9 @@ void RequestHandlers::handle_download_model(const httplib::Request& req, httplib
         std::string filename = body.value("filename", "");
         std::string subfolder = body.value("subfolder", "");
         std::string revision = body.value("revision", "main");
+        std::string bundle = body.value("bundle", "");
+        // include_patterns / exclude_patterns are forwarded opaquely; only
+        // used by download_hf_directory when bundle == "directory".
 
         // Auto-detect source if not specified
         if (source.empty()) {
@@ -4318,13 +4321,25 @@ void RequestHandlers::handle_download_model(const httplib::Request& req, httplib
                 send_error(res, "repo_id is required for HuggingFace source", 400);
                 return;
             }
-            if (filename.empty()) {
-                send_error(res, "filename is required for HuggingFace source", 400);
-                return;
-            }
             download_params["repo_id"] = repo_id;
-            download_params["filename"] = filename;
             download_params["revision"] = revision;
+            if (bundle == "directory") {
+                // Whole-repo bundle: filename is meaningless, the entire
+                // tree lands under <target_type>/<repo-basename>/.
+                download_params["bundle"] = bundle;
+                if (body.contains("include_patterns")) {
+                    download_params["include_patterns"] = body["include_patterns"];
+                }
+                if (body.contains("exclude_patterns")) {
+                    download_params["exclude_patterns"] = body["exclude_patterns"];
+                }
+            } else {
+                if (filename.empty()) {
+                    send_error(res, "filename is required for HuggingFace source", 400);
+                    return;
+                }
+                download_params["filename"] = filename;
+            }
         } else {
             send_error(res, "Invalid source. Valid sources: url, civitai, huggingface", 400);
             return;

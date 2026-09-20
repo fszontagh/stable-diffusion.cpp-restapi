@@ -255,8 +255,6 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
   const key = `${preset.id}::${entry.id}`
   if (inFlight.value[key]) return
   inFlight.value[key] = true
-  error.value = null
-  success.value = null
 
   const params: DownloadParams = {
     source: entry.source,
@@ -281,9 +279,11 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
 
   try {
     const res = await api.downloadModel(params)
-    success.value = `Started: ${entry.label} (job ${res.download_job_id.slice(0, 8)})`
+    // Toast rather than an inline banner - user is likely mid-scroll through
+    // a long arch catalog and would miss the message otherwise.
+    appStore.showToast(`Started: ${entry.label} (job ${res.download_job_id.slice(0, 8)})`, 'success')
   } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : String(e)
+    appStore.showToast(e instanceof Error ? e.message : String(e), 'error')
   } finally {
     inFlight.value[key] = false
   }
@@ -309,6 +309,9 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
       >By Architecture</button>
     </div>
 
+    <div class="downloads-layout">
+    <!-- Left column: current mode's content (Manual form or Architecture catalog) -->
+    <div class="downloads-main">
     <!-- By Architecture: curated catalog from data/model_architectures.json -->
     <div v-if="mode === 'architecture'" class="architecture-catalog">
       <div class="catalog-filter">
@@ -318,9 +321,6 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
           placeholder="Filter architectures (name / description)"
         />
       </div>
-
-      <div v-if="error" class="message error">{{ error }}</div>
-      <div v-if="success" class="message success">{{ success }}</div>
 
       <div v-if="archsWithDownloads.length === 0" class="no-jobs">
         <p v-if="!appStore.architectures">Loading architectures...</p>
@@ -544,8 +544,10 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
         </button>
       </div>
     </form>
+    </div>
 
-    <!-- Recent Download Jobs -->
+    <!-- Right column: Recent Download Jobs (sticky) -->
+    <aside class="downloads-aside">
     <div class="recent-downloads">
       <h2>Recent Download Jobs</h2>
       <div v-if="downloadJobs.length === 0" class="no-jobs">
@@ -585,14 +587,50 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
         </div>
       </div>
     </div>
+    </aside>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .downloads-page {
-  max-width: 800px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 24px;
+}
+
+/* Two-column layout: main content on the left, sticky Recent Downloads
+   panel on the right. Collapses to single column on narrow viewports. */
+.downloads-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+}
+
+.downloads-main {
+  min-width: 0;
+}
+
+.downloads-aside {
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+.downloads-aside .recent-downloads {
+  margin-top: 0;
+}
+
+@media (max-width: 960px) {
+  .downloads-layout {
+    grid-template-columns: 1fr;
+  }
+  .downloads-aside {
+    position: static;
+    max-height: none;
+  }
 }
 
 h1 {
