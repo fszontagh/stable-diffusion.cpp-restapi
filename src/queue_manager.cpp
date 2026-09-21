@@ -1882,7 +1882,29 @@ void QueueManager::load_state() {
                 jobs_[item.job_id] = item;
             }
         }
-        
+
+        // Auto-heal orphan model_hash jobs left over from a race in
+        // add_download_job that has since been fixed: if a hash job is
+        // still Pending and its linked download completed successfully
+        // with an output path, backfill file_path so the worker can
+        // process it on the next tick instead of throwing "File path is
+        // required for hashing".
+        for (auto& [id, item] : jobs_) {
+            if (item.type != GenerationType::ModelHash) continue;
+            if (item.status != QueueStatus::Pending) continue;
+            if (!item.params.value("file_path", "").empty()) continue;
+            const std::string& dl_id = item.linked_job_id;
+            if (dl_id.empty()) continue;
+            auto dl_it = jobs_.find(dl_id);
+            if (dl_it == jobs_.end()) continue;
+            const auto& dl = dl_it->second;
+            if (dl.status != QueueStatus::Completed || dl.outputs.empty()) continue;
+            item.params["file_path"] = dl.outputs[0];
+            item.params["file_name"] = std::filesystem::path(dl.outputs[0]).filename().string();
+            std::cout << "[QueueManager] Auto-healed orphan hash job " << id
+                      << " with file_path from linked download " << dl_id << std::endl;
+        }
+
         std::cout << "[QueueManager] Loaded " << jobs_.size() << " jobs from state file" << std::endl;
 
     } catch (const std::exception& e) {
@@ -1891,44 +1913,57 @@ void QueueManager::load_state() {
 }
 
 std::pair<std::string, std::string> QueueManager::add_download_job(const nlohmann::json& params) {
-    // Create download job
-    std::string download_job_id = add_job(GenerationType::ModelDownload, params);
-
-    // Create hash job linked to download job
-    nlohmann::json hash_params = {
-        {"file_path", ""},  // Will be filled by download job
-        {"model_type", params.value("model_type", "")},
-        {"download_job_id", download_job_id}
-    };
+    // Build both jobs and stitch their linked_job_id before either becomes
+    // visible to the worker. Prior implementation called add_job(download)
+    // FIRST (which pushed to pending_queue_ under the mutex, released it,
+    // then re-acquired the mutex to set linked_job_id on the download).
+    // On a busy worker that could pop the download job in between - and
+    // then process_model_download_unlocked would read an empty
+    // linked_job_id, silently skip the hash-job stitching, and the hash
+    // job stuck at "pending" with file_path="" forever.
+    QueueItem download_item;
+    download_item.job_id = utils::generate_uuid();
+    download_item.type = GenerationType::ModelDownload;
+    download_item.status = QueueStatus::Pending;
+    download_item.params = params;
+    download_item.created_at = utils::get_time_now();
 
     QueueItem hash_item;
     hash_item.job_id = utils::generate_uuid();
     hash_item.type = GenerationType::ModelHash;
     hash_item.status = QueueStatus::Pending;
-    hash_item.params = hash_params;
-    hash_item.linked_job_id = download_job_id;
-    hash_item.created_at = std::chrono::system_clock::now();
+    hash_item.params = {
+        {"file_path", ""},  // Filled after download completes
+        {"model_type", params.value("model_type", "")},
+        {"download_job_id", download_item.job_id}
+    };
+    hash_item.linked_job_id = download_item.job_id;
+    hash_item.created_at = utils::get_time_now();
+
+    // Cross-link download -> hash.
+    download_item.linked_job_id = hash_item.job_id;
 
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
+        // Snapshot the loaded model state under the same lock so it can't
+        // race with an unload happening between the two writes.
+        download_item.model_settings = model_manager_.get_loaded_models_info();
         jobs_[hash_item.job_id] = hash_item;
-        // Don't add to pending queue yet - it will be added after download completes
-    }
-
-    // Update download job with linked hash job ID
-    {
-        std::lock_guard<std::mutex> lock(queue_mutex_);
-        if (jobs_.count(download_job_id)) {
-            jobs_[download_job_id].linked_job_id = hash_item.job_id;
-        }
+        jobs_[download_item.job_id] = download_item;
+        // Only the download job enters pending_queue_ - the hash job is
+        // enqueued from process_model_download_unlocked once the file
+        // path is known (or immediately if the download was a no-op via
+        // the already_exists idempotency path).
+        pending_queue_.push(download_item.job_id);
     }
 
     save_state();
+    queue_cv_.notify_one();
 
     // Broadcast job added events via WebSocket
     if (auto* ws = get_websocket_server()) {
         ws->broadcast(WSEventType::JobAdded, {
-            {"job_id", download_job_id},
+            {"job_id", download_item.job_id},
             {"type", "model_download"},
             {"queue_position", pending_queue_.size()}
         });
@@ -1939,7 +1974,11 @@ std::pair<std::string, std::string> QueueManager::add_download_job(const nlohman
         });
     }
 
-    return {download_job_id, hash_item.job_id};
+    std::cout << "[QueueManager] Job added: " << download_item.job_id
+              << " | type=model_download | queue_size=" << pending_queue_.size()
+              << " | linked_hash=" << hash_item.job_id << std::endl;
+
+    return {download_item.job_id, hash_item.job_id};
 }
 
 void QueueManager::fail_linked_job(const std::string& job_id, const std::string& error_message) {
