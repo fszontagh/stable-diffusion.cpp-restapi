@@ -171,7 +171,11 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
-  overflow: hidden;
+  /* Deliberately NOT `overflow: hidden`. Cards frequently host <select>
+     dropdowns, tooltips, or absolutely-positioned popovers that need to
+     escape the box; clipping them broke the /generate sidebar's Attach
+     button, ControlNet dropdown, etc. Set overflow explicitly on a
+     specific card if you want to clip its media. */
 }
 
 .card-header {
