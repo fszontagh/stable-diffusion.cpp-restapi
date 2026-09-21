@@ -1228,6 +1228,35 @@ class ApiClient {
   async resetSettings(): Promise<{ success: boolean; message: string }> {
     return this.request('POST', '/settings/reset')
   }
+
+  // Integration secrets (HF, CivitAI tokens)
+  async getIntegrations(): Promise<IntegrationsResponse> {
+    return this.request('GET', '/settings/integrations')
+  }
+
+  async updateIntegrations(payload: IntegrationsUpdate): Promise<IntegrationsUpdateResponse> {
+    return this.request('PUT', '/settings/integrations', payload)
+  }
+}
+
+export interface IntegrationsResponse {
+  hf_token_set: boolean
+  hf_token_preview: string
+  civitai_api_key_set: boolean
+  civitai_api_key_preview: string
+}
+
+export interface IntegrationsUpdate {
+  // Send `null` to explicitly clear a token; omit the field to leave it
+  // unchanged; send a non-empty string to set a new token.
+  hf_token?: string | null
+  civitai_api_key?: string | null
+}
+
+export interface IntegrationsUpdateResponse {
+  success: boolean
+  hf_token_set: boolean
+  civitai_api_key_set: boolean
 }
 
 // Preview Types

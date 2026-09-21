@@ -20,6 +20,17 @@ const desktopNotifications = ref(true)
 const showOptionHints = ref(true)
 const theme = ref('default')
 
+// Integration secrets (HF + CivitAI). The server never returns the raw
+// token - just a masked preview + a boolean "is set". These input fields
+// stay empty until the user types a new value; blur-save persists.
+const hfTokenInput = ref('')
+const hfTokenPreview = ref('')
+const hfTokenSet = ref(false)
+const civitaiKeyInput = ref('')
+const civitaiKeyPreview = ref('')
+const civitaiKeySet = ref(false)
+const integrationsSaving = ref(false)
+
 // Server-side output preferences (fetched from /settings/output).
 // Mirrors backend QueueManager::group_folders_enabled_ — when on, jobs
 // from expand_prompt land in <output>/<group_id>/<job_id>/.
@@ -111,6 +122,7 @@ const tabs = [
   { id: 'preview', label: 'Preview', icon: '👁️' },
   { id: 'auto-unload', label: 'Auto-unload', icon: '⏱️' },
   { id: 'assistant', label: 'Assistant', icon: '🧠' },
+  { id: 'integrations', label: 'Integrations', icon: '🔑' },
   { id: 'themes', label: 'Themes', icon: '🎨' },
   { id: 'import-export', label: 'Import/Export', icon: '📦' }
 ]
@@ -182,7 +194,8 @@ async function loadSettings() {
       loadAutoUnloadSettings(),
       refreshAutoUnloadStatus(),
       loadAssistantSettings(),
-      loadOutputSettings()
+      loadOutputSettings(),
+      loadIntegrations()
     ])
   } catch (e) {
     console.error('Failed to load settings:', e)
@@ -436,6 +449,48 @@ async function loadAssistantSettings() {
   } catch (e) {
     // Assistant might not be configured
   }
+}
+
+async function loadIntegrations() {
+  try {
+    const info = await api.getIntegrations()
+    hfTokenSet.value = info.hf_token_set
+    hfTokenPreview.value = info.hf_token_preview
+    civitaiKeySet.value = info.civitai_api_key_set
+    civitaiKeyPreview.value = info.civitai_api_key_preview
+  } catch (e) {
+    console.error('Failed to load integrations:', e)
+  }
+}
+
+async function saveIntegrations(payload: { hf_token?: string | null; civitai_api_key?: string | null }) {
+  integrationsSaving.value = true
+  try {
+    await api.updateIntegrations(payload)
+    await loadIntegrations()
+    hfTokenInput.value = ''
+    civitaiKeyInput.value = ''
+    store.showToast('Integration secrets updated', 'success')
+  } catch (e: unknown) {
+    store.showToast(e instanceof Error ? e.message : 'Failed to update integrations', 'error')
+  } finally {
+    integrationsSaving.value = false
+  }
+}
+
+function saveHfToken() {
+  if (!hfTokenInput.value.trim()) return
+  saveIntegrations({ hf_token: hfTokenInput.value.trim() })
+}
+function clearHfToken() {
+  saveIntegrations({ hf_token: null })
+}
+function saveCivitaiKey() {
+  if (!civitaiKeyInput.value.trim()) return
+  saveIntegrations({ civitai_api_key: civitaiKeyInput.value.trim() })
+}
+function clearCivitaiKey() {
+  saveIntegrations({ civitai_api_key: null })
 }
 
 async function saveUIPreferences() {
@@ -1197,6 +1252,94 @@ loadSettings()
             </div>
           </div>
 
+          <!-- Integrations Tab -->
+          <div v-if="activeTab === 'integrations'" class="tab-panel">
+            <h3>Third-party integrations</h3>
+            <p class="tab-description">
+              API tokens the model downloader uses for HuggingFace and CivitAI. Public repos work without a token; setting one improves rate limits and unlocks gated content. Changes apply to the next queued download; no restart needed. Tokens are stored server-side with 0600 permissions and never re-emitted to the browser.
+            </p>
+
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <h4>HuggingFace</h4>
+              </div>
+              <div class="settings-card-body">
+                <div class="integration-status">
+                  <span v-if="hfTokenSet" class="integration-set">
+                    &#10003; Token set
+                    <code v-if="hfTokenPreview" class="integration-preview">{{ hfTokenPreview }}</code>
+                  </span>
+                  <span v-else class="integration-unset">No token configured</span>
+                </div>
+                <label for="hf-token-input">Set / replace HF token</label>
+                <div class="integration-input-row">
+                  <input
+                    id="hf-token-input"
+                    v-model="hfTokenInput"
+                    type="password"
+                    autocomplete="off"
+                    placeholder="hf_..."
+                    :disabled="integrationsSaving"
+                  />
+                  <button
+                    type="button"
+                    class="btn-primary"
+                    :disabled="!hfTokenInput.trim() || integrationsSaving"
+                    @click="saveHfToken"
+                  >Save</button>
+                  <button
+                    v-if="hfTokenSet"
+                    type="button"
+                    class="btn-secondary"
+                    :disabled="integrationsSaving"
+                    @click="clearHfToken"
+                  >Clear</button>
+                </div>
+                <p class="hint">Generate a read-only token at <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a>.</p>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <h4>CivitAI</h4>
+              </div>
+              <div class="settings-card-body">
+                <div class="integration-status">
+                  <span v-if="civitaiKeySet" class="integration-set">
+                    &#10003; API key set
+                    <code v-if="civitaiKeyPreview" class="integration-preview">{{ civitaiKeyPreview }}</code>
+                  </span>
+                  <span v-else class="integration-unset">No API key configured</span>
+                </div>
+                <label for="civitai-key-input">Set / replace CivitAI key</label>
+                <div class="integration-input-row">
+                  <input
+                    id="civitai-key-input"
+                    v-model="civitaiKeyInput"
+                    type="password"
+                    autocomplete="off"
+                    placeholder="civitai API key"
+                    :disabled="integrationsSaving"
+                  />
+                  <button
+                    type="button"
+                    class="btn-primary"
+                    :disabled="!civitaiKeyInput.trim() || integrationsSaving"
+                    @click="saveCivitaiKey"
+                  >Save</button>
+                  <button
+                    v-if="civitaiKeySet"
+                    type="button"
+                    class="btn-secondary"
+                    :disabled="integrationsSaving"
+                    @click="clearCivitaiKey"
+                  >Clear</button>
+                </div>
+                <p class="hint">Generate an API key at <a href="https://civitai.com/user/account" target="_blank" rel="noopener">civitai.com/user/account</a> (API Keys section).</p>
+              </div>
+            </div>
+          </div>
+
           <!-- Themes Tab -->
           <div v-if="activeTab === 'themes'" class="tab-panel">
             <h3>Theme</h3>
@@ -1382,6 +1525,51 @@ loadSettings()
 
 .settings-card-body {
   padding: 1rem;
+}
+
+.integration-status {
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.integration-set {
+  color: var(--success);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.integration-preview {
+  background: var(--bg-hover);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.integration-unset {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.integration-input-row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.integration-input-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: monospace;
+  font-size: 13px;
 }
 
 .settings-card.collapsible summary {

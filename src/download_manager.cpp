@@ -47,6 +47,43 @@ bool DownloadManager::is_supported_extension(const std::string& extension) {
     return false;
 }
 
+// Runtime-adjustable integration secrets. Guarded by a mutex so
+// SettingsManager PUTs never race a concurrent download reading the
+// value. Empty string means "no runtime token, fall back to env var".
+namespace {
+std::mutex g_token_mutex;
+std::string g_hf_token;
+std::string g_civitai_key;
+}
+
+void DownloadManager::set_hf_token(const std::string& token) {
+    std::lock_guard<std::mutex> lock(g_token_mutex);
+    g_hf_token = token;
+}
+
+std::string DownloadManager::get_hf_token() {
+    {
+        std::lock_guard<std::mutex> lock(g_token_mutex);
+        if (!g_hf_token.empty()) return g_hf_token;
+    }
+    const char* env = std::getenv("HF_TOKEN");
+    return env ? std::string(env) : std::string();
+}
+
+void DownloadManager::set_civitai_api_key(const std::string& key) {
+    std::lock_guard<std::mutex> lock(g_token_mutex);
+    g_civitai_key = key;
+}
+
+std::string DownloadManager::get_civitai_api_key() {
+    {
+        std::lock_guard<std::mutex> lock(g_token_mutex);
+        if (!g_civitai_key.empty()) return g_civitai_key;
+    }
+    const char* env = std::getenv("CIVITAI_API_KEY");
+    return env ? std::string(env) : std::string();
+}
+
 DownloadSource DownloadManager::detect_source(const std::string& identifier) {
     // Check for CivitAI patterns
     if (identifier.find("civitai.com") != std::string::npos ||
@@ -247,14 +284,28 @@ void apply_common_curl_options(CURL* curl, long connect_timeout, long total_time
 // curl_slist* the caller MUST curl_slist_free_all() after the transfer.
 // Returns nullptr when no header should be attached.
 curl_slist* maybe_attach_hf_auth(CURL* curl, const std::string& url) {
-    const char* token = std::getenv("HF_TOKEN");
-    if (!token || !*token) return nullptr;
+    // SettingsManager-owned runtime token first, HF_TOKEN env as fallback.
+    std::string token = DownloadManager::get_hf_token();
+    if (token.empty()) return nullptr;
     if (url.find("huggingface.co") == std::string::npos &&
         url.find("hf.co") == std::string::npos &&
         url.find("cdn-lfs") == std::string::npos) {
         return nullptr;
     }
-    std::string header = "Authorization: Bearer " + std::string(token);
+    std::string header = "Authorization: Bearer " + token;
+    curl_slist* list = curl_slist_append(nullptr, header.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
+    return list;
+}
+
+// Same shape as maybe_attach_hf_auth but for CivitAI. CivitAI accepts
+// Authorization: Bearer <api-key> on both the metadata API and the
+// resolve URL. Attached only for civitai.com hosts.
+curl_slist* maybe_attach_civitai_auth(CURL* curl, const std::string& url) {
+    std::string token = DownloadManager::get_civitai_api_key();
+    if (token.empty()) return nullptr;
+    if (url.find("civitai.com") == std::string::npos) return nullptr;
+    std::string header = "Authorization: Bearer " + token;
     curl_slist* list = curl_slist_append(nullptr, header.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
     return list;
@@ -276,11 +327,17 @@ std::string DownloadManager::http_get(const std::string& url, int timeout_second
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
     curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
     apply_common_curl_options(curl, 30L, static_cast<long>(timeout_seconds));
+    // Attach the appropriate auth header based on host. http_get is used
+    // for both HF tree listings and CivitAI metadata calls, so pick the
+    // one that applies (both return nullptr on host mismatch).
+    curl_slist* auth_hdr = maybe_attach_hf_auth(curl, url);
+    if (!auth_hdr) auth_hdr = maybe_attach_civitai_auth(curl, url);
 
     CURLcode rc = curl_easy_perform(curl);
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
     curl_easy_cleanup(curl);
+    if (auth_hdr) curl_slist_free_all(auth_hdr);
 
     if (rc != CURLE_OK) {
         std::string msg = errbuf[0] ? std::string(errbuf) : std::string(curl_easy_strerror(rc));
@@ -425,6 +482,7 @@ DownloadResult DownloadManager::download_file(
     // to abort genuinely-stalled connections.
     apply_common_curl_options(curl, 30L, 0L);
     curl_slist* auth_hdr = maybe_attach_hf_auth(curl, url);
+    if (!auth_hdr) auth_hdr = maybe_attach_civitai_auth(curl, url);
     // Bumped from 60s -> 300s: HF's CDN sometimes throttles a shard down to
     // near zero for several minutes before recovering. 300s is still short
     // enough that a truly dead connection aborts within reason.

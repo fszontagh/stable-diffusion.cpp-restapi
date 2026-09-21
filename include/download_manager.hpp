@@ -221,6 +221,17 @@ public:
      */
     static DownloadSource detect_source(const std::string& identifier);
 
+    /**
+     * Runtime-configurable secrets. Set from SettingsManager on load and
+     * on every PUT /settings/integrations. Empty string = no token. When
+     * the runtime value is empty, the download layer falls back to the
+     * matching env var (HF_TOKEN, CIVITAI_API_KEY).
+     */
+    static void set_hf_token(const std::string& token);
+    static std::string get_hf_token();
+    static void set_civitai_api_key(const std::string& key);
+    static std::string get_civitai_api_key();
+
 private:
     nlohmann::json paths_config_;
 

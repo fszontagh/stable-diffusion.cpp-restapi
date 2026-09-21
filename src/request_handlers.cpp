@@ -832,6 +832,18 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         "Reset all settings to defaults", "Settings", 200,
         [this](auto& req, auto& res) { handle_reset_settings(req, res); });
 
+    // ── Integration secrets (HF + CivitAI tokens) ────────────────────
+    // GET returns tokens MASKED so a page-view leak doesn't compromise
+    // them; the WebUI shows "*** set" vs "not set". PUT accepts full
+    // token strings and pushes them into DownloadManager at once so the
+    // next queued download uses the new values (no restart).
+    server.Get("/settings/integrations", [this](const auto& req, auto& res) {
+        handle_get_integrations(req, res);
+    });
+    server.Put("/settings/integrations", [this](const auto& req, auto& res) {
+        handle_update_integrations(req, res);
+    });
+
     // ── Architectures ────────────────────────────────────────────────
     api.addEndpoint<void, ArchitecturesResponse>(
         server, "GET", "/architectures",
@@ -4815,6 +4827,61 @@ void RequestHandlers::handle_update_ui_preferences(const httplib::Request& req, 
         });
     } catch (const std::exception& e) {
         send_error(res, std::string("Failed to update preferences: ") + e.what(), 500);
+    }
+}
+
+// Compact "hf_a…z (44 chars)" -style summary that hides the secret but
+// tells the operator whether one is set. Never returns the raw token.
+static std::string mask_token(const std::string& tok) {
+    if (tok.empty()) return "";
+    if (tok.size() <= 8) return std::string("***") + " (" + std::to_string(tok.size()) + " chars)";
+    return tok.substr(0, 3) + std::string("...") + tok.substr(tok.size() - 3) + " (" +
+           std::to_string(tok.size()) + " chars)";
+}
+
+void RequestHandlers::handle_get_integrations(const httplib::Request& /*req*/, httplib::Response& res) {
+    if (!settings_manager_) {
+        send_error(res, "Settings manager not initialized", 500);
+        return;
+    }
+    auto in = settings_manager_->get_integrations();
+    // Report presence + masked preview; never leak the raw token.
+    send_json(res, {
+        {"hf_token_set", !in.hf_token.empty()},
+        {"hf_token_preview", mask_token(in.hf_token)},
+        {"civitai_api_key_set", !in.civitai_api_key.empty()},
+        {"civitai_api_key_preview", mask_token(in.civitai_api_key)}
+    });
+}
+
+void RequestHandlers::handle_update_integrations(const httplib::Request& req, httplib::Response& res) {
+    if (!settings_manager_) {
+        send_error(res, "Settings manager not initialized", 500);
+        return;
+    }
+    auto json = parse_json_body(req);
+    if (json.is_null()) {
+        send_error(res, "Invalid JSON body", 400);
+        return;
+    }
+    try {
+        auto in = settings_manager_->get_integrations();
+        // PUT only modifies keys the caller sent. `null` explicitly clears
+        // a token; missing keys leave the existing value alone.
+        if (json.contains("hf_token")) {
+            in.hf_token = json["hf_token"].is_null() ? std::string() : json["hf_token"].get<std::string>();
+        }
+        if (json.contains("civitai_api_key")) {
+            in.civitai_api_key = json["civitai_api_key"].is_null() ? std::string() : json["civitai_api_key"].get<std::string>();
+        }
+        settings_manager_->set_integrations(in);
+        send_json(res, {
+            {"success", true},
+            {"hf_token_set", !in.hf_token.empty()},
+            {"civitai_api_key_set", !in.civitai_api_key.empty()}
+        });
+    } catch (const std::exception& e) {
+        send_error(res, std::string("Failed to update integrations: ") + e.what(), 500);
     }
 }
 

@@ -40,13 +40,36 @@ struct UIPreferences {
 };
 
 /**
+ * Integration secrets - runtime-configurable API tokens for the
+ * third-party services the download manager talks to. Kept in the
+ * settings file (600-permissioned) rather than the systemd env-file so
+ * they can be changed from the WebUI without a restart. Both are
+ * optional - public HF repos and public CivitAI models work without a
+ * token; tokens improve rate limits and unlock gated / early-access
+ * content. Env vars (HF_TOKEN / CIVITAI_API_KEY) remain a fallback when
+ * the settings-managed value is empty.
+ */
+struct IntegrationSettings {
+    std::string hf_token;         // HuggingFace access token (Bearer)
+    std::string civitai_api_key;  // CivitAI Authorization Bearer
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(IntegrationSettings, hf_token, civitai_api_key)
+};
+
+/**
  * Settings structure - stores user-saved preferences
  */
 struct Settings {
     GenerationPreferences generation;
     UIPreferences ui;
+    IntegrationSettings integrations;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Settings, generation, ui)
+    // NOTE: not using NLOHMANN_DEFINE_TYPE_INTRUSIVE here because
+    // integrations is a new field and existing settings.json files won't
+    // have it - the intrusive macro would throw on load. We define to_json
+    // / from_json manually so a missing key is tolerated.
+    friend void to_json(nlohmann::json& j, const Settings& s);
+    friend void from_json(const nlohmann::json& j, Settings& s);
 };
 
 /**
@@ -117,6 +140,16 @@ public:
      * Set UI preferences
      */
     void set_ui_preferences(const UIPreferences& preferences);
+
+    /**
+     * Get integration secrets (HF / CivitAI tokens).
+     */
+    IntegrationSettings get_integrations() const;
+
+    /**
+     * Update integration secrets. Empty string clears a token.
+     */
+    void set_integrations(const IntegrationSettings& integrations);
     
     /**
      * Reset all user settings to empty (no overrides)

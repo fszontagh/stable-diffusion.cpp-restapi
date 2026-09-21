@@ -222,6 +222,8 @@ private:
     void handle_update_generation_defaults_for_mode(const httplib::Request& req, httplib::Response& res);
     void handle_get_ui_preferences(const httplib::Request& req, httplib::Response& res);
     void handle_update_ui_preferences(const httplib::Request& req, httplib::Response& res);
+    void handle_get_integrations(const httplib::Request& req, httplib::Response& res);
+    void handle_update_integrations(const httplib::Request& req, httplib::Response& res);
     void handle_reset_settings(const httplib::Request& req, httplib::Response& res);
 
     // Thumbnail generation
