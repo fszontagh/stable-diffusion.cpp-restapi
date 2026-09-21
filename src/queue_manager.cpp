@@ -2125,7 +2125,15 @@ std::vector<std::string> QueueManager::process_model_hash_unlocked(
 
     std::string file_path = params.value("file_path", "");
     if (file_path.empty()) {
-        throw std::runtime_error("File path is required for hashing");
+        // Orphaned hash job: the linked download failed before writing
+        // file_path (or the hash was queued from a stale queue_state.json
+        // where the download never landed). Complete cleanly with a marker
+        // instead of failing loudly - the user's queue would otherwise
+        // fill with confusing "File path is required for hashing" errors
+        // that don't tell them what to do.
+        update_progress(100, 100);
+        outputs.push_back("skipped-no-file");
+        return outputs;
     }
 
     // Check if file exists

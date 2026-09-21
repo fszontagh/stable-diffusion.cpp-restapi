@@ -462,9 +462,18 @@ DownloadResult DownloadManager::download_file(
     // Create full destination path
     std::string full_path = (fs::path(dest_path) / filename).string();
 
-    // Check if file already exists
-    if (fs::exists(full_path)) {
-        result.error_message = "File already exists: " + full_path;
+    // Idempotency at the lowest level: if the file is already at the
+    // target path (previous successful download, manual install, or a
+    // shared file across two arch entries) treat this call as a no-op
+    // success. The wrappers (download_from_huggingface,
+    // download_from_civitai, download_from_url, download_hf_directory)
+    // all funnel through here, so this one check covers every source.
+    if (fs::exists(full_path) && fs::file_size(full_path) > 0) {
+        result.success = true;
+        result.file_path = full_path;
+        result.file_name = filename;
+        result.file_size = fs::file_size(full_path);
+        result.metadata = { {"already_exists", true} };
         return result;
     }
 
