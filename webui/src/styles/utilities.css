@@ -1,0 +1,285 @@
+/*
+ * Shared utility classes.
+ *
+ * These are the reusable building blocks - buttons, chips, cards, form
+ * fields - that were previously copy-pasted into every view's
+ * `<style scoped>` block. Views should import class names by adding
+ * them to their template; page-specific layout (spacing, grid,
+ * responsive tweaks) still belongs in the view's scoped block.
+ *
+ * All values pull from tokens defined in style.css so the theme keeps
+ * one source of truth.
+ */
+
+/* -------------------------------------------------------------------------
+ * Buttons
+ * -------------------------------------------------------------------------
+ * .btn is the base; add .btn-primary / .btn-secondary / .btn-danger /
+ * .btn-link / .btn-icon. Existing `.btn-primary { ... }` blocks in
+ * scoped SFC styles override these when they were written differently,
+ * so we can migrate views one at a time without a big-bang.
+ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-sm);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb), 0.6);
+  outline-offset: 2px;
+}
+
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: #fff;
+  border-color: var(--accent-primary);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+  border-color: var(--accent-primary-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn-danger {
+  background: var(--accent-error);
+  color: #fff;
+  border-color: var(--accent-error);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+/* Text-only link-styled button (used for toolbar rows like
+   "Expand all / Collapse all"). */
+.btn-link {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  color: var(--accent-primary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+/* Square icon-only button (close X, tab-scroll arrows, etc). */
+.btn-icon {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Compact size modifier (chips near a card header, etc). */
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* -------------------------------------------------------------------------
+ * Chips / Badges
+ * -------------------------------------------------------------------------
+ * Small pill-shaped labels. Sit alongside titles or in table cells.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.chip-success {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--accent-success);
+}
+
+.chip-warning {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--accent-warning);
+}
+
+.chip-error {
+  background: rgba(var(--accent-error-rgb), 0.15);
+  color: var(--accent-error);
+}
+
+.chip-info {
+  background: rgba(var(--accent-rgb), 0.15);
+  color: var(--accent-primary);
+}
+
+/* -------------------------------------------------------------------------
+ * Cards
+ * -------------------------------------------------------------------------
+ * The generic bordered container used for arch rows, info blocks,
+ * settings groups. .card-header and .card-body are the two zones a
+ * .card usually has.
+ */
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.card-body {
+  padding: 16px;
+}
+
+/* -------------------------------------------------------------------------
+ * Form fields
+ * -------------------------------------------------------------------------
+ * Baseline input / select / textarea styling. Views that need a special
+ * layout (grouped inputs, prefix icons) can still override with scoped
+ * CSS.
+ */
+.input,
+.select,
+.textarea {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2);
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.textarea {
+  min-height: 6em;
+  resize: vertical;
+  font-family: var(--font-mono);
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.field-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* -------------------------------------------------------------------------
+ * Layout helpers
+ * -------------------------------------------------------------------------
+ * A tiny set - not a full utility framework. Just the ones that fill
+ * duplication in the existing views.
+ */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stack-sm { gap: 6px; }
+.stack-lg { gap: 20px; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.spacer { flex: 1 1 auto; }
+
+.text-muted { color: var(--text-muted); }
+.text-secondary { color: var(--text-secondary); }
+.text-success { color: var(--accent-success); }
+.text-warning { color: var(--accent-warning); }
+.text-error { color: var(--accent-error); }
+
+.mono { font-family: var(--font-mono); }

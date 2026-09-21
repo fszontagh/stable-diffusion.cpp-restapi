@@ -357,6 +357,35 @@ function entryQueuedJob(entry: ArchitectureDownload) {
   return null
 }
 
+// Downloaded / queued / total tally for the collapsed arch summary line.
+function archTally(preset: ArchitecturePreset): { done: number; queued: number; total: number } {
+  const items = preset.downloads ?? []
+  let done = 0
+  let queued = 0
+  for (const e of items) {
+    if (isAlreadyDownloaded(e)) done++
+    else if (entryQueuedJob(e)) queued++
+  }
+  return { done, queued, total: items.length }
+}
+
+// Which archs are expanded. Default = all collapsed; user opens what they
+// need. Persisted for the session in a Set so navigating away and back
+// keeps the same shape.
+const expandedArchs = ref<Set<string>>(new Set())
+function toggleArch(id: string) {
+  const next = new Set(expandedArchs.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedArchs.value = next
+}
+function expandAll() {
+  expandedArchs.value = new Set(archsWithDownloads.value.map(p => p.id))
+}
+function collapseAll() {
+  expandedArchs.value = new Set()
+}
+
 function sourceBadgeLabel(entry: ArchitectureDownload): string {
   if (entry.source === 'huggingface' && entry.bundle === 'directory') return 'HF (dir)'
   if (entry.source === 'huggingface') return 'HF'
@@ -442,15 +471,43 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
         <p v-else>No architectures with download catalogs yet.</p>
       </div>
 
+      <div v-if="archsWithDownloads.length > 0" class="arch-toolbar">
+        <button type="button" class="btn-link" @click="expandAll">Expand all</button>
+        <span class="toolbar-sep">·</span>
+        <button type="button" class="btn-link" @click="collapseAll">Collapse all</button>
+        <span class="toolbar-count">{{ archsWithDownloads.length }} architectures</span>
+      </div>
+
       <div
         v-for="preset in archsWithDownloads"
         :key="preset.id"
-        class="arch-card"
+        :class="['arch-row', { open: expandedArchs.has(preset.id) }]"
       >
-        <div class="arch-header">
-          <h2>{{ preset.name }}</h2>
+        <button
+          type="button"
+          class="arch-summary"
+          :aria-expanded="expandedArchs.has(preset.id)"
+          @click="toggleArch(preset.id)"
+        >
+          <span class="arch-chevron">{{ expandedArchs.has(preset.id) ? '▾' : '▸' }}</span>
+          <span class="arch-summary-name">{{ preset.name }}</span>
           <code class="arch-id">{{ preset.id }}</code>
-        </div>
+          <span
+            v-if="archTally(preset).done === archTally(preset).total"
+            class="arch-summary-tally all-done"
+            title="Every listed file is already on disk"
+          >
+            &#10003; complete ({{ archTally(preset).total }})
+          </span>
+          <span
+            v-else
+            class="arch-summary-tally"
+          >
+            {{ archTally(preset).done }}/{{ archTally(preset).total }} downloaded<span v-if="archTally(preset).queued"> · {{ archTally(preset).queued }} in queue</span>
+          </span>
+        </button>
+
+        <div v-if="expandedArchs.has(preset.id)" class="arch-body">
         <p v-if="preset.description" class="arch-description">{{ preset.description }}</p>
 
         <div
@@ -480,7 +537,7 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
               </div>
               <p v-if="entry.notes" class="download-notes">{{ entry.notes }}</p>
               <div class="download-actions">
-                <span v-if="isAlreadyDownloaded(entry)" class="already-downloaded">
+                <span v-if="isAlreadyDownloaded(entry)" class="chip chip-success">
                   &#10003; Already downloaded
                 </span>
                 <template v-else>
@@ -509,6 +566,7 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>
@@ -821,12 +879,85 @@ h1 {
   font-size: 14px;
 }
 
-.arch-card {
+.arch-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.toolbar-sep {
+  color: var(--text-muted, var(--text-secondary));
+  opacity: 0.5;
+}
+
+.toolbar-count {
+  margin-left: auto;
+}
+
+/* .btn-link + .chip.chip-success now come from src/styles/utilities.css */
+
+.arch-row {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
-  padding: 20px;
-  margin-bottom: 20px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.arch-row.open {
+  margin-bottom: 12px;
+}
+
+.arch-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: left;
+}
+
+.arch-summary:hover {
+  background: var(--bg-hover);
+}
+
+.arch-row.open .arch-summary {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.arch-chevron {
+  color: var(--text-secondary);
+  font-size: 11px;
+  width: 12px;
+  display: inline-block;
+}
+
+.arch-summary-name {
+  font-weight: 600;
+}
+
+.arch-summary-tally {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.arch-summary-tally.all-done {
+  color: var(--success);
+}
+
+.arch-body {
+  padding: 12px 16px 16px;
 }
 
 .arch-header {
@@ -945,14 +1076,7 @@ h1 {
   margin-top: 6px;
 }
 
-.already-downloaded {
-  color: var(--success);
-  font-size: 13px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
+/* Was .already-downloaded; now uses .chip.chip-success from utilities.css. */
 
 .source-tabs {
   display: flex;

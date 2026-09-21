@@ -3,6 +3,10 @@ import { createPinia } from 'pinia'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import App from './App.vue'
 import './style.css'
+// Shared utility classes (buttons, chips, cards, form fields). Loaded
+// once at the app root so every view can use them without importing.
+// See src/styles/utilities.css for the catalogue.
+import './styles/utilities.css'
 import { initSentry } from './services/sentry'
 
 // Dashboard is the post-login landing route, so eager-load it — async
