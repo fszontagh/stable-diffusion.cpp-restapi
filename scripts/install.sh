@@ -898,6 +898,11 @@ ${memory_directives}
 Environment=LD_LIBRARY_PATH=${INSTALL_DIR}/lib
 Environment=SDCPP_WEBUI_PATH=${INSTALL_DIR}/webui
 Environment=SDCPP_DOCS_PATH=${INSTALL_DIR}/docs
+# Optional env-file for operator secrets that don't belong in the unit.
+# Create /etc/sdcpp-restapi/env with e.g. `HF_TOKEN=hf_xxx` if you want
+# authenticated HuggingFace downloads (avoids stalls on large repos and
+# lets you fetch gated models). The leading `-` makes the file optional.
+EnvironmentFile=-${CONFIG_DIR}/env
 
 [Install]
 WantedBy=multi-user.target

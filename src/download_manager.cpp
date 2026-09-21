@@ -5,6 +5,7 @@
 #include <regex>
 #include <algorithm>
 #include <chrono>
+#include <thread>
 #include <cstring>
 #include <curl/curl.h>
 
@@ -239,6 +240,26 @@ void apply_common_curl_options(CURL* curl, long connect_timeout, long total_time
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
 }
 
+// Attach an "Authorization: Bearer $HF_TOKEN" header when the environment
+// carries one AND the target URL points at huggingface (or its CDN). HF
+// serves public repos without auth but is markedly less flaky on large
+// multi-shard bundles when the request is authenticated. Returns a
+// curl_slist* the caller MUST curl_slist_free_all() after the transfer.
+// Returns nullptr when no header should be attached.
+curl_slist* maybe_attach_hf_auth(CURL* curl, const std::string& url) {
+    const char* token = std::getenv("HF_TOKEN");
+    if (!token || !*token) return nullptr;
+    if (url.find("huggingface.co") == std::string::npos &&
+        url.find("hf.co") == std::string::npos &&
+        url.find("cdn-lfs") == std::string::npos) {
+        return nullptr;
+    }
+    std::string header = "Authorization: Bearer " + std::string(token);
+    curl_slist* list = curl_slist_append(nullptr, header.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
+    return list;
+}
+
 } // anonymous namespace
 
 std::string DownloadManager::http_get(const std::string& url, int timeout_seconds) {
@@ -403,7 +424,11 @@ DownloadResult DownloadManager::download_file(
     // can legitimately take hours on slow links. We rely on LOW_SPEED_LIMIT
     // to abort genuinely-stalled connections.
     apply_common_curl_options(curl, 30L, 0L);
-    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);   // abort if <10 B/s for 60s
+    curl_slist* auth_hdr = maybe_attach_hf_auth(curl, url);
+    // Bumped from 60s -> 300s: HF's CDN sometimes throttles a shard down to
+    // near zero for several minutes before recovering. 300s is still short
+    // enough that a truly dead connection aborts within reason.
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 300L);
     curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 10L);
 
     CURLcode rc = curl_easy_perform(curl);
@@ -420,6 +445,7 @@ DownloadResult DownloadManager::download_file(
     }
 
     curl_easy_cleanup(curl);
+    if (auth_hdr) curl_slist_free_all(auth_hdr);
     ofs.close();
 
     if (rc != CURLE_OK) {
@@ -1002,10 +1028,26 @@ DownloadResult DownloadManager::download_hf_directory(
             // Bundle members include tokenizer/config JSON, index files, and
             // occasional txt/py assets alongside the .safetensors shards; the
             // model-extension whitelist would reject those, so bypass it here.
-            DownloadResult one = download_file(file_url, subdir, rel.filename().string(),
-                                               per_file_progress, /*allow_any_extension=*/true);
+            // Retry up to 3 times on transient failures (HF CDN stalls
+            // typically clear after a short backoff). A single flaky shard
+            // shouldn't cost the entire multi-GB bundle.
+            DownloadResult one;
+            const int kMaxAttempts = 3;
+            for (int attempt = 1; attempt <= kMaxAttempts; ++attempt) {
+                one = download_file(file_url, subdir, rel.filename().string(),
+                                    per_file_progress, /*allow_any_extension=*/true);
+                if (one.success) break;
+                if (attempt < kMaxAttempts) {
+                    int backoff_s = 5 * attempt; // 5s, 10s
+                    std::cerr << "[DownloadManager] " << entry.path << " failed (attempt "
+                              << attempt << "/" << kMaxAttempts << "): " << one.error_message
+                              << " - retrying in " << backoff_s << "s" << std::endl;
+                    std::this_thread::sleep_for(std::chrono::seconds(backoff_s));
+                }
+            }
             if (!one.success) {
-                result.error_message = "Failed to download " + entry.path + ": " + one.error_message;
+                result.error_message = "Failed to download " + entry.path + " after "
+                    + std::to_string(kMaxAttempts) + " attempts: " + one.error_message;
                 fs::remove_all(dest_dir);
                 return result;
             }
