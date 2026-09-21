@@ -315,7 +315,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         // for diff-friendliness.
         static const std::unordered_set<std::string> KNOWN_OPTIONS = {
             // Performance / threading
-            "n_threads", "flash_attn", "diffusion_flash_attn",
+            "n_threads", "flash_attn", "diffusion_flash_attn", "sage_attn",
             // Memory residency — upstream now expresses per-component and
             // global CPU placement via the `backend` / `params_backend` strings
             // below (e.g. "diffusion=cuda0,vae=cpu" or params_backend="*=cpu"),
@@ -366,6 +366,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.n_threads = opts.value("n_threads", -1);
         params.flash_attn = opts.value("flash_attn", true);
         params.diffusion_flash_attn = opts.value("diffusion_flash_attn", false);
+        params.sage_attn = opts.value("sage_attn", false);
         params.enable_mmap = opts.value("enable_mmap", true);
         params.vae_conv_direct = opts.value("vae_conv_direct", false);
         params.diffusion_conv_direct = opts.value("diffusion_conv_direct", false);
@@ -1444,6 +1445,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.n_threads = params.n_threads > 0 ? params.n_threads : sd_get_num_physical_cores();
     ctx_params.flash_attn = params.flash_attn;
     ctx_params.diffusion_flash_attn = params.diffusion_flash_attn;
+    ctx_params.sage_attn = params.sage_attn;
     ctx_params.enable_mmap = params.enable_mmap;
     ctx_params.vae_conv_direct = params.vae_conv_direct;
     ctx_params.diffusion_conv_direct = params.diffusion_conv_direct;

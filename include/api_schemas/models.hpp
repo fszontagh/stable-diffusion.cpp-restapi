@@ -42,6 +42,7 @@ struct LoadOptions {
             .optional_field("diffusion_conv_direct", schema::FieldType::Boolean, "Direct diffusion convolution", false)
             .optional_field("flash_attn", schema::FieldType::Boolean, "Enable flash attention for CLIP/T5/conditioner", true)
             .optional_field("diffusion_flash_attn", schema::FieldType::Boolean, "Enable flash attention specifically for the diffusion model (UNet/DiT/Flux)", false)
+            .optional_field("sage_attn", schema::FieldType::Boolean, "Native CUDA SageAttention for the diffusion model (leejet PR #2005). SM80+/CUDA 12.0+; silently falls back on older hardware.", false)
             .optional_field("enable_mmap", schema::FieldType::Boolean, "Enable memory-mapped file access", true)
             .optional_field("tae_preview_only", schema::FieldType::Boolean, "Use TAESD for preview only", false)
             .optional_field("force_sdxl_vae_conv_scale", schema::FieldType::Boolean, "Force sd.cpp's SDXL VAE conv-output scaling correction (sd_ctx_params_t.force_sdxl_vae_conv_scale). Rare interoperability knob for some SDXL VAE variants where the default auto-detect misses the scale factor; leave false unless a specific model doc says otherwise.", false)

@@ -24,7 +24,8 @@ inline const std::vector<std::string> SCHEDULER_VALUES = {
     "flux",         // PR #1723
     "flux2",        // PR #1722
     "beta",         // PR #811
-    "normal"        // PR #1724 - alias for "discrete"
+    "normal",       // PR #1724 - alias for "discrete"
+    "llada_image"   // PR #1968 - required by LLaDA-Image
 };
 
 inline const std::vector<std::string> MODEL_TYPE_VALUES = {

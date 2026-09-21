@@ -589,6 +589,245 @@
         "height": 1024
       }
     },
+    "Qwen-Image-2.1": {
+      "name": "Qwen-Image 2.1",
+      "description": "Qwen-Image 2.1 text-to-image + image editing. Uses Qwen3-VL-8B-Instruct as the LLM (mmproj required for editing) and its own qwen_image_2.1 VAE (not interchangeable with the earlier Qwen / Wan 2.2 VAEs). Added upstream via leejet/stable-diffusion.cpp#1994.",
+      "aliases": [
+        "Qwen Image 2.1",
+        "Qwen2.1",
+        "qwen-image-2.1",
+        "qwen_image_2_1"
+      ],
+      "requiredComponents": {
+        "vae": "qwen_image_2.1_vae_bf16.safetensors",
+        "llm": "Qwen3-VL-8B-Instruct (safetensors or GGUF)"
+      },
+      "optionalComponents": {
+        "llm_vision": "mmproj-Qwen3VL-8B-Instruct-F16.gguf (image editing with GGUF LLM)"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "params_backend": "*=cpu"
+      },
+      "generationDefaults": {
+        "cfg_scale": 6.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "Qwen Image 2.1"
+      },
+      "componentScoring": {
+        "vae": [
+          { "regex": "qwen[_.\\-]?image[_.\\-]?2[._\\-]?1[_.\\-]?vae", "score": 110 }
+        ],
+        "llm": [
+          { "regex": "qwen3[_.\\-]?vl[_.\\-]?8b", "score": 110 }
+        ]
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q4k",
+          "label": "Qwen-Image 2.1 (Q4_K GGUF)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/Qwen-Image-2.1-GGUF",
+          "filename": "qwen_image_2.1-Q4_K.gguf",
+          "subfolder": "Qwen-Image-2.1",
+          "recommended": true,
+          "notes": "Balanced quality / VRAM for 12-16 GB GPUs"
+        },
+        {
+          "id": "diffusion-q8",
+          "label": "Qwen-Image 2.1 (Q8_0 GGUF)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/Qwen-Image-2.1-GGUF",
+          "filename": "qwen_image_2.1-Q8_0.gguf",
+          "subfolder": "Qwen-Image-2.1",
+          "notes": "Higher quality, higher VRAM"
+        },
+        {
+          "id": "vae",
+          "label": "qwen_image_2.1_vae_bf16.safetensors",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Qwen-Image-2.1",
+          "filename": "vae/qwen_image_2.1_vae_bf16.safetensors",
+          "subfolder": "Qwen-Image-2.1",
+          "recommended": true
+        },
+        {
+          "id": "llm-q4km",
+          "label": "Qwen3-VL-8B-Instruct (Q4_K_M GGUF)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Qwen/Qwen3-VL-8B-Instruct-GGUF",
+          "filename": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+          "subfolder": "Qwen3-VL-8B-Instruct",
+          "recommended": true
+        },
+        {
+          "id": "llm-mmproj",
+          "label": "mmproj-Qwen3VL-8B-Instruct-F16.gguf (needed for editing with a GGUF LLM)",
+          "component": "llm_vision",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Qwen/Qwen3-VL-8B-Instruct-GGUF",
+          "filename": "mmproj-Qwen3VL-8B-Instruct-F16.gguf",
+          "subfolder": "Qwen3-VL-8B-Instruct"
+        }
+      ]
+    },
+    "LLaDA-Image": {
+      "name": "LLaDA-Image",
+      "description": "LLaDA-Image 6B text-to-image and instruction-guided editing. Denoiser is a Lumina2/Z-Image-style NextDiT conditioned by a LLaDA2-MoE diffusion-LLM text encoder, reusing the Flux.2 VAE. Requires a transformer, text encoder, VAE, and an embeddings_connectors file (QueryFormer + text_projection, plus SigVQ image encoder for editing). Two checkpoints ship: base (50 steps) and Turbo (4 steps) - each with its own transformer + text encoder + connectors, only VAE and tokenizer are shared. Added upstream via leejet/stable-diffusion.cpp#1968.",
+      "aliases": [
+        "LLaDA-Image",
+        "LLaDA Image",
+        "LLaDA-Image-Turbo",
+        "llada-image",
+        "llada",
+        "LLaDA"
+      ],
+      "requiredComponents": {
+        "vae": "llada_vae.safetensors (from inclusionAI/LLaDA-Image)",
+        "t5xxl": "LLaDA2-MoE text encoder GGUF (llada-image-text_encoder-q8_0.gguf)",
+        "embeddings_connectors": "llada-image-connectors.safetensors (add -edit for image editing; carries SigVQ)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true
+      },
+      "imageEditMode": "ref_images",
+      "generationDefaults": {
+        "cfg_scale": 4.0,
+        "steps": 50,
+        "sampler": "euler",
+        "scheduler": "llada_image",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "LLaDA-Image"
+      },
+      "componentScoring": {
+        "vae": [
+          { "regex": "llada[_.\\-]?vae", "score": 110 }
+        ],
+        "t5": [
+          { "regex": "llada[_.\\-]?image[_.\\-]?text[_.\\-]?encoder", "score": 110 }
+        ]
+      },
+      "downloads": [
+        {
+          "id": "diffusion-turbo-f16",
+          "label": "LLaDA-Image-Turbo transformer (4 steps, F16 GGUF)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
+          "filename": "llada-image-turbo-f16.gguf",
+          "subfolder": "LLaDA-Image-Turbo",
+          "recommended": true,
+          "notes": "Distilled 4-step variant. Recommended for most users."
+        },
+        {
+          "id": "diffusion-base-f16",
+          "label": "LLaDA-Image transformer (50 steps, F16 GGUF)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-GGUF",
+          "filename": "llada-image-f16.gguf",
+          "subfolder": "LLaDA-Image",
+          "notes": "Full 50-step base model."
+        },
+        {
+          "id": "text-encoder-turbo",
+          "label": "LLaDA2-MoE text encoder for Turbo (Q8_0 GGUF)",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
+          "filename": "llada-image-turbo-text_encoder-q8_0.gguf",
+          "subfolder": "LLaDA-Image-Turbo",
+          "recommended": true
+        },
+        {
+          "id": "text-encoder-base",
+          "label": "LLaDA2-MoE text encoder for base 50-step (Q8_0 GGUF)",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-GGUF",
+          "filename": "llada-image-text_encoder-q8_0.gguf",
+          "subfolder": "LLaDA-Image"
+        },
+        {
+          "id": "connectors-turbo-txt2img",
+          "label": "Turbo connectors (text-to-image)",
+          "component": "embeddings_connectors",
+          "target_type": "clip",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
+          "filename": "llada-image-turbo-connectors.safetensors",
+          "subfolder": "LLaDA-Image-Turbo",
+          "recommended": true
+        },
+        {
+          "id": "connectors-turbo-edit",
+          "label": "Turbo connectors + SigVQ (for image editing)",
+          "component": "embeddings_connectors",
+          "target_type": "clip",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
+          "filename": "llada-image-turbo-connectors-edit.safetensors",
+          "subfolder": "LLaDA-Image-Turbo",
+          "notes": "Choose the -edit variant if you want image editing; carries the 2.6 GB SigVQ encoder."
+        },
+        {
+          "id": "connectors-base-txt2img",
+          "label": "Base connectors (text-to-image)",
+          "component": "embeddings_connectors",
+          "target_type": "clip",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-GGUF",
+          "filename": "llada-image-connectors.safetensors",
+          "subfolder": "LLaDA-Image"
+        },
+        {
+          "id": "connectors-base-edit",
+          "label": "Base connectors + SigVQ (for image editing)",
+          "component": "embeddings_connectors",
+          "target_type": "clip",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-GGUF",
+          "filename": "llada-image-connectors-edit.safetensors",
+          "subfolder": "LLaDA-Image"
+        },
+        {
+          "id": "vae",
+          "label": "llada_vae.safetensors (from inclusionAI)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "inclusionAI/LLaDA-Image",
+          "filename": "vae/diffusion_pytorch_model.safetensors",
+          "subfolder": "LLaDA-Image",
+          "recommended": true,
+          "notes": "Same file works for both Turbo and base variants."
+        }
+      ]
+    },
     "Qwen Image Edit": {
       "name": "Qwen-Image-Edit",
       "description": "Qwen-based image editing model. Edit images with text prompts. Requires Qwen VAE and Qwen2.5-VL 7B LLM.",

@@ -112,6 +112,9 @@ struct ModelLoadParams {
     bool diffusion_flash_attn = false;          // Flash attention specifically for the diffusion model
                                                  // (UNet/DiT/Flux). sd.cpp keeps this separate from
                                                  // flash_attn (which is also for CLIP/T5/conditioner).
+    bool sage_attn = false;                     // Native CUDA SageAttention for the diffusion model
+                                                 // (leejet PR #2005). SM80+/CUDA 12.0+; falls back to
+                                                 // ordinary attention when the GPU or toolkit is older.
     bool enable_mmap = true;                    // Use memory-mapped file loading for models
     bool vae_conv_direct = false;               // Use ggml_conv2d_direct in VAE
     bool diffusion_conv_direct = false;         // Use ggml_conv2d_direct in diffusion
