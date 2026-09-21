@@ -198,6 +198,12 @@ struct StreamState {
     std::ofstream* ofs = nullptr;
     size_t downloaded = 0;
     size_t total = 0;
+    CURL* curl = nullptr;   // used to lazily read Content-Length from the
+                            // GET response when HEAD didn't return one
+                            // (CivitAI's HEAD redirects to a signed S3 URL
+                            // that omits Content-Length, so total stayed 0
+                            // for the whole download and every progress
+                            // event reported 0%).
     DownloadProgressCallback progress_callback;
     std::chrono::steady_clock::time_point start_time;
 };
@@ -217,6 +223,17 @@ size_t curl_write_stream(void* data, size_t size, size_t nmemb, void* userp) {
     }
 
     state->downloaded += bytes;
+
+    // Late total discovery: when HEAD didn't report a size, the GET
+    // response typically carries Content-Length in its headers. libcurl
+    // fills CURLINFO_CONTENT_LENGTH_DOWNLOAD_T from that as soon as the
+    // headers land, so we can pick it up on the first write callback.
+    if (state->total == 0 && state->curl) {
+        curl_off_t cl = 0;
+        if (curl_easy_getinfo(state->curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &cl) == CURLE_OK && cl > 0) {
+            state->total = static_cast<size_t>(cl);
+        }
+    }
 
     if (state->progress_callback) {
         auto now = std::chrono::steady_clock::now();
@@ -471,6 +488,8 @@ DownloadResult DownloadManager::download_file(
         result.error_message = "Download failed: curl_easy_init returned null";
         return result;
     }
+
+    state.curl = curl;
 
     char errbuf[CURL_ERROR_SIZE] = {0};
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
