@@ -53,10 +53,15 @@ enum class GenerationType {
  * Progress information - raw values from sd.cpp callback
  */
 struct ProgressInfo {
-    int step = 0;          // Current step (raw from sd.cpp)
-    int total_steps = 0;   // Total steps (raw from sd.cpp)
+    int step = 0;          // Current step (raw from sd.cpp) or percent for downloads
+    int total_steps = 0;   // Total steps (raw from sd.cpp) or 100 for downloads
+    // Byte-level progress. Populated by model_download jobs so the queue
+    // UI can show "N MB / M MB" instead of only a percentage; 0 when the
+    // job is not a download or the total isn't yet known.
+    uint64_t bytes_done = 0;
+    uint64_t bytes_total = 0;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(ProgressInfo, step, total_steps)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(ProgressInfo, step, total_steps, bytes_done, bytes_total)
 };
 
 /**
@@ -392,6 +397,11 @@ private:
     void save_state();
     void load_state();
     void update_progress(int step, int total_steps);
+    // Byte-level progress for model_download jobs. Called from the
+    // DownloadManager progress callback so the queue UI can show
+    // "N MB / M MB (P%)" instead of only a percentage. Passing bytes_total = 0
+    // means the size isn't known yet (HEAD didn't return Content-Length).
+    void update_download_progress(uint64_t bytes_done, uint64_t bytes_total);
     void set_batch_info(int total_images);
     void update_job_params(const std::string& job_id, const nlohmann::json& params);
     

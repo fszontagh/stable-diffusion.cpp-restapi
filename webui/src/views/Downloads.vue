@@ -376,8 +376,80 @@ const expandedArchs = ref<Set<string>>(new Set())
 function toggleArch(id: string) {
   const next = new Set(expandedArchs.value)
   if (next.has(id)) next.delete(id)
-  else next.add(id)
+  else {
+    next.add(id)
+    // Fetch remote sizes for this arch's entries on first expand so
+    // users see file size before they click Download. We resolve HF
+    // entries via HEAD (Content-Length after the CDN redirect); bundles
+    // and non-HF sources fall through.
+    const preset = appStore.architectures?.architectures[id]
+    if (preset?.downloads) {
+      for (const entry of preset.downloads) {
+        void fetchEntrySize(entry)
+      }
+    }
+  }
   expandedArchs.value = next
+}
+
+// Per-entry remote size cache. Value shape: bytes = number (resolved),
+// null = "we tried and got nothing", undefined key = not fetched yet.
+const sizePreviews = ref<Map<string, number | null>>(new Map())
+const sizeLoading = ref<Set<string>>(new Set())
+
+function entryKey(entry: ArchitectureDownload): string {
+  return `${entry.source}::${entry.repo_id ?? ''}::${entry.filename ?? ''}::${entry.url ?? ''}`
+}
+
+async function fetchEntrySize(entry: ArchitectureDownload): Promise<void> {
+  if (entry.size_bytes) return                  // author-supplied wins
+  if (entry.bundle === 'directory') return      // whole-repo bundles handled separately
+  const key = entryKey(entry)
+  if (sizePreviews.value.has(key) || sizeLoading.value.has(key)) return
+
+  let url = ''
+  if (entry.source === 'huggingface' && entry.repo_id && entry.filename) {
+    const rev = entry.revision ?? 'main'
+    url = `https://huggingface.co/${entry.repo_id}/resolve/${rev}/${entry.filename}`
+  } else if (entry.source === 'url' && entry.url) {
+    url = entry.url
+  } else {
+    return                                       // civitai needs its own API path; skip for now
+  }
+
+  sizeLoading.value = new Set(sizeLoading.value).add(key)
+  try {
+    // HEAD with redirect-following. HF actually returns Content-Length
+    // on the resolve endpoint even before the 302 to the CDN, but
+    // browsers automatically follow so we read the final response's
+    // headers via fetch().
+    const res = await fetch(url, { method: 'HEAD', mode: 'cors' })
+    const raw = res.headers.get('x-linked-size') ?? res.headers.get('content-length')
+    const bytes = raw ? parseInt(raw, 10) : NaN
+    const next = new Map(sizePreviews.value)
+    next.set(key, Number.isFinite(bytes) && bytes > 0 ? bytes : null)
+    sizePreviews.value = next
+  } catch {
+    // CORS block, network error, etc. Record as null so we don't
+    // hammer HF on every render.
+    const next = new Map(sizePreviews.value)
+    next.set(key, null)
+    sizePreviews.value = next
+  } finally {
+    const next = new Set(sizeLoading.value)
+    next.delete(key)
+    sizeLoading.value = next
+  }
+}
+
+function entrySize(entry: ArchitectureDownload): number | null {
+  if (entry.size_bytes) return entry.size_bytes
+  const v = sizePreviews.value.get(entryKey(entry))
+  return v ?? null
+}
+
+function entrySizeLoading(entry: ArchitectureDownload): boolean {
+  return sizeLoading.value.has(entryKey(entry))
 }
 function expandAll() {
   expandedArchs.value = new Set(archsWithDownloads.value.map(p => p.id))
@@ -533,7 +605,8 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
                 <span v-if="entry.repo_id"><code>{{ entry.repo_id }}</code></span>
                 <span v-if="entry.filename && entry.bundle !== 'directory'">/ {{ entry.filename }}</span>
                 <span v-if="entry.bundle === 'directory'" class="dir-note">(whole repo)</span>
-                <span v-if="entry.size_bytes" class="download-size">{{ formatFileSize(entry.size_bytes) }}</span>
+                <span v-if="entrySize(entry)" class="download-size" :title="entry.size_bytes ? 'From catalog' : 'Fetched from HuggingFace'">{{ formatFileSize(entrySize(entry)!) }}</span>
+                <span v-else-if="entrySizeLoading(entry)" class="download-size text-muted">…</span>
               </div>
               <p v-if="entry.notes" class="download-notes">{{ entry.notes }}</p>
               <div class="download-actions">
@@ -770,8 +843,8 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
           </div>
           <div class="job-status">
             <span :class="['status-badge', job.status]">{{ job.status }}</span>
-            <div v-if="job.status === 'processing' && job.progress" class="progress-text">
-              {{ job.progress.step }}%
+            <div v-if="job.status === 'processing' && job.progress" class="progress-text" :title="job.progress.bytes_total ? formatFileSize(job.progress.bytes_done ?? 0) + ' / ' + formatFileSize(job.progress.bytes_total) : ''">
+              {{ job.progress.bytes_total ? (Math.round((job.progress.bytes_done ?? 0) / job.progress.bytes_total * 100)) : job.progress.step }}%
             </div>
           </div>
         </div>

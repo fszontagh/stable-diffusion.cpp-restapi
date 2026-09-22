@@ -25,6 +25,15 @@ function handleReconnect() {
   store.showToast('Attempting to reconnect...', 'info')
 }
 
+// Model-load error: on click, open a native alert with the full text.
+// Toasts auto-dismiss in 4s which is not enough for a multi-line
+// sd.cpp error; alert() blocks until the user reads and dismisses.
+function showFullLoadError() {
+  const err = store.lastLoadError
+  if (!err) return
+  window.alert(err)
+}
+
 // Check if WebSocket is available at build time
 const wsAvailable = computed(() => {
   return store.health?.ws_enabled === true
@@ -133,10 +142,16 @@ function formatMB(mb: number): string {
         <span class="model-name">{{ store.modelName }}</span>
         <span class="model-arch" v-if="store.modelArchitecture">({{ store.modelArchitecture }})</span>
       </div>
-      <div class="model-info error" v-else-if="store.lastLoadError">
+      <button
+        v-else-if="store.lastLoadError"
+        type="button"
+        class="model-info error error-button"
+        :title="store.lastLoadError + '\n\n(click for full message)'"
+        @click="showFullLoadError"
+      >
         <span class="error-label">Error:</span>
-        <span class="error-text" :title="store.lastLoadError">{{ store.lastLoadError }}</span>
-      </div>
+        <span class="error-text">{{ store.lastLoadError }}</span>
+      </button>
       <div class="model-info empty" v-else>
         No model loaded
       </div>
@@ -314,6 +329,25 @@ function formatMB(mb: number): string {
 
 .model-info.error {
   color: var(--accent-error);
+}
+
+/* Turn the error line into a clickable button (opens the full message
+   as a toast) without breaking the existing .model-info flex layout. */
+.error-button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.error-button:hover .error-text {
+  text-decoration: underline;
 }
 
 .error-label {

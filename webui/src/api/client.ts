@@ -394,8 +394,13 @@ export interface ConvertResponse extends JobSubmitResponse {
 }
 
 export interface JobProgress {
-  step: number              // Current step (raw from sd.cpp callback)
-  total_steps: number       // Total steps (raw from sd.cpp callback)
+  step: number              // Current step (raw from sd.cpp callback) or percent for downloads
+  total_steps: number       // Total steps (raw from sd.cpp callback) or 100 for downloads
+  // Populated by model_download jobs so the queue UI can show
+  // "N MB / M MB (P%)" instead of only a percent. Zero when not a
+  // download or when the size isn't yet known.
+  bytes_done?: number
+  bytes_total?: number
 }
 
 export interface JobModelSettings {

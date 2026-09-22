@@ -45,6 +45,11 @@ export interface JobProgressData {
   job_id: string
   step: number
   total_steps: number
+  // Emitted by model_download jobs so the queue UI can show
+  // "N MB / M MB (P%)" instead of only a percent. Omitted for
+  // non-download jobs.
+  bytes_done?: number
+  bytes_total?: number
 }
 
 export interface JobPreviewData {

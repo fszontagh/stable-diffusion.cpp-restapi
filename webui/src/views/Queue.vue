@@ -519,6 +519,29 @@ function getDownloadTargetType(job: Job): string {
   return (job.params?.model_type as string | undefined) ?? ''
 }
 
+// Compact byte formatter for the download progress caption.
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.min(units.length - 1, Math.floor(Math.log(n) / Math.log(1024)))
+  return (n / Math.pow(1024, i)).toFixed(i >= 2 ? 2 : 0) + ' ' + units[i]
+}
+
+// "4.2 GB / 7.7 GB · 54%" for model_download jobs that have bytes_total
+// available; falls back to the percent-only line otherwise.
+function downloadProgressLabel(job: Job): string {
+  const p = job.progress
+  const done = p.bytes_done ?? 0
+  const total = p.bytes_total ?? 0
+  if (total > 0) {
+    return `${formatBytes(done)} / ${formatBytes(total)} · ${p.step}%`
+  }
+  if (done > 0) {
+    return `${formatBytes(done)} downloaded`
+  }
+  return `${p.step}% downloaded`
+}
+
 // One-line summary of what a model_hash job is hashing. Falls back to the
 // linked download job's target when the hash job's params haven't been
 // stitched with a file_path yet (very brief window right after enqueue).
@@ -1583,7 +1606,7 @@ async function sendImageToUpscale(outputPath: string) {
                 />
                 <div class="progress-details">
                   <template v-if="job.type === 'model_download'">
-                    {{ job.progress.step }}% downloaded
+                    {{ downloadProgressLabel(job) }}
                   </template>
                   <template v-else-if="job.type === 'model_hash'">
                     Hashing... {{ job.progress.step }}%

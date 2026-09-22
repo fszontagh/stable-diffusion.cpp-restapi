@@ -577,10 +577,27 @@ DownloadResult DownloadManager::download_file(
         return result;
     }
 
+    // Size check: if we ever knew a Content-Length (HEAD or the lazily-
+    // discovered value from the GET response headers), verify the bytes
+    // on disk match. Prior versions of this code accepted whatever landed,
+    // so a curl connection that quietly ended short (mid-shard TCP RST,
+    // CloudFront cache truncation) left a "successful" job with a
+    // truncated file - sd.cpp then failed to load with
+    // "tensor extends beyond its model file". Better to fail loudly here
+    // and delete the bad file so a retry gets a clean start.
+    size_t on_disk = fs::file_size(full_path);
+    if (state.total > 0 && on_disk != state.total) {
+        fs::remove(full_path);
+        result.error_message = "Downloaded file is truncated: got " +
+            std::to_string(on_disk) + " bytes, expected " +
+            std::to_string(state.total) + " (transfer ended without an error but bytes were missing)";
+        return result;
+    }
+
     result.success = true;
     result.file_path = full_path;
     result.file_name = filename;
-    result.file_size = fs::file_size(full_path);
+    result.file_size = on_disk;
     result.content_type = content_type;
 
     return result;

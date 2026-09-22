@@ -1406,11 +1406,55 @@ void QueueManager::update_progress(int step, int total_steps) {
     }
 }
 
+void QueueManager::update_download_progress(uint64_t bytes_done, uint64_t bytes_total) {
+    // Compute a % (rounded) so the same UI paths that read
+    // progress.step / total_steps for generation jobs still work for
+    // downloads. The bytes fields ride alongside so a download-aware
+    // renderer can show "N MB / M MB" instead of just a percent.
+    int step = 0;
+    int total_steps = 100;
+    if (bytes_total > 0) {
+        step = static_cast<int>((bytes_done * 100) / bytes_total);
+        if (step > 100) step = 100;
+    }
+
+    std::string job_id;
+    bool should_broadcast = false;
+    {
+        std::lock_guard<std::mutex> lock(progress_mutex_);
+        current_progress_.step = step;
+        current_progress_.total_steps = total_steps;
+        current_progress_.bytes_done = bytes_done;
+        current_progress_.bytes_total = bytes_total;
+
+        auto now = std::chrono::steady_clock::now();
+        if (now - last_progress_broadcast_ >= PROGRESS_THROTTLE_MS) {
+            last_progress_broadcast_ = now;
+            should_broadcast = true;
+            job_id = current_job_id_;
+        }
+    }
+
+    if (should_broadcast && !job_id.empty()) {
+        if (auto* ws = get_websocket_server()) {
+            ws->broadcast(WSEventType::JobProgress, {
+                {"job_id", job_id},
+                {"step", step},
+                {"total_steps", total_steps},
+                {"bytes_done", bytes_done},
+                {"bytes_total", bytes_total}
+            });
+        }
+    }
+}
+
 void QueueManager::set_batch_info(int /*total_images*/) {
     std::lock_guard<std::mutex> lock(progress_mutex_);
     // Reset progress for new job
     current_progress_.step = 0;
     current_progress_.total_steps = 0;
+    current_progress_.bytes_done = 0;
+    current_progress_.bytes_total = 0;
 }
 
 void QueueManager::update_preview(int step, int frame_count, const std::vector<uint8_t>& jpeg_data,
@@ -2029,13 +2073,12 @@ std::vector<std::string> QueueManager::process_model_download_unlocked(
 
         DownloadResult result;
 
-        // Update progress callback for download
+        // Update progress callback for download. Forwards the raw byte
+        // counts so the queue-item card can render
+        // "downloaded / total (percent)" instead of just a percent.
         auto progress_callback = [this](size_t downloaded, size_t total, size_t /*speed*/) {
-            int progress = 0;
-            if (total > 0) {
-                progress = static_cast<int>((downloaded * 100) / total);
-            }
-            update_progress(progress, 100);
+            update_download_progress(static_cast<uint64_t>(downloaded),
+                                     static_cast<uint64_t>(total));
         };
 
         if (source == "civitai") {

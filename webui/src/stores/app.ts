@@ -738,7 +738,12 @@ export const useAppStore = defineStore('app', () => {
           if (job) {
             job.progress = {
               step: data.step,
-              total_steps: data.total_steps
+              total_steps: data.total_steps,
+              // Model-download events carry byte counts; other events
+              // don't. Falling back to 0 keeps the JobProgress shape
+              // stable so components can key off `bytes_total > 0`.
+              bytes_done: data.bytes_done ?? 0,
+              bytes_total: data.bytes_total ?? 0
             }
           }
         }
