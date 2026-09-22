@@ -749,7 +749,7 @@
         "llm": "Qwen3-VL-8B-Instruct (safetensors or GGUF)"
       },
       "optionalComponents": {
-        "llm_vision": "mmproj-Qwen3VL-8B-Instruct-F16.gguf (image editing with GGUF LLM)"
+        "llm_vision": "Qwen3-VL-8B-Instruct/mmproj-F16.gguf - required for image editing when the LLM is a GGUF"
       },
       "loadOptions": {
         "flash_attn": true,
@@ -823,13 +823,14 @@
         },
         {
           "id": "llm-mmproj",
-          "label": "mmproj-Qwen3VL-8B-Instruct-F16.gguf (needed for editing with a GGUF LLM)",
+          "label": "Qwen3-VL-8B-Instruct mmproj-F16.gguf (needed for editing with a GGUF LLM)",
           "component": "llm_vision",
           "target_type": "llm",
           "source": "huggingface",
-          "repo_id": "Qwen/Qwen3-VL-8B-Instruct-GGUF",
-          "filename": "mmproj-Qwen3VL-8B-Instruct-F16.gguf",
-          "subfolder": "Qwen3-VL-8B-Instruct"
+          "repo_id": "unsloth/Qwen3-VL-8B-Instruct-GGUF",
+          "filename": "mmproj-F16.gguf",
+          "subfolder": "Qwen3-VL-8B-Instruct",
+          "notes": "Same file as the Boogu-Image mmproj entry - lands at Qwen3-VL-8B-Instruct/mmproj-F16.gguf on disk. Downloading it from either arch's card is a no-op if the other already fetched it."
         }
       ]
     },
@@ -1599,7 +1600,7 @@
         "llm": "Qwen3-VL-8B-Instruct (GGUF)"
       },
       "optionalComponents": {
-        "llm_vision": "mmproj-Qwen3VL-8B-Instruct (GGUF, only for Boogu Image Edit)"
+        "llm_vision": "Qwen3-VL-8B-Instruct/mmproj-F16.gguf - only for Boogu Image Edit"
       },
       "loadOptions": {
         "flash_attn": true,
@@ -1671,13 +1672,14 @@
         },
         {
           "id": "llm-vision-mmproj",
-          "label": "mmproj-Qwen3VL-8B-Instruct (F16, needed for the Edit variant)",
+          "label": "Qwen3-VL-8B-Instruct mmproj-F16.gguf (needed for the Edit variant)",
           "component": "llm_vision",
           "target_type": "llm",
           "source": "huggingface",
           "repo_id": "unsloth/Qwen3-VL-8B-Instruct-GGUF",
           "filename": "mmproj-F16.gguf",
-          "subfolder": "Qwen3-VL-8B-Instruct"
+          "subfolder": "Qwen3-VL-8B-Instruct",
+          "notes": "Same file the Qwen-Image-2.1 mmproj entry uses; lands at Qwen3-VL-8B-Instruct/mmproj-F16.gguf. Downloading from either arch's card is a no-op if the other already fetched it."
         }
       ]
     },

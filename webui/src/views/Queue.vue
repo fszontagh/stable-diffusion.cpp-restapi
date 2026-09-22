@@ -1051,7 +1051,19 @@ function normalizeLegacyLoadOptions(input: unknown): LoadModelParams['options'] 
 // populated from navigateWithSettings, so the user can retry the load
 // from the ModelLoad page if needed.
 async function loadModelInBackground(job: Job) {
-  const settings = job.model_settings
+  // The /queue list endpoint strips model_settings.load_options for
+  // payload-size reasons, so a click here has to refetch the full job
+  // before it can rebuild the load request. Fetch is a no-op cost - one
+  // extra 50 ms round-trip - and the failure mode (list job has settings
+  // but no options) is already handled by falling back to whatever's on
+  // the list item.
+  let settings = job.model_settings
+  if (settings && !settings.load_options) {
+    try {
+      const full = await api.getJob(job.job_id)
+      if (full?.model_settings) settings = full.model_settings
+    } catch { /* keep list snapshot */ }
+  }
   if (!settings?.model_name) return
 
   try {
@@ -1154,7 +1166,15 @@ async function loadModelAndRestart() {
 
   showModelConfirmModal.value = false
 
-  const settings = job.model_settings
+  // Refetch full job so load_options is present - the /queue list
+  // endpoint strips it for payload-size reasons.
+  let settings = job.model_settings
+  if (settings && !settings.load_options) {
+    try {
+      const full = await api.getJob(job.job_id)
+      if (full?.model_settings) settings = full.model_settings
+    } catch { /* keep list snapshot */ }
+  }
   if (!settings.model_name) {
     store.showToast('Job has no model information', 'error')
     return

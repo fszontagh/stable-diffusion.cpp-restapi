@@ -2291,6 +2291,28 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
 
     // Handle grouped response
     const std::string base_url = compute_base_url(req, trusted_proxies_);
+
+    // Slim per-item payload for the list endpoint - see the block below
+    // for the rationale + kept fields. Declared here so both the grouped
+    // and flat paths share it.
+    auto slim_job_list_item = [](nlohmann::json& j) {
+        if (j.contains("params") && j["params"].is_object()) {
+            auto& p = j["params"];
+            for (auto it = p.begin(); it != p.end();) {
+                const std::string& k = it.key();
+                bool drop = false;
+                if (k.size() > 7 && k.compare(k.size() - 7, 7, "_base64") == 0) drop = true;
+                else if (k == "ref_images" || k == "init_image_base64" ||
+                         k == "mask_base64" || k == "image_base64") drop = true;
+                if (drop) it = p.erase(it);
+                else ++it;
+            }
+        }
+        if (j.contains("model_settings") && j["model_settings"].is_object()) {
+            j["model_settings"].erase("load_options");
+        }
+    };
+
     if (group_by == "date") {
         auto grouped_result = queue_manager_.get_jobs_grouped_by_date(filter, page, limit);
 
@@ -2306,6 +2328,7 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
             for (const auto& job : group.items) {
                 nlohmann::json job_json = job.to_json();
                 inject_output_urls(job_json, base_url);
+                slim_job_list_item(job_json);
                 items.push_back(std::move(job_json));
             }
             group_json["items"] = items;
@@ -2329,13 +2352,18 @@ void RequestHandlers::handle_get_queue(const httplib::Request& req, httplib::Res
         return;
     }
 
-    // Standard paginated response
+    // Standard paginated response.
+    // See slim_job_list_item above: strip base64 refs + load_options from
+    // list items; clients that need the full payload fetch it via
+    // /queue/{job_id}. On real installs this dropped a 20-item response
+    // from ~1 MB to ~50 KB.
     auto page_result = queue_manager_.get_jobs_paginated(filter);
     nlohmann::json items = nlohmann::json::array();
 
     for (const auto& job : page_result.items) {
         nlohmann::json job_json = job.to_json();
         inject_output_urls(job_json, base_url);
+        slim_job_list_item(job_json);
         items.push_back(std::move(job_json));
     }
 
