@@ -152,6 +152,14 @@ const requiredComponents = computed(() => {
   return currentArchitecture.value.requiredComponents || {}
 })
 
+// Computed: Optional components from the preset. Drives the visibility
+// of pickers whose slot isn't universally applicable (llm_vision for
+// image-edit archs, for example).
+const optionalComponents = computed((): Record<string, string> => {
+  if (!currentArchitecture.value) return {}
+  return currentArchitecture.value.optionalComponents || {}
+})
+
 // Format file size
 function formatSize(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -228,6 +236,8 @@ async function handleLoadModel() {
     if (loadParams.value.ip_adapter) params.ip_adapter = loadParams.value.ip_adapter
     if (loadParams.value.motion_module) params.motion_module = loadParams.value.motion_module
     if (loadParams.value.llm) params.llm = loadParams.value.llm
+    if (loadParams.value.llm_vision) params.llm_vision = loadParams.value.llm_vision
+    if (loadParams.value.clip_vision) params.clip_vision = loadParams.value.clip_vision
     if (loadParams.value.taesd) params.taesd = loadParams.value.taesd
     params.options = loadParams.value.options
 
@@ -618,6 +628,22 @@ function onKeepAllInRam(e: Event) {
               </option>
             </select>
             <small class="form-hint">{{ requiredComponents.llm }}</small>
+          </div>
+
+          <!-- LLM Vision (mmproj) — surfaced whenever the architecture's
+               optionalComponents block lists it (Qwen-Image-2.1,
+               Qwen-Image-Edit, Boogu-Image Edit). Enables image-edit
+               with a GGUF LLM by giving sd.cpp the multi-modal
+               projection file. -->
+          <div v-if="optionalComponents.llm_vision" class="form-group">
+            <label class="form-label">
+              LLM Vision (mmproj) <span class="optional-badge">Optional</span>
+            </label>
+            <select v-model="loadParams.llm_vision" class="form-select">
+              <option value="">None</option>
+              <option v-for="m in llmModels" :key="m.name" :value="m.name">{{ m.name }}</option>
+            </select>
+            <small class="form-hint">{{ optionalComponents.llm_vision }}</small>
           </div>
         </div>
       </section>
