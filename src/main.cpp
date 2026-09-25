@@ -312,6 +312,7 @@ int main(int argc, char* argv[]) {
                   << " (retention: " << config.recycle_bin.retention_minutes << " minutes)" << std::endl;
         sdcpp::QueueManager queue_manager(model_manager, config.paths.output, state_file, config.recycle_bin);
         queue_manager.set_group_folders_enabled(config.output_group_folders);
+        queue_manager.set_output_path_template(config.output_path_template);
 
         // Initialize preview settings from config
         if (config.preview.enabled) {

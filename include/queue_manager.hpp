@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <thread>
 #include <atomic>
+#include <shared_mutex>
 #include <functional>
 #include <chrono>
 #include <optional>
@@ -437,6 +438,15 @@ private:
     // useful precisely when expand_prompt creates many similar outputs.
     std::atomic<bool> group_folders_enabled_{true};
 
+    // Rendered per-job to produce the subpath under output_dir_.
+    // Supported placeholders: {job_id}, {group_id}, {date}, {year},
+    // {month}, {day}, {type}, {model}. Empty template = legacy flat
+    // "<job_id>" (or "<group_id>/<job_id>" when group_folders_enabled_
+    // is on). Guarded by a shared_mutex so PUT /settings/output can
+    // swap it while a worker is reading.
+    mutable std::shared_mutex output_template_mutex_;
+    std::string output_path_template_;
+
 public:
     void set_group_folders_enabled(bool enabled) {
         group_folders_enabled_.store(enabled, std::memory_order_relaxed);
@@ -444,9 +454,32 @@ public:
     bool get_group_folders_enabled() const {
         return group_folders_enabled_.load(std::memory_order_relaxed);
     }
+    void set_output_path_template(const std::string& tpl) {
+        std::unique_lock<std::shared_mutex> lk(output_template_mutex_);
+        output_path_template_ = tpl;
+    }
+    std::string get_output_path_template() const {
+        std::shared_lock<std::shared_mutex> lk(output_template_mutex_);
+        return output_path_template_;
+    }
     // Output directory that job output paths are relative to. Used by callers
     // (e.g. MCP image tool) that need to read generated files off disk.
     const std::string& output_dir() const { return output_dir_; }
+
+    // Render an output-path template with the given job context. Exposed
+    // so the WebUI can preview a template server-side and so
+    // save_job_config can reuse the same logic. Sanitises each rendered
+    // placeholder (path separators, "..", control chars -> '_') and
+    // drops empty path segments. Returns the legacy subpath layout when
+    // `tpl` is empty. `type` and `model` may be empty; unknown
+    // placeholders are left literal.
+    static std::string render_output_path(const std::string& tpl,
+                                          const std::string& job_id,
+                                          const nlohmann::json& params,
+                                          std::chrono::system_clock::time_point created_at,
+                                          const std::string& type,
+                                          const std::string& model,
+                                          bool group_folders_fallback);
 private:
     /**
      * Compose the per-job subpath under output_dir_. Returns "<group_id>/<job_id>"

@@ -201,7 +201,17 @@ struct Config {
     // users locate all variations of a single template-expansion together.
     // Toggleable from the WebUI Settings page.
     bool output_group_folders = true;
-    
+
+    // Template that resolves to the per-job output subpath under
+    // <output_dir>. Renders placeholders like {date}, {job_id}, {type},
+    // {group_id}, {model}, {year}, {month}, {day}. Empty/unset preserves
+    // the legacy flat-<job_id> layout so upgrades don't reshape any
+    // existing output tree. Fresh installs (scripts/install.sh) seed
+    // "{date}/{job_id}" so jobs land grouped by day out of the box.
+    // Editable at runtime via PUT /settings/output.
+    std::string output_path_template = "";
+
+
     /**
      * Load configuration from JSON file
      * @param path Path to config.json

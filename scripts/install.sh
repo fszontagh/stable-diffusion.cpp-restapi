@@ -793,6 +793,7 @@ CONFIGEOF
         "flash_attn": true,
         "offload_to_cpu": false
     },
+    "output_path_template": "{date}/{job_id}",
     "assistant": {
         "enabled": ${ASSISTANT_ENABLED_JSON},
         "endpoint": "${ASSISTANT_ENDPOINT}",

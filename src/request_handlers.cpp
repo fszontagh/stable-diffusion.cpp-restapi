@@ -2549,29 +2549,59 @@ void RequestHandlers::handle_clear_recycle_bin(const httplib::Request& /*req*/, 
     });
 }
 
-void RequestHandlers::handle_get_output_settings(const httplib::Request& /*req*/, httplib::Response& res) {
-    send_json(res, {
-        {"output_group_folders", queue_manager_.get_group_folders_enabled()}
-    }, 200);
+void RequestHandlers::handle_get_output_settings(const httplib::Request& req, httplib::Response& res) {
+    nlohmann::json payload = {
+        {"output_group_folders", queue_manager_.get_group_folders_enabled()},
+        {"output_path_template", queue_manager_.get_output_path_template()}
+    };
+    // Optional preview: ?preview=<template> renders a sample path so
+    // the WebUI can show live feedback while the operator types. Uses
+    // a dummy job_id + right-now timestamp + placeholder type/model.
+    if (req.has_param("preview")) {
+        const std::string sample_id = "00000000-1111-2222-3333-444455556666";
+        auto now = std::chrono::system_clock::now();
+        nlohmann::json sample_params = { {"variation_group_id", "group-42"} };
+        payload["preview"] = sdcpp::QueueManager::render_output_path(
+            req.get_param_value("preview"), sample_id, sample_params, now,
+            "txt2img", "SampleModel.gguf",
+            queue_manager_.get_group_folders_enabled());
+    }
+    send_json(res, payload, 200);
 }
 
 void RequestHandlers::handle_set_output_settings(const httplib::Request& req, httplib::Response& res) {
     try {
         auto body = parse_json_body(req);
-        // Strict body validation: only output_group_folders is accepted.
+        // Strict body validation: only output_group_folders + output_path_template accepted.
         for (auto it = body.begin(); it != body.end(); ++it) {
-            if (it.key() != "output_group_folders") {
+            if (it.key() != "output_group_folders" && it.key() != "output_path_template") {
                 send_error(res,
                     "Unknown field(s) in /settings/output body: " + it.key()
-                    + ". Accepted: output_group_folders.", 400);
+                    + ". Accepted: output_group_folders, output_path_template.", 400);
                 return;
             }
         }
         if (body.contains("output_group_folders") && body["output_group_folders"].is_boolean()) {
             queue_manager_.set_group_folders_enabled(body["output_group_folders"].get<bool>());
         }
+        if (body.contains("output_path_template")) {
+            if (!body["output_path_template"].is_string()) {
+                send_error(res, "output_path_template must be a string", 400);
+                return;
+            }
+            std::string tpl = body["output_path_template"].get<std::string>();
+            // Reject templates that would let a job escape output_dir. Absolute
+            // paths and any literal ".." segment in the template itself are
+            // banned; per-placeholder values are also sanitised at render time.
+            if (!tpl.empty() && (tpl.front() == '/' || tpl.find("..") != std::string::npos)) {
+                send_error(res, "output_path_template cannot start with '/' or contain '..'", 400);
+                return;
+            }
+            queue_manager_.set_output_path_template(tpl);
+        }
         send_json(res, {
-            {"output_group_folders", queue_manager_.get_group_folders_enabled()}
+            {"output_group_folders", queue_manager_.get_group_folders_enabled()},
+            {"output_path_template", queue_manager_.get_output_path_template()}
         }, 200);
     } catch (const std::exception& e) {
         send_error(res, e.what(), 400);

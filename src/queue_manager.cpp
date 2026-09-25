@@ -15,6 +15,8 @@ using F = sdcpp::QueueItemFields;
 #include <filesystem>
 #include <algorithm>
 #include <set>
+#include <map>
+#include <ctime>
 #include <cctype>
 
 namespace sdcpp {
@@ -1827,18 +1829,136 @@ std::vector<std::string> QueueManager::process_convert_unlocked(
     return { output_path };
 }
 
-std::string QueueManager::resolve_job_subpath(const std::string& job_id,
-                                                const nlohmann::json& params) const {
-    if (!group_folders_enabled_.load(std::memory_order_relaxed)) {
+// Sanitise a single placeholder value: strip path separators, ".."
+// components and non-printable / control characters so a template like
+// "{model}/{job_id}" can't be used to escape output_dir. Applied to
+// each rendered value, NOT to the template itself (the template's
+// literal '/' characters are intended path separators).
+static std::string sanitize_path_component(const std::string& in) {
+    std::string out;
+    out.reserve(in.size());
+    for (char c : in) {
+        unsigned char u = static_cast<unsigned char>(c);
+        if (u < 0x20 || u == 0x7f) { out += '_'; continue; }
+        if (c == '/' || c == '\\' || c == ':' || c == '\0') { out += '_'; continue; }
+        out += c;
+    }
+    // Neutralise ".." components (both leading and .. anywhere as its
+    // own segment). Rare - only bites if someone's model name literally
+    // is "..". Belt and suspenders.
+    if (out == "..") return "_";
+    return out;
+}
+
+static std::string zero_pad(int n, int width) {
+    std::string s = std::to_string(n);
+    while (static_cast<int>(s.size()) < width) s.insert(0, "0");
+    return s;
+}
+
+std::string QueueManager::render_output_path(const std::string& tpl,
+                                             const std::string& job_id,
+                                             const nlohmann::json& params,
+                                             std::chrono::system_clock::time_point created_at,
+                                             const std::string& type,
+                                             const std::string& model,
+                                             bool group_folders_fallback) {
+    // Legacy path: empty template preserves the historical layout
+    // exactly so upgrades don't reshape the output tree.
+    if (tpl.empty()) {
+        if (group_folders_fallback &&
+            params.contains("variation_group_id") &&
+            params["variation_group_id"].is_string()) {
+            const auto& g = params["variation_group_id"].get_ref<const std::string&>();
+            if (!g.empty()) {
+                return sanitize_path_component(g) + "/" + job_id;
+            }
+        }
         return job_id;
     }
+
+    // Collect placeholder values.
+    auto tt = std::chrono::system_clock::to_time_t(created_at);
+    std::tm lt{};
+    localtime_r(&tt, &lt);
+    std::string group_id;
     if (params.contains("variation_group_id") && params["variation_group_id"].is_string()) {
-        const auto& g = params["variation_group_id"].get_ref<const std::string&>();
-        if (!g.empty()) {
-            return g + "/" + job_id;
+        group_id = params["variation_group_id"].get<std::string>();
+    }
+    std::string model_base = model;
+    auto slash = model_base.find_last_of('/');
+    if (slash != std::string::npos) model_base.erase(0, slash + 1);
+
+    std::map<std::string, std::string> vars = {
+        {"{job_id}",   sanitize_path_component(job_id)},
+        {"{group_id}", sanitize_path_component(group_id)},
+        {"{date}",     zero_pad(lt.tm_year + 1900, 4) + "-" + zero_pad(lt.tm_mon + 1, 2) + "-" + zero_pad(lt.tm_mday, 2)},
+        {"{year}",     zero_pad(lt.tm_year + 1900, 4)},
+        {"{month}",    zero_pad(lt.tm_mon + 1, 2)},
+        {"{day}",      zero_pad(lt.tm_mday, 2)},
+        {"{hour}",     zero_pad(lt.tm_hour, 2)},
+        {"{minute}",   zero_pad(lt.tm_min, 2)},
+        {"{type}",     sanitize_path_component(type)},
+        {"{model}",    sanitize_path_component(model_base)},
+    };
+
+    // Replace placeholders. Unknown {...} tokens are left literal so
+    // typos are visible on disk instead of silently swallowed.
+    std::string rendered = tpl;
+    for (const auto& [k, v] : vars) {
+        size_t pos = 0;
+        while ((pos = rendered.find(k, pos)) != std::string::npos) {
+            rendered.replace(pos, k.size(), v);
+            pos += v.size();
         }
     }
-    return job_id;
+
+    // Collapse empty path segments so "{date}/{group_id}/{job_id}" with
+    // no group_id renders as "2026-09-25/<uuid>", not
+    // "2026-09-25//<uuid>". Also strip leading/trailing slashes.
+    std::vector<std::string> segs;
+    std::string cur;
+    for (char c : rendered) {
+        if (c == '/') {
+            if (!cur.empty()) { segs.push_back(std::move(cur)); cur.clear(); }
+        } else {
+            cur += c;
+        }
+    }
+    if (!cur.empty()) segs.push_back(std::move(cur));
+
+    // Safety net: if every placeholder was empty the rendered path is
+    // empty. Fall back to the job_id so we never write outside
+    // output_dir_ or into its root.
+    if (segs.empty()) return job_id;
+
+    std::string joined = segs.front();
+    for (size_t i = 1; i < segs.size(); ++i) { joined += '/'; joined += segs[i]; }
+    return joined;
+}
+
+std::string QueueManager::resolve_job_subpath(const std::string& job_id,
+                                                const nlohmann::json& params) const {
+    std::string tpl = get_output_path_template();
+    std::chrono::system_clock::time_point created_at;
+    std::string type;
+    std::string model;
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        auto it = jobs_.find(job_id);
+        if (it != jobs_.end()) {
+            created_at = it->second.created_at;
+            type = generation_type_to_string(it->second.type);
+            if (it->second.model_settings.contains("model_name") &&
+                it->second.model_settings["model_name"].is_string()) {
+                model = it->second.model_settings["model_name"].get<std::string>();
+            }
+        } else {
+            created_at = std::chrono::system_clock::now();
+        }
+    }
+    return render_output_path(tpl, job_id, params, created_at, type, model,
+                              group_folders_enabled_.load(std::memory_order_relaxed));
 }
 
 void QueueManager::save_job_config(const std::string& job_id, GenerationType type, const nlohmann::json& params) {

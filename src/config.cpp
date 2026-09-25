@@ -232,7 +232,8 @@ void to_json(nlohmann::json& j, const Config& c) {
         {"auth", c.auth},
         {"mcp", c.mcp},
         {"scanning", c.scanning},
-        {"output_group_folders", c.output_group_folders}
+        {"output_group_folders", c.output_group_folders},
+        {"output_path_template", c.output_path_template}
     };
 }
 
@@ -266,6 +267,9 @@ void from_json(const nlohmann::json& j, Config& c) {
     }
     if (j.contains("output_group_folders")) {
         c.output_group_folders = j["output_group_folders"].get<bool>();
+    }
+    if (j.contains("output_path_template") && j["output_path_template"].is_string()) {
+        c.output_path_template = j["output_path_template"].get<std::string>();
     }
     // NOTE: env-var fallback (SDCPP_AUTH_USERNAME / SDCPP_AUTH_PASSWORD) is
     // applied by AuthManager's constructor, not here, so the Config object

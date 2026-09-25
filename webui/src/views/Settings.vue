@@ -35,6 +35,15 @@ const integrationsSaving = ref(false)
 // Mirrors backend QueueManager::group_folders_enabled_ — when on, jobs
 // from expand_prompt land in <output>/<group_id>/<job_id>/.
 const outputGroupFolders = ref(true)
+// Per-job output subpath template rendered by QueueManager. Empty =
+// legacy flat "<job_id>" layout (or "<group_id>/<job_id>" when
+// group_folders is on). Placeholders: {date}, {year}, {month}, {day},
+// {hour}, {minute}, {job_id}, {group_id}, {type}, {model}.
+const outputPathTemplate = ref('')
+// Live preview rendered server-side so operators see the exact
+// sanitisation + segment-collapsing behaviour before saving.
+const outputPathPreview = ref('')
+let outputPathPreviewTimer: ReturnType<typeof setTimeout> | null = null
 
 // Generation preferences - mode sub-tab
 const generationMode = ref<'txt2img' | 'img2img' | 'txt2vid'>('txt2img')
@@ -217,6 +226,10 @@ async function loadOutputSettings() {
   try {
     const r = await api.getOutputSettings()
     outputGroupFolders.value = !!r.output_group_folders
+    outputPathTemplate.value = r.output_path_template ?? ''
+    // Prime the preview so the user sees today's sample path
+    // immediately, without having to type first.
+    refreshOutputPathPreview()
   } catch (e) {
     console.error('Failed to load output settings:', e)
   }
@@ -224,10 +237,31 @@ async function loadOutputSettings() {
 
 async function saveOutputSettings() {
   try {
-    await api.setOutputSettings({ output_group_folders: outputGroupFolders.value })
+    await api.setOutputSettings({
+      output_group_folders: outputGroupFolders.value,
+      output_path_template: outputPathTemplate.value,
+    })
+    store.showToast('Output settings saved', 'success')
   } catch (e) {
-    console.error('Failed to save output settings:', e)
+    store.showToast(e instanceof Error ? e.message : 'Failed to save output settings', 'error')
   }
+}
+
+// Debounced preview fetch: as the operator edits the template, ask the
+// server to render a sample path so they can see exactly what
+// placeholders resolve to (including sanitisation + empty-segment
+// collapsing). Server-side rendering keeps the preview honest even if
+// we tweak the renderer later.
+async function refreshOutputPathPreview() {
+  if (outputPathPreviewTimer) clearTimeout(outputPathPreviewTimer)
+  outputPathPreviewTimer = setTimeout(async () => {
+    try {
+      const r = await api.getOutputSettings(outputPathTemplate.value)
+      outputPathPreview.value = r.preview ?? ''
+    } catch {
+      outputPathPreview.value = ''
+    }
+  }, 250)
 }
 
 async function loadGenerationDefaults() {
@@ -692,9 +726,36 @@ loadSettings()
                 <SwitchField
                   v-model="outputGroupFolders"
                   label="Group expand-prompt outputs into a folder per variation group"
-                  description="When enabled, jobs created via {a|b|c} prompt expansion write to <output>/<group_id>/<job_id>/ instead of flat <output>/<job_id>/. Easier to compare variations side-by-side."
+                  description="Only applies when the path template below is empty. When both are on, jobs from {a|b|c} prompt expansion write to <output>/<group_id>/<job_id>/ instead of flat <output>/<job_id>/."
                   @update:model-value="saveOutputSettings"
                 />
+
+                <div class="stack-sm" style="margin-top: 16px;">
+                  <label class="field-label" for="output-path-template">Output subpath template</label>
+                  <input
+                    id="output-path-template"
+                    v-model="outputPathTemplate"
+                    class="input mono"
+                    type="text"
+                    spellcheck="false"
+                    placeholder="{date}/{job_id}"
+                    @input="refreshOutputPathPreview"
+                    @blur="saveOutputSettings"
+                  />
+                  <p class="field-hint">
+                    Empty = legacy flat <code>&lt;output&gt;/&lt;job_id&gt;/</code> layout (kept for existing installs).
+                    Placeholders:
+                    <code>{date}</code> <code>{year}</code> <code>{month}</code> <code>{day}</code>
+                    <code>{hour}</code> <code>{minute}</code>
+                    <code>{job_id}</code> <code>{group_id}</code>
+                    <code>{type}</code> <code>{model}</code>.
+                    Literal <code>/</code> makes a subdirectory. Empty placeholder values (e.g. no group) collapse cleanly.
+                    Changes apply to the next queued job - no restart.
+                  </p>
+                  <div v-if="outputPathPreview" class="preview-line">
+                    Sample: <code>&lt;output&gt;/{{ outputPathPreview }}/</code>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1525,6 +1586,21 @@ loadSettings()
 
 .settings-card-body {
   padding: 1rem;
+}
+
+.preview-line {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  border-left: 2px solid var(--accent-primary);
+  background: rgba(var(--accent-rgb), 0.08);
+  border-radius: 3px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.preview-line code {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
 }
 
 .integration-status {

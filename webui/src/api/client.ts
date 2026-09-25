@@ -1034,10 +1034,11 @@ class ApiClient {
     return this.request('GET', '/settings/recycle-bin')
   }
 
-  async getOutputSettings(): Promise<{ output_group_folders: boolean }> {
-    return this.request('GET', '/settings/output')
+  async getOutputSettings(preview?: string): Promise<OutputSettingsResponse> {
+    const qs = preview !== undefined ? '?preview=' + encodeURIComponent(preview) : ''
+    return this.request('GET', '/settings/output' + qs)
   }
-  async setOutputSettings(s: { output_group_folders: boolean }): Promise<{ output_group_folders: boolean }> {
+  async setOutputSettings(s: Partial<{ output_group_folders: boolean; output_path_template: string }>): Promise<OutputSettingsResponse> {
     return this.request('PUT', '/settings/output', s)
   }
 
@@ -1282,6 +1283,13 @@ export interface PreviewSettingsUpdateResponse {
 export interface AutoUnloadPerKind {
   enabled: boolean
   timeout_minutes: number
+}
+
+export interface OutputSettingsResponse {
+  output_group_folders: boolean
+  output_path_template: string
+  // Present only when the request included ?preview=<template>.
+  preview?: string
 }
 
 export interface AutoUnloadSettings {
