@@ -255,6 +255,10 @@ private:
     std::string output_dir_;
     std::string webui_dir_;
     std::string docs_dir_;
+    // Path to config.json. Kept so PUT /settings/output can persist the
+    // template + group-folders toggle across restarts (in-memory only
+    // meant those settings evaporated on service restart).
+    std::string config_file_path_;
     std::unique_ptr<ArchitectureManager> architecture_manager_;
     std::unique_ptr<SettingsManager> settings_manager_;
     std::unique_ptr<ApiRegistry> api_registry_;

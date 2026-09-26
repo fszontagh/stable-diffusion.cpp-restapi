@@ -175,7 +175,8 @@ RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queu
       allow_public_outputs_(config.auth.allow_public_outputs),
       trusted_proxies_(config.server.trusted_proxies),
       mcp_image_tool_enabled_(config.mcp.image_tool_enabled),
-      output_dir_(output_dir), webui_dir_(webui_dir), docs_dir_(docs_dir)
+      output_dir_(output_dir), webui_dir_(webui_dir), docs_dir_(docs_dir),
+      config_file_path_(config_file_path)
     // ArchitectureManager uses config directory (where model_architectures.json lives), not output directory
     , architecture_manager_(std::make_unique<ArchitectureManager>(
           config_file_path.empty() ? output_dir : fs::path(config_file_path).parent_path().string()))
@@ -2599,9 +2600,42 @@ void RequestHandlers::handle_set_output_settings(const httplib::Request& req, ht
             }
             queue_manager_.set_output_path_template(tpl);
         }
+
+        // Persist to config.json so the values survive a restart. Same
+        // rewrite-the-whole-file pattern the AssistantClient uses:
+        // read, replace the two fields, dump back with pretty formatting
+        // so operators can still hand-edit. Failure is logged but not
+        // returned - the runtime change already took effect, so the
+        // operator can retry save later; we still tell them via a
+        // "persisted" flag in the response.
+        bool persisted = false;
+        if (!config_file_path_.empty()) {
+            try {
+                std::ifstream in(config_file_path_);
+                nlohmann::json existing;
+                if (in.is_open()) {
+                    in >> existing;
+                }
+                existing["output_group_folders"] = queue_manager_.get_group_folders_enabled();
+                existing["output_path_template"] = queue_manager_.get_output_path_template();
+                std::ofstream out(config_file_path_);
+                if (out.is_open()) {
+                    out << existing.dump(4);
+                    persisted = true;
+                } else {
+                    std::cerr << "[RequestHandlers] Could not open " << config_file_path_
+                              << " for writing output settings" << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[RequestHandlers] Failed to persist output settings: "
+                          << e.what() << std::endl;
+            }
+        }
+
         send_json(res, {
             {"output_group_folders", queue_manager_.get_group_folders_enabled()},
-            {"output_path_template", queue_manager_.get_output_path_template()}
+            {"output_path_template", queue_manager_.get_output_path_template()},
+            {"persisted", persisted}
         }, 200);
     } catch (const std::exception& e) {
         send_error(res, e.what(), 400);
