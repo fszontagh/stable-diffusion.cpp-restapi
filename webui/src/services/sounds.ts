@@ -135,7 +135,7 @@ export function playSound(id: SoundEventId): void {
   ensurePool()
   const slot = audioPool[poolCursor]
   poolCursor = (poolCursor + 1) % POOL_SIZE
-  slot.src = `/sounds/${slug}.mp3`
+  slot.src = `/ui/sounds/${slug}.mp3`
   slot.volume = Math.max(0, Math.min(1, prefs.volume))
   // Autoplay is a user-gesture-gated promise on Chromium; the promise
   // rejects when the user hasn't clicked yet. Swallowed - the toast
@@ -149,7 +149,7 @@ export function previewSlug(slug: string): void {
   ensurePool()
   const slot = audioPool[poolCursor]
   poolCursor = (poolCursor + 1) % POOL_SIZE
-  slot.src = `/sounds/${slug}.mp3`
+  slot.src = `/ui/sounds/${slug}.mp3`
   slot.volume = Math.max(0, Math.min(1, prefs.volume))
   void slot.play().catch(() => { /* silent */ })
 }
