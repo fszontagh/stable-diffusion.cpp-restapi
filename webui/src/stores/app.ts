@@ -20,6 +20,22 @@ import {
   type ServerShutdownData
 } from '../services/websocket'
 import { notificationService } from '../services/notifications'
+import { playSound, type SoundEventId } from '../services/sounds'
+
+// Map a queue job type to the sound event that fires on completion.
+// Kept next to the WS handlers because that's the only caller.
+function soundEventForJobCompleted(jobType: string): SoundEventId {
+  switch (jobType) {
+    case 'txt2img': return 'job.txt2img.completed'
+    case 'img2img': return 'job.img2img.completed'
+    case 'txt2vid': return 'job.txt2vid.completed'
+    case 'upscale': return 'job.upscale.completed'
+    case 'convert': return 'job.convert.completed'
+    case 'model_download': return 'job.model_download.completed'
+    case 'model_hash': return 'job.model_hash.completed'
+    default: return 'job.txt2img.completed'  // safe default
+  }
+}
 
 const DEFAULT_TITLE = 'SD.cpp WebUI'
 
@@ -333,6 +349,7 @@ export const useAppStore = defineStore('app', () => {
       const loadingName = newHealth.loading_model_name ?? 'model'
       const shortName = loadingName.split('/').pop() ?? loadingName
       showToast(`Loading model: ${shortName}`, 'info')
+      playSound('model.load.started')
     }
 
     // Model finished loading (was loading, now not loading)
@@ -343,15 +360,18 @@ export const useAppStore = defineStore('app', () => {
         }
         // Always log errors regardless of WS state
         addRecentError(loadError, 'model_load')
+        playSound('model.load.failed')
       } else if (modelName && shouldShowToasts) {
         const shortName = modelName.split('/').pop() ?? modelName
         showToast(`Model loaded: ${shortName}`, 'success')
+        playSound('model.load.completed')
       }
     }
 
     // Model unloaded
     if (!modelName && previousModelName.value && !isLoading && shouldShowToasts) {
       showToast('Model unloaded', 'info')
+      playSound('model.unloaded')
     }
 
     wasModelLoading.value = isLoading
@@ -430,6 +450,7 @@ export const useAppStore = defineStore('app', () => {
         // New job added (only show if pending, to avoid toasts on page load)
         if (shouldShowToasts && previousJobStates.value.size > 0 && job.status === 'pending') {
           showToast(`Job queued: ${getJobTypeLabel(job.type)}`, 'info')
+          playSound('job.queued')
         }
       } else if (prevStatus !== job.status) {
         // Status changed - only show toast if not using WebSocket
@@ -440,13 +461,16 @@ export const useAppStore = defineStore('app', () => {
               break
             case 'completed':
               showToast(`Job completed: ${getJobTypeLabel(job.type)}`, 'success')
+              playSound(soundEventForJobCompleted(job.type))
               break
             case 'failed':
               showToast(`Job failed: ${getJobTypeLabel(job.type)}${job.error ? ' - ' + job.error : ''}`, 'error')
               addRecentError(`${getJobTypeLabel(job.type)} failed: ${job.error || 'Unknown error'}`, 'job_failed')
+              playSound('job.failed')
               break
             case 'cancelled':
               showToast(`Job cancelled: ${getJobTypeLabel(job.type)}`, 'warning')
+              playSound('job.cancelled')
               break
           }
         } else if (job.status === 'failed') {
@@ -637,6 +661,7 @@ export const useAppStore = defineStore('app', () => {
     wsUnsubscribers.push(
       wsService.on<JobAddedData>('job_added', (data) => {
         showToast(`Job queued: ${getJobTypeLabel(data.type)}`, 'info')
+        playSound('job.queued')
         // Pre-register the job ID to prevent duplicate toast from detectQueueChanges
         previousJobStates.value.set(data.job_id, 'pending')
         // Update pending count immediately
@@ -707,7 +732,11 @@ export const useAppStore = defineStore('app', () => {
           }
         }
 
-        // Show toast notification and desktop notification
+        // Show toast notification and desktop notification.
+        // Sound plays the type-specific chime; the toast text can be
+        // generic since the queue-card + desktop notification already
+        // carry the identity of the finished job.
+        const jobType = queue.value?.items?.find(j => j.job_id === data.job_id)?.type ?? 'txt2img'
         switch (data.status) {
           case 'processing':
             showToast(`Job started`, 'info')
@@ -715,14 +744,17 @@ export const useAppStore = defineStore('app', () => {
           case 'completed':
             showToast(`Job completed`, 'success')
             notificationService.notifyJobComplete('Generation')
+            playSound(soundEventForJobCompleted(jobType))
             break
           case 'failed':
             showToast(`Job failed${data.error ? ': ' + data.error : ''}`, 'error')
             notificationService.notifyJobFailed('Generation', data.error)
             addRecentError(`Job failed: ${data.error || 'Unknown error'}`, 'job_failed')
+            playSound('job.failed')
             break
           case 'cancelled':
             showToast(`Job cancelled`, 'warning')
+            playSound('job.cancelled')
             break
         }
 
@@ -839,6 +871,7 @@ export const useAppStore = defineStore('app', () => {
         const shortName = data.model_name.split('/').pop() ?? data.model_name
         showToast(`Model loaded: ${shortName}`, 'success')
         notificationService.notifyModelLoaded(data.model_name)
+        playSound('model.load.completed')
         updateDocumentTitle()
       })
     )
@@ -854,6 +887,7 @@ export const useAppStore = defineStore('app', () => {
         const shortName = data.model_name.split('/').pop() ?? data.model_name
         showToast(`Model load failed: ${shortName}`, 'error')
         addRecentError(data.error, 'model_load')
+        playSound('model.load.failed')
         updateDocumentTitle()
       })
     )
@@ -867,6 +901,7 @@ export const useAppStore = defineStore('app', () => {
           health.value.model_architecture = null
         }
         showToast('Model unloaded', 'info')
+        playSound('model.unloaded')
         updateDocumentTitle()
       })
     )
@@ -879,6 +914,7 @@ export const useAppStore = defineStore('app', () => {
           health.value.upscaler_name = data.model_name
         }
         showToast(`Upscaler loaded: ${data.model_name} (${data.upscale_factor}x)`, 'success')
+        playSound('upscaler.loaded')
       })
     )
 
@@ -889,6 +925,7 @@ export const useAppStore = defineStore('app', () => {
           health.value.upscaler_name = null
         }
         showToast('Upscaler unloaded', 'info')
+        playSound('upscaler.unloaded')
       })
     )
 
@@ -898,6 +935,7 @@ export const useAppStore = defineStore('app', () => {
         // Clear health state to reflect server is down
         health.value = null
         showToast(`Server shutdown: ${data.reason}`, 'warning')
+        playSound('server.shutdown')
         updateDocumentTitle()
       })
     )

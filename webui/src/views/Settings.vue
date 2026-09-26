@@ -8,6 +8,18 @@ import ThemeSelector from '../components/ThemeSelector.vue'
 import SettingField from '../components/settings/SettingField.vue'
 import SwitchField from '../components/settings/SwitchField.vue'
 import SliderField from '../components/settings/SliderField.vue'
+import {
+  SOUND_EVENTS,
+  AVAILABLE_SLUGS,
+  getMaster,
+  setMaster,
+  getVolume,
+  setVolume,
+  getEventOverride,
+  setEventOverride,
+  previewSlug,
+  type SoundEventId,
+} from '../services/sounds'
 
 const store = useAppStore()
 const { downloadSettings, importSettings } = useSettingsExport()
@@ -30,6 +42,43 @@ const civitaiKeyInput = ref('')
 const civitaiKeyPreview = ref('')
 const civitaiKeySet = ref(false)
 const integrationsSaving = ref(false)
+
+// Sound notifications — mirrored from the sounds service so the Vue
+// reactivity system picks up changes. All writes go through the
+// service (localStorage persistence + shared audio pool).
+const soundMaster = ref(getMaster())
+const soundVolume = ref(getVolume())
+const soundEvents = SOUND_EVENTS                          // static catalog
+const availableSlugs = AVAILABLE_SLUGS                     // static file list
+const soundOverrides = ref<Partial<Record<SoundEventId, { enabled: boolean; slug: string | null }>>>({})
+function rebuildSoundOverrides(): void {
+  const map: typeof soundOverrides.value = {}
+  for (const ev of SOUND_EVENTS) {
+    map[ev.id] = getEventOverride(ev.id)
+  }
+  soundOverrides.value = map
+}
+rebuildSoundOverrides()
+
+function onSoundMasterChange(v: boolean): void {
+  setMaster(v)
+  soundMaster.value = v
+}
+function onSoundVolumeChange(raw: string): void {
+  const v = parseFloat(raw)
+  if (!Number.isFinite(v)) return
+  setVolume(v)
+  soundVolume.value = v
+}
+function onSoundSlugChange(id: SoundEventId, slug: string): void {
+  const value = { enabled: slug.length > 0, slug: slug.length > 0 ? slug : null }
+  setEventOverride(id, value)
+  soundOverrides.value = { ...soundOverrides.value, [id]: value }
+}
+function onSoundPreview(slug: string): void {
+  if (!slug) return
+  previewSlug(slug)
+}
 
 // Server-side output preferences (fetched from /settings/output).
 // Mirrors backend QueueManager::group_folders_enabled_ — when on, jobs
@@ -132,6 +181,7 @@ const tabs = [
   { id: 'auto-unload', label: 'Auto-unload', icon: '⏱️' },
   { id: 'assistant', label: 'Assistant', icon: '🧠' },
   { id: 'integrations', label: 'Integrations', icon: '🔑' },
+  { id: 'sounds', label: 'Sound Notifications', icon: '🔔' },
   { id: 'themes', label: 'Themes', icon: '🎨' },
   { id: 'import-export', label: 'Import/Export', icon: '📦' }
 ]
@@ -1401,6 +1451,63 @@ loadSettings()
             </div>
           </div>
 
+          <!-- Sound Notifications Tab -->
+          <div v-if="activeTab === 'sounds'" class="tab-panel">
+            <h3>Sound Notifications</h3>
+            <p class="tab-description">
+              Play a short sound when a job completes, a model loads, or something errors out. Preferences live in your browser. Files ship under <code>/sounds/*.mp3</code> so no network hit at playback time.
+            </p>
+
+            <div class="settings-card">
+              <div class="settings-card-body">
+                <SwitchField
+                  v-model="soundMaster"
+                  label="Enable sound notifications"
+                  description="Master switch. Browsers block audio until you interact with the page - the first click on this switch also unlocks playback."
+                  @update:model-value="onSoundMasterChange"
+                />
+                <div v-if="soundMaster" class="stack-sm" style="margin-top: 16px;">
+                  <label class="field-label" for="sound-volume">Volume <span class="text-muted">{{ Math.round(soundVolume * 100) }}%</span></label>
+                  <input
+                    id="sound-volume"
+                    type="range"
+                    min="0" max="1" step="0.05"
+                    :value="soundVolume"
+                    @input="onSoundVolumeChange(($event.target as HTMLInputElement).value)"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div v-if="soundMaster" class="settings-card" style="margin-top: 16px;">
+              <div class="settings-card-header"><h4>Per-event sounds</h4></div>
+              <div class="settings-card-body sound-events-body">
+                <div v-for="ev in soundEvents" :key="ev.id" class="sound-row">
+                  <span class="sound-row-label">
+                    <span class="chip">{{ ev.category }}</span>
+                    {{ ev.label }}
+                  </span>
+                  <select
+                    class="input sound-row-slug"
+                    :value="soundOverrides[ev.id]?.slug ?? ''"
+                    @change="onSoundSlugChange(ev.id, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="">Silent</option>
+                    <option v-for="slug in availableSlugs" :key="slug" :value="slug">{{ slug }}</option>
+                  </select>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    :disabled="!soundOverrides[ev.id]?.slug"
+                    @click="onSoundPreview(soundOverrides[ev.id]?.slug ?? '')"
+                  >
+                    Preview
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Themes Tab -->
           <div v-if="activeTab === 'themes'" class="tab-panel">
             <h3>Theme</h3>
@@ -1586,6 +1693,34 @@ loadSettings()
 
 .settings-card-body {
   padding: 1rem;
+}
+
+.sound-events-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sound-row {
+  display: grid;
+  grid-template-columns: 1fr 220px auto;
+  align-items: center;
+  gap: 10px;
+}
+.sound-row-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.sound-row-slug {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .sound-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .preview-line {
