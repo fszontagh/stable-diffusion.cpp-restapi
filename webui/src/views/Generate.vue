@@ -193,6 +193,7 @@ const vaeTileRelSizeY = ref(0.0)
 // Advanced Guidance (sd_guidance_params_t passthrough)
 const imgCfgScale = ref(-1)         // -1 = inherit cfg_scale
 const extraSampleArgs = ref('')      // key=value pass-through
+const imagePreprocess = ref('')      // sd.cpp image-preprocessing rules (PR #2028); empty = model defaults
 
 // PuLID-Flux (sd_pulid_params_t)
 const pulidIdEmbeddingPath = ref('')
@@ -1636,6 +1637,7 @@ function loadJobParams(
     if (params.vae_tile_rel_size_y !== undefined) vaeTileRelSizeY.value = params.vae_tile_rel_size_y as number
     if (params.img_cfg_scale !== undefined) imgCfgScale.value = params.img_cfg_scale as number
     if (params.extra_sample_args !== undefined) extraSampleArgs.value = params.extra_sample_args as string
+    if (params.image_preprocess !== undefined) imagePreprocess.value = params.image_preprocess as string
     if (params.pulid_id_embedding_path !== undefined) pulidIdEmbeddingPath.value = params.pulid_id_embedding_path as string
     if (params.pulid_id_weight !== undefined) pulidIdWeight.value = params.pulid_id_weight as number
     if (params.hires_enabled !== undefined) hiresEnabled.value = params.hires_enabled as boolean
@@ -1787,6 +1789,11 @@ async function handleSubmit() {
     }
     if (extraSampleArgs.value.trim()) {
       baseParams.extra_sample_args = extraSampleArgs.value.trim()
+    }
+    // Image-input preprocessing rules only apply to image jobs (the
+    // backend's txt2vid parser doesn't accept the field).
+    if (imagePreprocess.value.trim() && mode.value !== 'txt2vid') {
+      baseParams.image_preprocess = imagePreprocess.value.trim()
     }
 
     // PuLID-Flux (sd_pulid_params_t). Only ship when path is set —
@@ -2378,23 +2385,25 @@ async function handleSubmit() {
             <div v-if="vaeTiling" class="tiling-options">
               <div class="form-row">
                 <div class="form-group" data-setting="vae-tile-size-x" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-size-x' }">
-                  <label class="form-label">Tile Size X (0 = auto)</label>
-                  <input v-model.number="vaeTileSizeX" type="number" class="form-input" min="0" max="2048" step="64" />
+                  <label class="form-label">Tile Width px (0 = 256)</label>
+                  <input v-model.number="vaeTileSizeX" type="number" class="form-input" min="0" max="4096" step="64" />
                 </div>
                 <div class="form-group" data-setting="vae-tile-size-y" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-size-y' }">
-                  <label class="form-label">Tile Size Y (0 = auto)</label>
-                  <input v-model.number="vaeTileSizeY" type="number" class="form-input" min="0" max="2048" step="64" />
+                  <label class="form-label">Tile Height px (0 = 256)</label>
+                  <input v-model.number="vaeTileSizeY" type="number" class="form-input" min="0" max="4096" step="64" />
                 </div>
               </div>
-              <!-- Relative tile sizes (fraction of image). 0 = use absolute tile_size_*. -->
+              <!-- Tile sizes are IMAGE PIXELS since sd.cpp PR #2059 (were latent
+                   units). Relative size overrides them: <= 1 = fraction of the
+                   image, > 1 = target tile count per axis. -->
               <div class="form-row">
                 <div class="form-group">
-                  <label class="form-label">Tile Rel Size X (0 = use absolute)</label>
-                  <input v-model.number="vaeTileRelSizeX" type="number" class="form-input" min="0" max="1" step="0.05" />
+                  <label class="form-label" title="&lt;= 1: fraction of the image width. &gt; 1: target number of tiles.">Rel Width (0 = off, &le;1 fraction, &gt;1 tile count)</label>
+                  <input v-model.number="vaeTileRelSizeX" type="number" class="form-input" min="0" max="16" step="0.05" />
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Tile Rel Size Y (0 = use absolute)</label>
-                  <input v-model.number="vaeTileRelSizeY" type="number" class="form-input" min="0" max="1" step="0.05" />
+                  <label class="form-label" title="&lt;= 1: fraction of the image height. &gt; 1: target number of tiles.">Rel Height (0 = off, &le;1 fraction, &gt;1 tile count)</label>
+                  <input v-model.number="vaeTileRelSizeY" type="number" class="form-input" min="0" max="16" step="0.05" />
                 </div>
               </div>
               <div class="form-group" data-setting="vae-tile-overlap" :class="{ 'setting-highlighted': highlightedSetting === 'vae-tile-overlap' }">
@@ -2424,6 +2433,11 @@ async function handleSubmit() {
               <label class="form-label">Extra Sample Args</label>
               <input v-model="extraSampleArgs" type="text" class="form-input" placeholder="key1=val1,key2=val2" />
               <div class="form-hint">Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs).</div>
+            </div>
+            <div v-if="mode !== 'txt2vid'" class="form-group">
+              <label class="form-label">Image Preprocessing Rules</label>
+              <input v-model="imagePreprocess" type="text" class="form-input" placeholder="target=init,mode=crop-resize,filter=lanczos;target=ref,index=0,mode=fit-pad,width=768,height=768" />
+              <div class="form-hint">How reference / init / control images are resized, cropped and alpha-handled before encoding. Empty keeps the model's defaults. See sd.cpp docs/image_preprocessing.md.</div>
             </div>
           </div>
         </details>

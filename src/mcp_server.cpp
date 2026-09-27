@@ -261,6 +261,7 @@ json McpServer::handle_list_tools() {
         {"ip_adapter", {{"type", "string"}, {"description", "IP-Adapter model (leejet PR #1803/#1815/#1824/#1839)"}}},
         {"llm", {{"type", "string"}, {"description", "LLM for multimodal architectures (Qwen, Anima, Z-Image)"}}},
         {"llm_vision", {{"type", "string"}, {"description", "LLM vision model"}}},
+        {"tokenizer", {{"type", "string"}, {"description", "External tokenizer.json (LLaDA-Image, Ming-Image, PiD, Lens)"}}},
         {"taesd", {{"type", "string"}, {"description", "TAESD tiny autoencoder (for previews)"}}},
         {"high_noise_diffusion_model", {{"type", "string"}, {"description", "High-noise diffusion model (MoE, e.g. Wan)"}}},
         {"photo_maker", {{"type", "string"}, {"description", "PhotoMaker model"}}},
@@ -598,7 +599,7 @@ json McpServer::tool_model(const json& args) {
                 "model_name", "model_type",
                 "vae", "clip_l", "clip_g", "clip_vision", "t5xxl", "controlnet",
                 "ip_adapter",
-                "llm", "llm_vision", "taesd", "high_noise_diffusion_model", "photo_maker"
+                "llm", "llm_vision", "tokenizer", "taesd", "high_noise_diffusion_model", "photo_maker"
             };
             json load_args = json::object();
             json options = json::object();

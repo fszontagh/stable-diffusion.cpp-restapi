@@ -67,6 +67,8 @@ const loadParams = ref<LoadModelParams>({
     n_threads: -1,
     flash_attn: true,
     diffusion_flash_attn: false,
+    sage_attn: false,
+    conditioning_cache_size: 4,
     enable_mmap: true,
     vae_conv_direct: false,
     diffusion_conv_direct: false,
@@ -113,6 +115,7 @@ const ipAdapterModels = computed(() => store.models?.ip_adapters || [])
 const motionModuleModels = computed(() => store.models?.motion_modules || [])
 const llmModels = computed(() => store.models?.llm || [])
 const taesdModels = computed(() => store.models?.taesd || [])
+const tokenizerModels = computed(() => store.models?.tokenizers || [])
 
 // Computed: Current architecture preset. Uses the JSON-driven resolver so
 // `selectedArchitecture` values that aren't exact preset keys (e.g. the
@@ -237,6 +240,9 @@ async function handleLoadModel() {
     if (loadParams.value.motion_module) params.motion_module = loadParams.value.motion_module
     if (loadParams.value.llm) params.llm = loadParams.value.llm
     if (loadParams.value.llm_vision) params.llm_vision = loadParams.value.llm_vision
+    if (loadParams.value.tokenizer) params.tokenizer = loadParams.value.tokenizer
+    if (loadParams.value.embeddings_connectors) params.embeddings_connectors = loadParams.value.embeddings_connectors
+    if (loadParams.value.audio_vae) params.audio_vae = loadParams.value.audio_vae
     if (loadParams.value.clip_vision) params.clip_vision = loadParams.value.clip_vision
     if (loadParams.value.taesd) params.taesd = loadParams.value.taesd
     params.options = loadParams.value.options
@@ -396,6 +402,12 @@ watch(selectedArchitecture, () => {
     }
     if (requiredComponents.value.llm) {
       autoSelectComponent('llm', llmSuggestions.value)
+    }
+    // Tokenizer: nothing to score against, so only auto-pick when the
+    // choice is unambiguous (exactly one tokenizer.json installed).
+    if (requiredComponents.value.tokenizer && !loadParams.value.tokenizer &&
+        tokenizerModels.value.length === 1) {
+      loadParams.value.tokenizer = tokenizerModels.value[0].name
     }
   }
 })
@@ -645,6 +657,48 @@ function onKeepAllInRam(e: Event) {
             </select>
             <small class="form-hint">{{ optionalComponents.llm_vision }}</small>
           </div>
+
+          <!-- Extra component slots that only some architectures use.
+               Visibility is data-driven from the preset's required /
+               optional components (model_architectures.json). -->
+          <div v-if="requiredComponents.tokenizer || optionalComponents.tokenizer" class="form-group">
+            <label class="form-label">
+              Tokenizer
+              <span v-if="requiredComponents.tokenizer" class="required-badge">Required</span>
+              <span v-else class="optional-badge">Optional</span>
+            </label>
+            <select v-model="loadParams.tokenizer" class="form-select">
+              <option value="">Select tokenizer.json...</option>
+              <option v-for="m in tokenizerModels" :key="m.name" :value="m.name">{{ m.name }}</option>
+            </select>
+            <small class="form-hint">{{ requiredComponents.tokenizer || optionalComponents.tokenizer }}</small>
+          </div>
+
+          <div v-if="requiredComponents.embeddings_connectors || optionalComponents.embeddings_connectors" class="form-group">
+            <label class="form-label">
+              Embeddings connectors
+              <span v-if="requiredComponents.embeddings_connectors" class="required-badge">Required</span>
+              <span v-else class="optional-badge">Optional</span>
+            </label>
+            <select v-model="loadParams.embeddings_connectors" class="form-select">
+              <option value="">Select connectors file...</option>
+              <option v-for="m in t5Models" :key="m.name" :value="m.name">{{ m.name }}</option>
+            </select>
+            <small class="form-hint">{{ requiredComponents.embeddings_connectors || optionalComponents.embeddings_connectors }} (listed from the T5 folder)</small>
+          </div>
+
+          <div v-if="requiredComponents.audio_vae || optionalComponents.audio_vae" class="form-group">
+            <label class="form-label">
+              Audio VAE
+              <span v-if="requiredComponents.audio_vae" class="required-badge">Required</span>
+              <span v-else class="optional-badge">Optional</span>
+            </label>
+            <select v-model="loadParams.audio_vae" class="form-select">
+              <option value="">Select audio VAE...</option>
+              <option v-for="m in vaeModels" :key="m.name" :value="m.name">{{ m.name }}</option>
+            </select>
+            <small class="form-hint">{{ requiredComponents.audio_vae || optionalComponents.audio_vae }}</small>
+          </div>
         </div>
       </section>
 
@@ -743,6 +797,16 @@ function onKeepAllInRam(e: Event) {
                 <input v-model="loadParams.options!.diffusion_flash_attn" type="checkbox" />
                 <span>Diffusion Flash Attention</span>
                 <RecHint :desc="getOptionDesc('diffusion_flash_attn')" />
+              </label>
+              <label class="form-checkbox" :title="getOptionDesc('sage_attn')?.description || 'Native CUDA SageAttention for the diffusion model (SM80+ / CUDA 12+). Falls back silently on older GPUs.'">
+                <input v-model="loadParams.options!.sage_attn" type="checkbox" />
+                <span>SageAttention</span>
+                <RecHint :desc="getOptionDesc('sage_attn')" />
+              </label>
+              <label class="form-field-inline" :title="getOptionDesc('conditioning_cache_size')?.description || 'How many prompt-encode results to keep per loaded model. Re-running the same prompt skips the text encoder. 0 disables.'">
+                <span>Conditioning cache</span>
+                <input v-model.number="loadParams.options!.conditioning_cache_size" type="number" min="0" max="64" step="1" class="form-input cond-cache-input" />
+                <RecHint :desc="getOptionDesc('conditioning_cache_size')" />
               </label>
               <label class="form-checkbox" :title="getOptionDesc('enable_mmap')?.description">
                 <input v-model="loadParams.options!.enable_mmap" type="checkbox" />
@@ -1260,6 +1324,16 @@ details[open] .accordion-header::before {
   font-weight: 600;
   margin: 0 0 0.75rem 0;
   color: var(--text-secondary);
+}
+
+.form-field-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.cond-cache-input {
+  width: 70px;
 }
 
 .options-grid {

@@ -359,7 +359,7 @@
     },
     "vae_tile_size_x": {
       "label": "VAE Tile Width",
-      "description": "Width of VAE tiles when tiling is on. 0 = use load-time default.",
+      "description": "Tile width in IMAGE PIXELS (changed upstream in leejet PR #2059 - was latent units). 0 = 256 px default. Rounded down to the VAE scale factor; e.g. the old latent value 32 equals 256 px on an 8x VAE, 512 px on a 16x VAE.",
       "type": "number",
       "default": 0,
       "applies_to": [
@@ -371,7 +371,7 @@
     },
     "vae_tile_size_y": {
       "label": "VAE Tile Height",
-      "description": "Height of VAE tiles. 0 = use load-time default.",
+      "description": "Tile height in IMAGE PIXELS (changed upstream in leejet PR #2059 - was latent units). 0 = 256 px default. Rounded down to the VAE scale factor; e.g. the old latent value 32 equals 256 px on an 8x VAE, 512 px on a 16x VAE.",
       "type": "number",
       "default": 0,
       "applies_to": [
@@ -843,6 +843,17 @@
         "upscale"
       ],
       "recommended": "Leave at 0 unless the source job had batch_count > 1 and you want a specific image."
+    },
+    "image_preprocess": {
+      "label": "Image Preprocessing Rules",
+      "description": "Semicolon-separated `target=...,key=value` rules controlling how reference / init / control images are resized, cropped and alpha-handled before encoding (sd.cpp docs/image_preprocessing.md). Empty keeps each model's defaults.",
+      "type": "string",
+      "default": "",
+      "applies_to": [
+        "txt2img",
+        "img2img"
+      ],
+      "recommended": "Leave empty unless a model's docs tell you to override preprocessing."
     }
   },
   "categories": {

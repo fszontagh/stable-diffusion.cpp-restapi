@@ -208,6 +208,20 @@
       "default": true,
       "description": "Pre-load all params into the params backend at load-time instead of lazily on first use (leejet PR #1687). Trades load time for first-generation latency.",
       "recommended": "true for long-lived servers (default). false for one-shot CLI use."
+    },
+    "sage_attn": {
+      "label": "SageAttention",
+      "description": "Native CUDA SageAttention for the diffusion model (and the high-noise model when present). INT8 Q/K kernels picked per GPU: SageAttention2++ on SM89+ with CUDA 12.8, SageAttention2 on SM89+/CUDA 12.4, an INT8/FP16 path on SM80+. No Python/Triton needed.",
+      "type": "boolean",
+      "default": false,
+      "recommended": "Try on RTX 30/40/50-series for a speed-up on large DiTs; compare output against off. Ignored on older GPUs."
+    },
+    "conditioning_cache_size": {
+      "label": "Conditioning Cache",
+      "description": "LRU cache of prompt-encoding (conditioning) results per loaded model. Re-running the same prompt / negative prompt skips the text encoder entirely. 0 disables. Independent of the per-step cache_mode options.",
+      "type": "number",
+      "default": 4,
+      "recommended": "Keep 4. Raise if you cycle through more prompts on a big LLM text encoder; 0 only to save a little RAM."
     }
   },
   "categories": {

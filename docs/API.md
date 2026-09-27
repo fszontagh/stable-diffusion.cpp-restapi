@@ -416,6 +416,7 @@ Check server status, loaded model, and all loaded components.
 | `loaded_components.controlnet` | string\|null | Loaded ControlNet model name |
 | `loaded_components.llm` | string\|null | Loaded LLM model name |
 | `loaded_components.llm_vision` | string\|null | Loaded LLM vision model name |
+| `loaded_components.tokenizer` | string\|null | Loaded external tokenizer.json (only present when one was supplied) |
 | `upscaler_loaded` | boolean | Whether an upscaler is currently loaded |
 | `upscaler_name` | string\|null | Name of loaded upscaler model, or null |
 | `ws_enabled` | boolean | Whether the WebSocket endpoint is compiled in and listening (clients connect to `ws://<host>:<port>/ws` on the same port as the REST API) |
@@ -730,6 +731,9 @@ Concurrency: only one load can be in flight at a time. A second `POST /models/lo
 | `controlnet` | string | No | null | ControlNet model name |
 | `llm` | string | No | null | LLM model name for multimodal (e.g., Qwen) |
 | `llm_vision` | string | No | null | LLM vision model name (optional) |
+| `tokenizer` | string | No | null | External `tokenizer.json` from `GET /models` `tokenizers[]` (scanned from the LLM folder). Required by LLaDA-Image, Ming-Image, PiD and Lens |
+| `embeddings_connectors` | string | No | null | Connectors file for LTXAV / LLaDA-Image (resolved from the T5 folder) |
+| `audio_vae` | string | No | null | LTXAV audio VAE (resolved from the VAE folder) |
 | `taesd` | string | No | null | TAESD model name for preview |
 | `high_noise_diffusion_model` | string | No | null | High-noise diffusion model for MoE |
 | `photo_maker` | string | No | null | PhotoMaker model path |
@@ -745,6 +749,8 @@ Concurrency: only one load can be in flight at a time. A second `POST /models/lo
 | `diffusion_conv_direct` | boolean | false | Use ggml_conv2d_direct in diffusion model |
 | `flash_attn` | boolean | true | Enable Flash Attention for CLIP / T5 / conditioner |
 | `diffusion_flash_attn` | boolean | false | Enable Flash Attention specifically for the diffusion model (UNet/DiT/Flux). sd.cpp keeps this separate from `flash_attn` because CUDA support and numerical stability used to differ between the two. |
+| `sage_attn` | boolean | false | Native CUDA SageAttention for the diffusion model (SM80+ / CUDA 12+). Silently ignored on older GPUs. |
+| `conditioning_cache_size` | integer | 4 | LRU cache of prompt-encode results per loaded model; repeating a prompt skips the text encoder. `0` disables. |
 | `enable_mmap` | boolean | true | Use memory-mapped file loading |
 | `tae_preview_only` | boolean | false | Only use TAESD for preview, not final |
 | `eager_load` | boolean | false | Eagerly move weights to the compute backend at load time |
@@ -1067,11 +1073,12 @@ Generate images from text prompt.
 | `custom_sigmas` | array | No | [] | Custom sigma schedule (overrides scheduler) |
 | `ref_images` | array | No | [] | Array of base64-encoded reference images (Flux Kontext) |
 | `ref_image_args` | string | No | "" | Comma-separated `k=v` flags for reference-image processing (e.g. `resize_before_vae=0,ref_index_mode=increase`) - see upstream sd.cpp docs |
+| `image_preprocess` | string | No | "" | Input-image preprocessing rules, semicolon-separated `target=...,key=value` entries (e.g. `target=init,mode=crop-resize,filter=lanczos;target=ref,index=0,mode=fit-pad,width=768,height=768`). Empty keeps per-model defaults. Reference images keep their alpha channel (Qwen-Image 2.1 transparency). |
 | `control_image_base64` | string | No | - | Base64-encoded pre-processed control image (requires ControlNet) |
 | `control_strength` | float | No | 0.9 | ControlNet influence strength (0.0 - 1.0) |
 | `vae_tiling` | boolean | No | false | Enable VAE tiling for large images |
-| `vae_tile_size_x` | integer | No | 0 | VAE tile X size (0 = auto) |
-| `vae_tile_size_y` | integer | No | 0 | VAE tile Y size (0 = auto) |
+| `vae_tile_size_x` | integer | No | 0 | VAE tile width in **image pixels** (0 = 256). Was latent units before sd.cpp #2059 |
+| `vae_tile_size_y` | integer | No | 0 | VAE tile height in **image pixels** (0 = 256) |
 | `vae_tile_overlap` | float | No | 0.5 | VAE tile overlap |
 | `easycache` | boolean | No | false | Enable caching for DiT models (speeds up generation) |
 | `easycache_threshold` | float | No | 0.2 | Cache reuse threshold (higher = more reuse, lower quality) |

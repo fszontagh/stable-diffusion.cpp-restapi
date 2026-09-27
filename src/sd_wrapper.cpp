@@ -770,8 +770,8 @@ static void apply_hires_params(sd_hires_params_t& hires, const ParamsT& p) {
 
 template <typename ParamsT>
 static void apply_tiling_rel_size(sd_tiling_params_t& tiling, const ParamsT& p) {
-    tiling.rel_size_x = p.vae_tile_rel_size_x;
-    tiling.rel_size_y = p.vae_tile_rel_size_y;
+    tiling.rel_size_w = p.vae_tile_rel_size_x;
+    tiling.rel_size_h = p.vae_tile_rel_size_y;
 }
 
 Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
@@ -788,7 +788,7 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
         "extra_sample_args",
         "slg_scale", "skip_layers", "slg_start", "slg_end",
         "custom_sigmas",
-        "ref_images", "ref_image_args",
+        "ref_images", "ref_image_args", "image_preprocess",
         // Accepted-but-ignored: backend writes ref_images_count into stored
         // job params (sd_wrapper.cpp:803 to_json()) so the WebUI / queue view
         // can detect that a job had ref images without storing the base64
@@ -862,6 +862,7 @@ Txt2ImgParams Txt2ImgParams::from_json(const nlohmann::json& j) {
     // Reference images for Flux Kontext
     p.ref_images_base64 = parse_string_array(j, "ref_images");
     p.ref_image_args = parse_string(j, "ref_image_args", "");
+    p.image_preprocess = parse_string(j, "image_preprocess", "");
 
     // ControlNet support
     p.control_strength = parse_float(j, "control_strength", 0.9f);
@@ -986,6 +987,9 @@ nlohmann::json Txt2ImgParams::to_json() const {
         if (!ref_image_args.empty()) {
             j["ref_image_args"] = ref_image_args;
         }
+        if (!image_preprocess.empty()) {
+            j["image_preprocess"] = image_preprocess;
+        }
     }
 
     // Include control_strength if control image was provided
@@ -1055,7 +1059,7 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
         "slg_scale", "skip_layers", "slg_start", "slg_end",
         "custom_sigmas",
         "init_image_base64", "mask_image_base64",
-        "ref_images", "ref_image_args",
+        "ref_images", "ref_image_args", "image_preprocess",
         // Same accepted-but-ignored round-trip field as /txt2img — see comment
         // above the txt2img KNOWN block.
         "ref_images_count",
@@ -1145,6 +1149,7 @@ Img2ImgParams Img2ImgParams::from_json(const nlohmann::json& j) {
     // Reference images for Flux Kontext
     p.ref_images_base64 = parse_string_array(j, "ref_images");
     p.ref_image_args = parse_string(j, "ref_image_args", "");
+    p.image_preprocess = parse_string(j, "image_preprocess", "");
 
     // ControlNet support
     p.control_strength = parse_float(j, "control_strength", 0.9f);
@@ -1275,6 +1280,9 @@ nlohmann::json Img2ImgParams::to_json() const {
         j["ref_images_count"] = ref_images_base64.size();
         if (!ref_image_args.empty()) {
             j["ref_image_args"] = ref_image_args;
+        }
+        if (!image_preprocess.empty()) {
+            j["image_preprocess"] = image_preprocess;
         }
     }
 
@@ -2029,7 +2037,7 @@ std::vector<std::string> SDWrapper::generate_txt2img(
         ref_images.reserve(params.ref_images_base64.size());
         for (const auto& base64 : params.ref_images_base64) {
             int w, h, c;
-            auto data = SDWrapper::decode_base64_image(base64, w, h, c);
+            auto data = SDWrapper::decode_base64_image(base64, w, h, c, /*keep_alpha=*/true);
             ref_image_buffers.push_back(std::move(data));
             sd_image_t img;
             img.width = w;
@@ -2121,8 +2129,8 @@ std::vector<std::string> SDWrapper::generate_txt2img(
     // VAE tiling support
     if (params.vae_tiling) {
         gen_params.vae_tiling_params.enabled = true;
-        gen_params.vae_tiling_params.tile_size_x = params.vae_tile_size_x;
-        gen_params.vae_tiling_params.tile_size_y = params.vae_tile_size_y;
+        gen_params.vae_tiling_params.tile_size_w = params.vae_tile_size_x;
+        gen_params.vae_tiling_params.tile_size_h = params.vae_tile_size_y;
         gen_params.vae_tiling_params.target_overlap = params.vae_tile_overlap;
         gen_params.vae_tiling_params.temporal_tiling = params.temporal_tiling;
         gen_params.vae_tiling_params.extra_tiling_args =
@@ -2178,6 +2186,10 @@ std::vector<std::string> SDWrapper::generate_txt2img(
     // report a shorter list (e.g. hi-res-fix producing fewer frames than the
     // batch would suggest) instead of us assuming batch_count post-generation.
     int num_images = 0;
+    // Image-input preprocessing rules (resize / crop / alpha handling for
+    // ref, init and control images). NULL keeps sd.cpp's per-model defaults.
+    gen_params.image_preprocess.rules =
+        params.image_preprocess.empty() ? nullptr : params.image_preprocess.c_str();
     bool gen_ok = generate_image(ctx, &gen_params, &images, &num_images);
 
     if (!gen_ok || images == nullptr) {
@@ -2498,8 +2510,8 @@ std::vector<std::string> SDWrapper::generate_img2img(
     // VAE tiling support
     if (params.vae_tiling) {
         gen_params.vae_tiling_params.enabled = true;
-        gen_params.vae_tiling_params.tile_size_x = params.vae_tile_size_x;
-        gen_params.vae_tiling_params.tile_size_y = params.vae_tile_size_y;
+        gen_params.vae_tiling_params.tile_size_w = params.vae_tile_size_x;
+        gen_params.vae_tiling_params.tile_size_h = params.vae_tile_size_y;
         gen_params.vae_tiling_params.target_overlap = params.vae_tile_overlap;
         gen_params.vae_tiling_params.temporal_tiling = params.temporal_tiling;
         gen_params.vae_tiling_params.extra_tiling_args =
@@ -2544,6 +2556,10 @@ std::vector<std::string> SDWrapper::generate_img2img(
     // path above for the rationale (leejet PR #1728: bool return + out-params).
     sd_image_t* images = nullptr;
     int num_images = 0;
+    // Image-input preprocessing rules (resize / crop / alpha handling for
+    // ref, init and control images). NULL keeps sd.cpp's per-model defaults.
+    gen_params.image_preprocess.rules =
+        params.image_preprocess.empty() ? nullptr : params.image_preprocess.c_str();
     bool gen_ok = generate_image(ctx, &gen_params, &images, &num_images);
 
     if (!gen_ok || images == nullptr) {
@@ -2916,8 +2932,8 @@ std::vector<std::string> SDWrapper::generate_txt2vid(
     // common case — LTX 2.3 et al. split along the time axis as well as XY.
     if (params.vae_tiling) {
         vid_params.vae_tiling_params.enabled = true;
-        vid_params.vae_tiling_params.tile_size_x = params.vae_tile_size_x;
-        vid_params.vae_tiling_params.tile_size_y = params.vae_tile_size_y;
+        vid_params.vae_tiling_params.tile_size_w = params.vae_tile_size_x;
+        vid_params.vae_tiling_params.tile_size_h = params.vae_tile_size_y;
         vid_params.vae_tiling_params.target_overlap = params.vae_tile_overlap;
         vid_params.vae_tiling_params.temporal_tiling = params.temporal_tiling;
         vid_params.vae_tiling_params.extra_tiling_args =
@@ -3004,22 +3020,34 @@ std::vector<uint8_t> SDWrapper::decode_base64_image(
     const std::string& base64_data,
     int& width,
     int& height,
-    int& channels
+    int& channels,
+    bool keep_alpha
 ) {
     // Decode base64
     std::vector<uint8_t> binary = utils::base64_decode(base64_data);
 
+    // Pick the output channel count: RGB by default, RGBA when requested
+    // and the source actually carries alpha (grey+alpha or RGBA).
+    int want = 3;
+    if (keep_alpha) {
+        int iw = 0, ih = 0, ic = 0;
+        if (stbi_info_from_memory(binary.data(), static_cast<int>(binary.size()), &iw, &ih, &ic) &&
+            (ic == 2 || ic == 4)) {
+            want = 4;
+        }
+    }
+
     // Load image from memory
     uint8_t* data = stbi_load_from_memory(
         binary.data(), static_cast<int>(binary.size()),
-        &width, &height, &channels, 3
+        &width, &height, &channels, want
     );
 
     if (!data) {
         throw std::runtime_error("Failed to decode base64 image");
     }
 
-    channels = 3;
+    channels = want;
     std::vector<uint8_t> result(data, data + (width * height * channels));
     stbi_image_free(data);
 

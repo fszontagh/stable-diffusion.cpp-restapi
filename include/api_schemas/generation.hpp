@@ -35,6 +35,7 @@ struct GenerationRequestBase {
             .optional_field("slg_end", schema::FieldType::Number, "SLG end percentage", 0.2)
             .array_field("custom_sigmas", schema::FieldType::Number, "Custom sigma schedule values")
             .array_field("ref_images", schema::FieldType::String, "Reference images as base64 strings")
+            .optional_field("image_preprocess", schema::FieldType::String, "Input-image preprocessing rules, semicolon-separated 'target=...,key=value' entries (see sd.cpp docs/image_preprocessing.md). Empty keeps per-model defaults.", "")
             .optional_field("ref_image_args", schema::FieldType::String, "Comma-separated k=v flags for reference-image processing (e.g. resize_before_vae=0,ref_index_mode=increase). See sd.cpp docs.", "")
             .optional_field("control_image_base64", schema::FieldType::String, "ControlNet input image as base64")
             .optional_field("control_strength", schema::FieldType::Number, "ControlNet guidance strength", 0.9)

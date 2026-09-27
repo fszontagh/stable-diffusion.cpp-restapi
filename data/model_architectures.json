@@ -737,7 +737,7 @@
     },
     "Qwen-Image-2.1": {
       "name": "Qwen-Image 2.1",
-      "description": "Qwen-Image 2.1 text-to-image + image editing. Uses Qwen3-VL-8B-Instruct as the LLM (mmproj required for editing) and its own qwen_image_2.1 VAE (not interchangeable with the earlier Qwen / Wan 2.2 VAEs). Added upstream via leejet/stable-diffusion.cpp#1994.",
+      "description": "Qwen-Image 2.1 text-to-image + image editing. Uses Qwen3-VL-8B-Instruct as the LLM (mmproj required for editing) and its own qwen_image_2.1 VAE (not interchangeable with the earlier Qwen / Wan 2.2 VAEs). Supports RGBA/transparent output: start the prompt with \"This is an RGBA image with transparency.\" and end it with \"The image has alpha channel and the background is transparent.\" (PNG keeps alpha). Added upstream via leejet/stable-diffusion.cpp#1994.",
       "aliases": [
         "Qwen Image 2.1",
         "Qwen2.1",
@@ -847,7 +847,8 @@
       ],
       "requiredComponents": {
         "vae": "llada_vae.safetensors (from inclusionAI/LLaDA-Image)",
-        "t5xxl": "LLaDA2-MoE text encoder GGUF (llada-image-text_encoder-q8_0.gguf)",
+        "llm": "LLaDA2-MoE text encoder GGUF (llada-image-text_encoder-q8_0.gguf)",
+        "tokenizer": "LLaDA2 tokenizer.json (same file for base + Turbo)",
         "embeddings_connectors": "llada-image-connectors.safetensors (add -edit for image editing; carries SigVQ)"
       },
       "optionalComponents": {},
@@ -871,8 +872,8 @@
         "vae": [
           { "regex": "llada[_.\\-]?vae", "score": 110 }
         ],
-        "t5": [
-          { "regex": "llada[_.\\-]?image[_.\\-]?text[_.\\-]?encoder", "score": 110 }
+        "llm": [
+          { "regex": "llada[_.\\-]?image[_.\\-]?(turbo[_.\\-]?)?text[_.\\-]?encoder", "score": 110 }
         ]
       },
       "downloads": [
@@ -902,8 +903,8 @@
         {
           "id": "text-encoder-turbo",
           "label": "LLaDA2-MoE text encoder for Turbo (Q8_0 GGUF)",
-          "component": "t5xxl",
-          "target_type": "t5",
+          "component": "llm",
+          "target_type": "llm",
           "source": "huggingface",
           "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
           "filename": "llada-image-turbo-text_encoder-q8_0.gguf",
@@ -913,8 +914,8 @@
         {
           "id": "text-encoder-base",
           "label": "LLaDA2-MoE text encoder for base 50-step (Q8_0 GGUF)",
-          "component": "t5xxl",
-          "target_type": "t5",
+          "component": "llm",
+          "target_type": "llm",
           "source": "huggingface",
           "repo_id": "fszontagh/LLaDA-Image-GGUF",
           "filename": "llada-image-text_encoder-q8_0.gguf",
@@ -924,7 +925,7 @@
           "id": "connectors-turbo-txt2img",
           "label": "Turbo connectors (text-to-image)",
           "component": "embeddings_connectors",
-          "target_type": "clip",
+          "target_type": "t5",
           "source": "huggingface",
           "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
           "filename": "llada-image-turbo-connectors.safetensors",
@@ -935,7 +936,7 @@
           "id": "connectors-turbo-edit",
           "label": "Turbo connectors + SigVQ (for image editing)",
           "component": "embeddings_connectors",
-          "target_type": "clip",
+          "target_type": "t5",
           "source": "huggingface",
           "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
           "filename": "llada-image-turbo-connectors-edit.safetensors",
@@ -946,7 +947,7 @@
           "id": "connectors-base-txt2img",
           "label": "Base connectors (text-to-image)",
           "component": "embeddings_connectors",
-          "target_type": "clip",
+          "target_type": "t5",
           "source": "huggingface",
           "repo_id": "fszontagh/LLaDA-Image-GGUF",
           "filename": "llada-image-connectors.safetensors",
@@ -956,7 +957,7 @@
           "id": "connectors-base-edit",
           "label": "Base connectors + SigVQ (for image editing)",
           "component": "embeddings_connectors",
-          "target_type": "clip",
+          "target_type": "t5",
           "source": "huggingface",
           "repo_id": "fszontagh/LLaDA-Image-GGUF",
           "filename": "llada-image-connectors-edit.safetensors",
@@ -973,8 +974,66 @@
           "subfolder": "LLaDA-Image",
           "recommended": true,
           "notes": "Same file works for both Turbo and base variants."
+        },
+        {
+          "id": "tokenizer",
+          "label": "LLaDA2 tokenizer.json",
+          "component": "tokenizer",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "inclusionAI/LLaDA-Image",
+          "filename": "tokenizer/tokenizer.json",
+          "subfolder": "LLaDA-Image",
+          "recommended": true,
+          "notes": "Required. Not embedded in sd.cpp; identical for base and Turbo."
         }
       ]
+    },
+    "LLaDA-Image-Turbo": {
+      "name": "LLaDA-Image-Turbo",
+      "description": "LLaDA-Image Turbo (4-step distilled). Same component slots as LLaDA-Image but its own transformer, text encoder and connectors - do not mix with base files. Downloads live on the LLaDA-Image card.",
+      "aliases": [
+        "llada-image-turbo",
+        "llada_image_turbo"
+      ],
+      "requiredComponents": {
+        "vae": "llada_vae.safetensors (from inclusionAI/LLaDA-Image)",
+        "llm": "LLaDA2-MoE text encoder GGUF (llada-image-text_encoder-q8_0.gguf)",
+        "tokenizer": "LLaDA2 tokenizer.json (same file for base + Turbo)",
+        "embeddings_connectors": "llada-image-connectors.safetensors (add -edit for image editing; carries SigVQ)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true
+      },
+      "imageEditMode": "ref_images",
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 4,
+        "sampler": "euler",
+        "scheduler": "llada_image",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "LLaDA-Image",
+        "nameRegex": "turbo"
+      },
+      "componentScoring": {
+        "vae": [
+          {
+            "regex": "llada[_.\\-]?vae",
+            "score": 110
+          }
+        ],
+        "llm": [
+          {
+            "regex": "llada[_.\\-]?image[_.\\-]?(turbo[_.\\-]?)?text[_.\\-]?encoder",
+            "score": 110
+          }
+        ]
+      }
     },
     "Qwen Image Edit": {
       "name": "Qwen-Image-Edit",
@@ -2417,33 +2476,419 @@
     },
     "Mage-Flow": {
       "name": "Mage-Flow",
-      "description": "Mage-Flow flow-matching model (leejet PR #1808). Flux-family: requires VAE (ae.safetensors), CLIP-L, and T5-XXL.",
+      "description": "Microsoft Mage-Flow: 4B native-resolution multimodal DiT, Qwen3-VL 4B for text + image conditioning, 128-channel Mage-VAE. Base checkpoints use ~30 steps at CFG 4; edit checkpoints (Mage-Flow-Edit) take reference images. Dimensions must be multiples of 16; trained 512-2048 px. (Upstream docs changed: this is no longer a Flux-family CLIP-L/T5 model.)",
       "aliases": [
         "Mage Flow",
         "mage_flow",
-        "mageflow"
+        "mageflow",
+        "Mage-Flow-Edit"
       ],
       "requiredComponents": {
-        "vae": "ae.safetensors or ae.gguf",
-        "clip_l": "CLIP-L text encoder",
-        "t5xxl": "T5-XXL text encoder"
+        "vae": "mage_flow_vae_bf16.safetensors (128-channel Mage-VAE)",
+        "llm": "Qwen3-VL 4B Instruct (GGUF or safetensors)"
       },
-      "optionalComponents": {},
+      "optionalComponents": {
+        "llm_vision": "Qwen3-VL 4B mmproj - needed for Mage-Flow-Edit with a GGUF LLM"
+      },
       "loadOptions": {
-        "flash_attn": true
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "params_backend": "*=cpu"
       },
+      "imageEditMode": "ref_images",
       "generationDefaults": {
         "cfg_scale": 4.0,
-        "steps": 28,
+        "steps": 30,
         "sampler": "euler",
-        "scheduler": "flux",
-        "prediction": "flow",
+        "scheduler": "discrete",
         "width": 1024,
         "height": 1024
       },
       "match": {
-        "nameRegex": "mage.?flow"
-      }
+        "architecture": "Mage Flow"
+      },
+      "componentScoring": {
+        "llm": [
+          {
+            "regex": "qwen3[_.\\-]?vl[_.\\-]?4b",
+            "score": 110
+          }
+        ],
+        "vae": [
+          {
+            "regex": "mage[_.\\-]?(flow[_.\\-]?)?vae",
+            "score": 110
+          }
+        ]
+      },
+      "downloads": [
+        {
+          "id": "diffusion-int8",
+          "label": "Mage-Flow Base (INT8 convrot, ~4.2 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Mage-Flow",
+          "filename": "diffusion_models/mage_flow_int8_convrot.safetensors",
+          "subfolder": "Mage-Flow",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-bf16",
+          "label": "Mage-Flow Base (bf16, ~8.2 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Mage-Flow",
+          "filename": "diffusion_models/mage_flow_bf16.safetensors",
+          "subfolder": "Mage-Flow"
+        },
+        {
+          "id": "diffusion-edit-int8",
+          "label": "Mage-Flow-Edit (INT8 convrot)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Mage-Flow",
+          "filename": "diffusion_models/mage_flow_edit_int8_convrot.safetensors",
+          "subfolder": "Mage-Flow",
+          "notes": "Instruction-based image editing; pair with the mmproj entry below."
+        },
+        {
+          "id": "vae",
+          "label": "Mage-Flow VAE (128-channel)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Mage-Flow",
+          "filename": "vae/mage_flow_vae_bf16.safetensors",
+          "subfolder": "Mage-Flow",
+          "recommended": true
+        },
+        {
+          "id": "llm-q4km",
+          "label": "Qwen3-VL 4B Instruct (Q4_K_M GGUF)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Qwen/Qwen3-VL-4B-Instruct-GGUF",
+          "filename": "Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+          "subfolder": "Qwen3-VL-4B-Instruct",
+          "recommended": true,
+          "notes": "Shared with Krea2."
+        },
+        {
+          "id": "llm-bf16",
+          "label": "Qwen3-VL 4B (bf16 safetensors)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Mage-Flow",
+          "filename": "text_encoders/qwen3vl_4b_bf16.safetensors",
+          "subfolder": "Qwen3-VL-4B-Instruct"
+        },
+        {
+          "id": "llm-vision-mmproj",
+          "label": "Qwen3-VL 4B mmproj (F16, needed for Mage-Flow-Edit with a GGUF LLM)",
+          "component": "llm_vision",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Qwen/Qwen3-VL-4B-Instruct-GGUF",
+          "filename": "mmproj-Qwen3VL-4B-Instruct-F16.gguf",
+          "subfolder": "Qwen3-VL-4B-Instruct"
+        }
+      ]
+    },
+    "Mage-Flow-Turbo": {
+      "name": "Mage-Flow (Turbo)",
+      "description": "Mage-Flow Turbo / Edit-Turbo checkpoints: 4 steps at CFG 1.0. Same components as Mage-Flow.",
+      "aliases": [
+        "mage-flow-turbo",
+        "mage_flow_turbo"
+      ],
+      "requiredComponents": {
+        "vae": "mage_flow_vae_bf16.safetensors (128-channel Mage-VAE)",
+        "llm": "Qwen3-VL 4B Instruct (GGUF or safetensors)"
+      },
+      "optionalComponents": {
+        "llm_vision": "Qwen3-VL 4B mmproj - needed for Mage-Flow-Edit with a GGUF LLM"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "params_backend": "*=cpu"
+      },
+      "imageEditMode": "ref_images",
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 4,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "Mage Flow",
+        "nameRegex": "turbo"
+      },
+      "componentScoring": {
+        "llm": [
+          {
+            "regex": "qwen3[_.\\-]?vl[_.\\-]?4b",
+            "score": 110
+          }
+        ],
+        "vae": [
+          {
+            "regex": "mage[_.\\-]?(flow[_.\\-]?)?vae",
+            "score": 110
+          }
+        ]
+      },
+      "downloads": [
+        {
+          "id": "diffusion-turbo-int8",
+          "label": "Mage-Flow Turbo (INT8 convrot, ~4.2 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Mage-Flow",
+          "filename": "diffusion_models/mage_flow_turbo_int8_convrot.safetensors",
+          "subfolder": "Mage-Flow",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-edit-turbo-int8",
+          "label": "Mage-Flow-Edit Turbo (INT8 convrot)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Mage-Flow",
+          "filename": "diffusion_models/mage_flow_edit_turbo_int8_convrot.safetensors",
+          "subfolder": "Mage-Flow"
+        },
+        {
+          "id": "vae",
+          "label": "Mage-Flow VAE (128-channel)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Mage-Flow",
+          "filename": "vae/mage_flow_vae_bf16.safetensors",
+          "subfolder": "Mage-Flow",
+          "recommended": true
+        },
+        {
+          "id": "llm-q4km",
+          "label": "Qwen3-VL 4B Instruct (Q4_K_M GGUF)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Qwen/Qwen3-VL-4B-Instruct-GGUF",
+          "filename": "Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+          "subfolder": "Qwen3-VL-4B-Instruct",
+          "recommended": true,
+          "notes": "Shared with Krea2."
+        },
+        {
+          "id": "llm-vision-mmproj",
+          "label": "Qwen3-VL 4B mmproj (F16, needed for Mage-Flow-Edit with a GGUF LLM)",
+          "component": "llm_vision",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Qwen/Qwen3-VL-4B-Instruct-GGUF",
+          "filename": "mmproj-Qwen3VL-4B-Instruct-F16.gguf",
+          "subfolder": "Qwen3-VL-4B-Instruct"
+        }
+      ]
+    },
+    "PixArt": {
+      "name": "PixArt (Sigma / Alpha)",
+      "description": "PixArt-Sigma / PixArt-Alpha DiT (leejet PR #2047). T5-XXL text encoder + 4-channel VAE: SDXL-style for Sigma, SD1.x-style for Alpha. Alpha 512 checkpoints need model_args \"pixart_vae_scale_factor=0.18215\" (plus pixart_pos_embed_base_size=32,pixart_interpolation_scale=1 for XL-2 512). Resolution micro-conditions are not applied yet.",
+      "aliases": [
+        "PixArt",
+        "PixArt-Sigma",
+        "PixArt-Alpha",
+        "pixart_sigma",
+        "pixart_alpha"
+      ],
+      "requiredComponents": {
+        "t5xxl": "T5-XXL text encoder",
+        "vae": "PixArt VAE (SDXL-style for Sigma, SD1.x-style for Alpha)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 4.5,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "PixArt"
+      },
+      "downloads": [
+        {
+          "id": "diffusion-sigma",
+          "label": "PixArt-Sigma XL-2 1024-MS transformer (~2.4 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+          "filename": "transformer/diffusion_pytorch_model.safetensors",
+          "subfolder": "PixArt-Sigma",
+          "recommended": true
+        },
+        {
+          "id": "vae-sigma",
+          "label": "PixArt-Sigma VAE (SDXL-style)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+          "filename": "vae/diffusion_pytorch_model.safetensors",
+          "subfolder": "PixArt-Sigma",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-alpha",
+          "label": "PixArt-Alpha XL-2 1024-MS transformer (~2.4 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "PixArt-alpha/PixArt-XL-2-1024-MS",
+          "filename": "transformer/diffusion_pytorch_model.safetensors",
+          "subfolder": "PixArt-Alpha"
+        },
+        {
+          "id": "vae-alpha",
+          "label": "PixArt-Alpha VAE (SD1.x-style)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "PixArt-alpha/PixArt-XL-2-1024-MS",
+          "filename": "vae/diffusion_pytorch_model.safetensors",
+          "subfolder": "PixArt-Alpha",
+          "notes": "Use with the Alpha transformer only; latent spaces differ."
+        },
+        {
+          "id": "t5xxl",
+          "label": "t5xxl_fp16.safetensors (T5-XXL v1.1 encoder, shared with Flux)",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "comfyanonymous/flux_text_encoders",
+          "filename": "t5xxl_fp16.safetensors",
+          "recommended": true,
+          "notes": "Same T5-XXL encoder PixArt ships sharded; this single-file copy is shared with Flux."
+        }
+      ]
+    },
+    "Ming-Image": {
+      "name": "Ming-Image 0.1 Design",
+      "description": "inclusionAI Ming-Image 0.1 Design (leejet PR #2063): 6B DiT, Ling-mini-2.0 text encoder (use the BF16 one), Ming-Image VAE and an external Ling tokenizer.json. Text-to-image with RGBA output - save as PNG to keep transparency. Dimensions must be multiples of 16.",
+      "aliases": [
+        "Ming-Image",
+        "Ming Image",
+        "ming_image",
+        "ming-image-design"
+      ],
+      "requiredComponents": {
+        "llm": "Ling-mini-2.0 BF16 text encoder",
+        "vae": "ming_image_vae_bf16.safetensors",
+        "tokenizer": "Ling tokenizer.json (inclusionAI/Ming-Image-0.1-Design mllm/tokenizer.json)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "params_backend": "*=cpu"
+      },
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 12,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "Ming-Image"
+      },
+      "downloads": [
+        {
+          "id": "diffusion-int8",
+          "label": "Ming-Image Design DiT (INT8 convrot, ~6.2 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Ming-Image",
+          "filename": "diffusion_models/ming_image_0.1_design_int8_convrot.safetensors",
+          "subfolder": "Ming-Image",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-bf16",
+          "label": "Ming-Image Design DiT (bf16, ~12.3 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Ming-Image",
+          "filename": "diffusion_models/ming_image_0.1_design_bf16.safetensors",
+          "subfolder": "Ming-Image"
+        },
+        {
+          "id": "llm-bf16",
+          "label": "Ling-mini-2.0 text encoder (bf16, ~36.7 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Ming-Image",
+          "filename": "text_encoders/ming_image_0.1_ling_mini_2.0_bf16.safetensors",
+          "subfolder": "Ming-Image",
+          "recommended": true,
+          "notes": "Upstream recommends the BF16 encoder. Large - make sure you have the disk and RAM."
+        },
+        {
+          "id": "llm-int8",
+          "label": "Ling-mini-2.0 text encoder (INT8 convrot, ~19.5 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Ming-Image",
+          "filename": "text_encoders/ming_image_0.1_ling_mini_2.0_int8_convrot.safetensors",
+          "subfolder": "Ming-Image",
+          "notes": "Smaller alternative; upstream quality reference is the BF16 file."
+        },
+        {
+          "id": "vae",
+          "label": "Ming-Image VAE (bf16)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Ming-Image",
+          "filename": "vae/ming_image_vae_bf16.safetensors",
+          "subfolder": "Ming-Image",
+          "recommended": true
+        },
+        {
+          "id": "tokenizer",
+          "label": "Ling tokenizer.json",
+          "component": "tokenizer",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "inclusionAI/Ming-Image-0.1-Design",
+          "filename": "mllm/tokenizer.json",
+          "subfolder": "Ming-Image",
+          "recommended": true,
+          "notes": "Required - passed to sd.cpp as --tokenizer."
+        }
+      ]
     },
     "Minimax-H3": {
       "name": "Minimax-H3",

@@ -295,7 +295,11 @@ const TARGET_TYPE_TO_STORE_KEY: Record<string, keyof NonNullable<typeof appStore
  * itself short-circuits an existing target file with already_exists=true.
  */
 function isAlreadyDownloaded(entry: ArchitectureDownload): boolean {
-  const storeKey = TARGET_TYPE_TO_STORE_KEY[entry.target_type]
+  // tokenizer.json lands in the LLM dir but is listed separately
+  // (GET /models -> tokenizers[]), so look it up there.
+  const storeKey = entry.component === 'tokenizer'
+    ? 'tokenizers'
+    : TARGET_TYPE_TO_STORE_KEY[entry.target_type]
   if (!storeKey) return false
   const models = appStore.models
   if (!models) return false

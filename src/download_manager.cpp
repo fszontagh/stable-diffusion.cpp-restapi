@@ -879,9 +879,16 @@ DownloadResult DownloadManager::download_from_huggingface(
     DownloadResult result;
 
     try {
-        // Validate filename extension
+        // Validate filename extension. External tokenizer files
+        // (tokenizer.json for LLaDA-Image / Ming-Image / PiD / Lens) are
+        // the one non-weight file we download; allow .json only when the
+        // basename says it is a tokenizer.
         fs::path file_path(filename);
-        if (!is_supported_extension(file_path.extension().string())) {
+        std::string lower_base = file_path.filename().string();
+        std::transform(lower_base.begin(), lower_base.end(), lower_base.begin(), ::tolower);
+        const bool is_tokenizer_json =
+            file_path.extension() == ".json" && lower_base.find("tokenizer") != std::string::npos;
+        if (!is_tokenizer_json && !is_supported_extension(file_path.extension().string())) {
             result.error_message = "Unsupported file extension: " + file_path.extension().string();
             return result;
         }
@@ -934,7 +941,8 @@ DownloadResult DownloadManager::download_from_huggingface(
 
         // Download file (into dest_dir under its basename, ignoring any repo
         // sub-path that was embedded in `filename`).
-        result = download_file(download_url, dest_dir, basename, progress_callback);
+        result = download_file(download_url, dest_dir, basename, progress_callback,
+                               /*allow_any_extension=*/is_tokenizer_json);
 
         if (result.success) {
             result.metadata = {

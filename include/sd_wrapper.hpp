@@ -78,6 +78,7 @@ struct Txt2ImgParams {
     // Reference images for Flux Kontext
     std::vector<std::string> ref_images_base64;
     std::string ref_image_args;         // sd.cpp comma-separated k=v flags (e.g. resize_before_vae=0,ref_index_mode=increase)
+    std::string image_preprocess;       // sd.cpp image-preprocessing rules "target=...,k=v;..." (leejet PR #2028); empty = model defaults
 
     // ControlNet (optional - requires ControlNet loaded with model)
     std::vector<uint8_t> control_image_data;
@@ -212,6 +213,7 @@ struct Img2ImgParams {
     // Reference images for Flux Kontext
     std::vector<std::string> ref_images_base64;
     std::string ref_image_args;         // sd.cpp comma-separated k=v flags (e.g. resize_before_vae=0,ref_index_mode=increase)
+    std::string image_preprocess;       // sd.cpp image-preprocessing rules "target=...,k=v;..." (leejet PR #2028); empty = model defaults
 
     // ControlNet (optional - requires ControlNet loaded with model)
     std::vector<uint8_t> control_image_data;
@@ -670,7 +672,12 @@ public:
         const std::string& base64_data,
         int& width,
         int& height,
-        int& channels
+        int& channels,
+        bool keep_alpha = false  // true: return RGBA when the source has an
+                                 // alpha channel (Qwen-Image 2.1 / Ming-Image
+                                 // transparency). sd.cpp converts 3<->4
+                                 // channels itself, so this is safe for any
+                                 // model.
     );
     
     /**

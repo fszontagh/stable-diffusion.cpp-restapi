@@ -102,6 +102,7 @@ std::string model_type_to_string(ModelType type) {
         case ModelType::TAESD: return "taesd";
         case ModelType::MotionModule: return "motion_module";
         case ModelType::ADetailer: return "adetailer";
+        case ModelType::Tokenizer: return "tokenizer";
         default: return "unknown";
     }
 }
@@ -121,6 +122,7 @@ ModelType string_to_model_type(const std::string& str) {
     if (str == "taesd") return ModelType::TAESD;
     if (str == "motion_module") return ModelType::MotionModule;
     if (str == "adetailer") return ModelType::ADetailer;
+    if (str == "tokenizer") return ModelType::Tokenizer;
     return ModelType::Checkpoint;
 }
 
@@ -239,7 +241,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         "vae", "clip_l", "clip_g", "clip_vision", "t5xxl", "controlnet",
         "ip_adapter",
         "motion_module",
-        "llm", "llm_vision", "taesd",
+        "llm", "llm_vision", "tokenizer", "taesd",
         "high_noise_diffusion_model", "uncond_diffusion_model", "photo_maker",
         "pulid_weights",
         "audio_vae", "embeddings_connectors",
@@ -282,6 +284,10 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
     if (j.contains("llm") && !j["llm"].is_null()) {
         params.llm = j["llm"].get<std::string>();
     }
+    if (j.contains("tokenizer") && j["tokenizer"].is_string() &&
+        !j["tokenizer"].get<std::string>().empty()) {
+        params.tokenizer = j["tokenizer"].get<std::string>();
+    }
     if (j.contains("llm_vision") && !j["llm_vision"].is_null()) {
         params.llm_vision = j["llm_vision"].get<std::string>();
     }
@@ -315,7 +321,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         // for diff-friendliness.
         static const std::unordered_set<std::string> KNOWN_OPTIONS = {
             // Performance / threading
-            "n_threads", "flash_attn", "diffusion_flash_attn", "sage_attn",
+            "n_threads", "flash_attn", "diffusion_flash_attn", "sage_attn", "conditioning_cache_size",
             // Memory residency — upstream now expresses per-component and
             // global CPU placement via the `backend` / `params_backend` strings
             // below (e.g. "diffusion=cuda0,vae=cpu" or params_backend="*=cpu"),
@@ -366,6 +372,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.n_threads = opts.value("n_threads", -1);
         params.flash_attn = opts.value("flash_attn", true);
         params.diffusion_flash_attn = opts.value("diffusion_flash_attn", false);
+        params.conditioning_cache_size = std::max(0, opts.value("conditioning_cache_size", 4));
         params.sage_attn = opts.value("sage_attn", false);
         params.enable_mmap = opts.value("enable_mmap", true);
         params.vae_conv_direct = opts.value("vae_conv_direct", false);
@@ -740,6 +747,28 @@ void ModelManager::scan_models() {
         scan_directory(config_.paths.adetailer, ModelType::ADetailer);
     }
 
+    // External tokenizer.json files (sd_ctx_params_t.tokenizer). They sit
+    // next to the text encoders they belong to, so scan the LLM dir for
+    // any .json whose filename contains "tokenizer" (tokenizer.json,
+    // ling_tokenizer.json, ...). Config / index json files are skipped.
+    if (!config_.paths.llm.empty() && utils::directory_exists(config_.paths.llm)) {
+        auto files = utils::list_files(config_.paths.llm, {".json"}, true);
+        for (const auto& rel_path : files) {
+            std::string base = fs::path(rel_path).filename().string();
+            std::string lower = base;
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            if (lower.find("tokenizer") == std::string::npos) continue;
+            if (lower.find("tokenizer_config") != std::string::npos) continue;
+            ModelInfo info;
+            info.name = rel_path;
+            info.full_path = (fs::path(config_.paths.llm) / rel_path).string();
+            info.type = ModelType::Tokenizer;
+            info.file_extension = "json";
+            info.file_size = utils::get_file_size(info.full_path);
+            models_[ModelType::Tokenizer][rel_path] = info;
+        }
+    }
+
     std::cout << "[ModelManager] Scanned models:" << std::endl;
     for (const auto& [type, type_models] : models_) {
         std::cout << "  " << model_type_to_string(type) << ": " << type_models.size() << " models" << std::endl;
@@ -911,6 +940,8 @@ std::string ModelManager::get_base_path(ModelType type) const {
         case ModelType::TAESD: return config_.paths.taesd;
         case ModelType::MotionModule: return config_.paths.motion_module;
         case ModelType::ADetailer: return config_.paths.adetailer;
+        // Tokenizer files live alongside the text encoders they belong to.
+        case ModelType::Tokenizer: return config_.paths.llm;
         default: return "";
     }
 }
@@ -977,6 +1008,7 @@ nlohmann::json ModelManager::get_models_json(const ModelFilter& filter) const {
     add_models(ModelType::TAESD, "taesd");
     add_models(ModelType::MotionModule, "motion_modules");
     add_models(ModelType::ADetailer, "adetailers");
+    add_models(ModelType::Tokenizer, "tokenizers");
 
     result["loaded_model"] = loaded_model_name_.empty() ? nullptr : nlohmann::json(loaded_model_name_);
     result["loaded_model_type"] = loaded_model_name_.empty() ? nullptr : nlohmann::json(model_type_to_string(loaded_model_type_));
@@ -1146,6 +1178,17 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         if (!llm_vision_info) {
             std::string base_path = get_base_path(ModelType::LLM);
             errors.push_back("LLM Vision model not found: '" + *params.llm_vision +
+                           "' (searched in: " + (base_path.empty() ? "<not configured>" : base_path) + ")");
+        }
+    }
+
+    // Validate external tokenizer if specified
+    std::optional<ModelInfo> tokenizer_info;
+    if (params.tokenizer) {
+        tokenizer_info = get_model(*params.tokenizer, ModelType::Tokenizer);
+        if (!tokenizer_info) {
+            std::string base_path = get_base_path(ModelType::Tokenizer);
+            errors.push_back("Tokenizer not found: '" + *params.tokenizer +
                            "' (searched in: " + (base_path.empty() ? "<not configured>" : base_path) + ")");
         }
     }
@@ -1367,6 +1410,14 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         std::cout << "[ModelManager] LLM Vision: " << *params.llm_vision << std::endl;
     }
 
+    // External tokenizer.json (LLaDA-Image, Ming-Image, PiD, Lens)
+    std::string tokenizer_path;
+    if (tokenizer_info) {
+        tokenizer_path = tokenizer_info->full_path;
+        ctx_params.tokenizer = tokenizer_path.c_str();
+        std::cout << "[ModelManager] Tokenizer: " << *params.tokenizer << std::endl;
+    }
+
     // Set CLIP Vision if specified
     std::string clip_vision_path;
     if (clip_vision_info) {
@@ -1446,6 +1497,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     ctx_params.flash_attn = params.flash_attn;
     ctx_params.diffusion_flash_attn = params.diffusion_flash_attn;
     ctx_params.sage_attn = params.sage_attn;
+    ctx_params.conditioning_cache_size = params.conditioning_cache_size;
     ctx_params.enable_mmap = params.enable_mmap;
     ctx_params.vae_conv_direct = params.vae_conv_direct;
     ctx_params.diffusion_conv_direct = params.diffusion_conv_direct;
@@ -1675,6 +1727,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         loaded_motion_module_.clear();
         loaded_llm_.clear();
         loaded_llm_vision_.clear();
+        loaded_tokenizer_.clear();
         clear_loading();
 
         if (auto* ws = get_websocket_server()) {
@@ -1704,12 +1757,15 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_motion_module_ = params.motion_module.value_or("");
     loaded_llm_ = params.llm.value_or("");
     loaded_llm_vision_ = params.llm_vision.value_or("");
+    loaded_tokenizer_ = params.tokenizer.value_or("");
 
     // Store the load options for later retrieval (for queue job reload)
     loaded_options_ = nlohmann::json::object();
     loaded_options_["n_threads"] = params.n_threads;
     loaded_options_["flash_attn"] = params.flash_attn;
     loaded_options_["diffusion_flash_attn"] = params.diffusion_flash_attn;
+    loaded_options_["sage_attn"] = params.sage_attn;
+    loaded_options_["conditioning_cache_size"] = params.conditioning_cache_size;
     loaded_options_["enable_mmap"] = params.enable_mmap;
     loaded_options_["vae_conv_direct"] = params.vae_conv_direct;
     loaded_options_["diffusion_conv_direct"] = params.diffusion_conv_direct;
@@ -1795,6 +1851,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         if (params.motion_module) persisted["motion_module"] = *params.motion_module;
         if (params.llm)         persisted["llm"]         = *params.llm;
         if (params.llm_vision)  persisted["llm_vision"]  = *params.llm_vision;
+        if (params.tokenizer)   persisted["tokenizer"]   = *params.tokenizer;
         if (params.taesd)       persisted["taesd"]       = *params.taesd;
         if (params.high_noise_diffusion_model)
             persisted["high_noise_diffusion_model"] = *params.high_noise_diffusion_model;
@@ -1933,6 +1990,7 @@ void ModelManager::unload_model() {
         loaded_motion_module_.clear();
         loaded_llm_.clear();
         loaded_llm_vision_.clear();
+        loaded_tokenizer_.clear();
 
         // Clear load options
         loaded_options_.clear();
@@ -2089,6 +2147,9 @@ nlohmann::json ModelManager::get_loaded_models_info() const {
     }
     if (!loaded_llm_vision_.empty()) {
         components["llm_vision"] = loaded_llm_vision_;
+    }
+    if (!loaded_tokenizer_.empty()) {
+        components["tokenizer"] = loaded_tokenizer_;
     }
     
     result["loaded_components"] = components;

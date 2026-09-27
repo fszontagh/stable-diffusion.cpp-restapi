@@ -37,7 +37,8 @@ enum class ModelType {
     ESRGAN,         // ESRGAN upscaler models
     TAESD,          // TAESD tiny autoencoder models for preview
     MotionModule,   // AnimateDiff / PiD motion module (SD1.5)
-    ADetailer       // YOLOv8 detector for ADetailer pipeline
+    ADetailer,      // YOLOv8 detector for ADetailer pipeline
+    Tokenizer       // External HF tokenizer.json (sd_ctx_params_t.tokenizer) - LLaDA, Ming-Image, PiD, Lens
 };
 
 /**
@@ -98,6 +99,7 @@ struct ModelLoadParams {
     std::optional<std::string> motion_module;   // AnimateDiff / PiD motion module (SD1.5)
     std::optional<std::string> llm;             // LLM for multimodal (e.g., Qwen)
     std::optional<std::string> llm_vision;      // LLM vision model (optional)
+    std::optional<std::string> tokenizer;       // External tokenizer.json (ModelType::Tokenizer)
     std::optional<std::string> taesd;           // Tiny AutoEncoder for previews
     std::optional<std::string> high_noise_diffusion_model;  // High-noise diffusion (MoE)
     std::optional<std::string> uncond_diffusion_model;  // Unconditional diffusion model (leejet PR #1640+)
@@ -112,6 +114,8 @@ struct ModelLoadParams {
     bool diffusion_flash_attn = false;          // Flash attention specifically for the diffusion model
                                                  // (UNet/DiT/Flux). sd.cpp keeps this separate from
                                                  // flash_attn (which is also for CLIP/T5/conditioner).
+    int conditioning_cache_size = 4;            // LRU cache of conditioning results per ctx (leejet PR #2034);
+                                                 // 0 disables. Upstream C-API default is 4.
     bool sage_attn = false;                     // Native CUDA SageAttention for the diffusion model
                                                  // (leejet PR #2005). SM80+/CUDA 12.0+; falls back to
                                                  // ordinary attention when the GPU or toolkit is older.
@@ -558,6 +562,7 @@ private:
     std::string loaded_motion_module_;
     std::string loaded_llm_;
     std::string loaded_llm_vision_;
+    std::string loaded_tokenizer_;
 
     // Store the load options used when loading the model
     nlohmann::json loaded_options_;

@@ -18,6 +18,8 @@ export interface LoadOptions {
   flash_attn?: boolean
   /** Flash attention specifically for the diffusion model (UNet/DiT/Flux). */
   diffusion_flash_attn?: boolean
+  sage_attn?: boolean                 // Native CUDA SageAttention (SM80+/CUDA 12+)
+  conditioning_cache_size?: number    // LRU of prompt-encode results per loaded model; 0 disables (default 4)
   enable_mmap?: boolean
   vae_conv_direct?: boolean
   diffusion_conv_direct?: boolean
@@ -114,6 +116,7 @@ export interface HealthResponse {
     ip_adapter: string | null
     llm: string | null
     llm_vision: string | null
+    tokenizer?: string | null
   }
   load_options?: LoadOptions
   // Server-authoritative capability flags for the loaded model
@@ -174,6 +177,7 @@ export interface ModelsResponse {
   taesd: ModelInfo[]
   motion_modules: ModelInfo[]
   adetailers: ModelInfo[]
+  tokenizers?: ModelInfo[]            // external tokenizer.json files under the LLM dir
   embeddings: ModelInfo[]
   loaded_model: string | null
   loaded_model_type: string | null
@@ -206,6 +210,9 @@ export interface LoadModelParams {
   motion_module?: string | null
   llm?: string
   llm_vision?: string
+  tokenizer?: string                  // external tokenizer.json (LLaDA-Image, Ming-Image, PiD, Lens)
+  embeddings_connectors?: string      // LTXAV / LLaDA connectors file (resolved from the T5 dir)
+  audio_vae?: string                  // LTXAV audio VAE (resolved from the VAE dir)
   taesd?: string
   high_noise_diffusion_model?: string
   photo_maker?: string
@@ -241,6 +248,7 @@ export interface GenerationParams {
   custom_sigmas?: number[]
   ref_images?: string[]
   ref_image_args?: string
+  image_preprocess?: string
   control_image_base64?: string
   control_strength?: number
   /** IP-Adapter reference image (leejet PR #1803 etc.). Requires ip_adapter loaded on the model. */
@@ -417,6 +425,7 @@ export interface JobModelSettings {
     ip_adapter: string | null
     llm: string | null
     llm_vision: string | null
+    tokenizer?: string | null
   }
   load_options?: LoadOptions
   upscaler_loaded: boolean
