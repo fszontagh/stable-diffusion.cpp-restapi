@@ -197,10 +197,10 @@ export function suggestComponents(
  * existing single-preset architectures keep working without JSON changes.
  *
  * Lookup order:
- *   1. Exact key match (preserves existing behavior for non-match presets).
- *   2. Among presets whose effective architecture equals reportedArchitecture,
+ *   1. Among presets whose effective architecture equals reportedArchitecture,
  *      prefer those whose nameRegex matches the modelName.
- *   3. Among the same set, fall back to the preset without nameRegex.
+ *   2. Exact key match (preserves existing behavior for non-match presets).
+ *   3. Among the same set as (1), fall back to the preset without nameRegex.
  *   4. Case-insensitive key match.
  *   5. Partial match (longest key wins).
  */
@@ -211,10 +211,9 @@ export function findPresetForArchitecture(
 ): ArchitecturePreset | null {
   if (!reportedArchitecture || !allPresets) return null
 
-  // 1. Direct key hit — fastest, no surprises for legacy architectures
-  if (allPresets[reportedArchitecture]) return allPresets[reportedArchitecture]
-
-  // 2/3. Match-rule scan
+  // 1/3. Match-rule scan. Runs before the direct key hit so a nameRegex
+  // variant (LTX-2.5 over LTXAV, LLaDA-Image-Turbo over LLaDA-Image) can
+  // win even when the base preset's key equals the reported architecture.
   const arch = reportedArchitecture
   const archLower = arch.toLowerCase()
   const haystack = (modelName ?? '').toLowerCase()
@@ -237,6 +236,9 @@ export function findPresetForArchitecture(
     }
   }
   if (matched.length > 0) return matched[0]
+
+  // 2. Direct key hit
+  if (allPresets[reportedArchitecture]) return allPresets[reportedArchitecture]
   if (fallbacks.length > 0) return fallbacks[0]
 
   // 4. Case-insensitive key match

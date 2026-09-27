@@ -2750,8 +2750,11 @@ Get all supported model architecture presets and current architecture info.
 | `architectures.*.loadOptions` | object | Recommended load options |
 | `architectures.*.generationDefaults` | object | Default generation parameters |
 | `architectures.*.imageEditMode` | string\|null | Image edit mode (e.g., `"ref_images"`) |
+| `architectures.*.downloads` | array | Download catalog shown on the WebUI Downloads page: `{id, label, component, target_type, source, repo_id, filename, subfolder?, bundle?, recommended?, notes?}` |
 | `current_architecture` | string\|null | Currently loaded model's architecture |
 | `current_preset` | object\|null | Full preset for current architecture |
+
+The catalog links can be verified from a checkout with `scripts/check_download_links.py` (HEADs every file, lists every directory bundle; `HF_TOKEN` in the environment unlocks gated repos, `--anonymous` ignores it). It exits non-zero when any link is dead and also lists the architectures that have no downloads yet.
 
 ---
 

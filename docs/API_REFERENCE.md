@@ -1435,7 +1435,7 @@ Load a model into memory
 | `llm_vision` | string |  |  | LLM vision model name |
 | `model_name` | string | yes |  | Name of the model file to load |
 | `model_type` | enum (`checkpoint`, `diffusion`) |  | checkpoint | Type of model |
-| `motion_module` | string |  |  | Motion module for AnimateDiff/PiD (SD1.5) |
+| `motion_module` | string |  |  | Motion module for AnimateDiff (SD1.5) |
 | `options` | [LoadOptions](#schema-loadoptions) |  |  | Model loading options |
 | `photo_maker` | string |  |  | PhotoMaker model name |
 | `pulid_weights` | string |  |  | PuLID-Flux identity-injection weights (leejet PR #1595). Looked up under the checkpoints directory. |

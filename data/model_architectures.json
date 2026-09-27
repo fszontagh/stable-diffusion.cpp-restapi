@@ -21,7 +21,30 @@
         "scheduler": "discrete",
         "width": 512,
         "height": 512
-      }
+      },
+      "downloads": [
+        {
+          "id": "checkpoint-v15",
+          "label": "Stable Diffusion 1.5 (pruned EMA, ~4.3 GB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+          "filename": "v1-5-pruned-emaonly.safetensors",
+          "recommended": true,
+          "notes": "Official SD 1.5 weights (community mirror of the retired runwayml repo)"
+        },
+        {
+          "id": "vae-ft-mse",
+          "label": "SD 1.x VAE ft-MSE 840k (~335 MB)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "stabilityai/sd-vae-ft-mse-original",
+          "filename": "vae-ft-mse-840000-ema-pruned.safetensors",
+          "notes": "Optional, sharper colours than the bundled VAE"
+        }
+      ]
     },
     "SD2": {
       "name": "SD 2.x / SD 2.1",
@@ -44,7 +67,20 @@
         "scheduler": "discrete",
         "width": 768,
         "height": 768
-      }
+      },
+      "downloads": [
+        {
+          "id": "checkpoint-v21-base",
+          "label": "Stable Diffusion 2.1 base 512 (~5.2 GB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "Manojb/stable-diffusion-2-1-base",
+          "filename": "v2-1_512-ema-pruned.safetensors",
+          "recommended": true,
+          "notes": "Mirror of the retired stabilityai/stable-diffusion-2-1-base repo (as linked by upstream sd.cpp docs)"
+        }
+      ]
     },
     "LCM": {
       "name": "LCM (SD1.5)",
@@ -65,7 +101,31 @@
         "scheduler": "discrete",
         "width": 512,
         "height": 512
-      }
+      },
+      "downloads": [
+        {
+          "id": "checkpoint-lcm-dreamshaper-v7",
+          "label": "LCM Dreamshaper v7 (~3.4 GB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "SimianLuo/LCM_Dreamshaper_v7",
+          "filename": "LCM_Dreamshaper_v7_4k.safetensors",
+          "recommended": true,
+          "notes": "Full LCM-distilled SD1.5 checkpoint, 4-8 steps, cfg 1-2"
+        },
+        {
+          "id": "lora-lcm-sd15",
+          "label": "LCM-LoRA for SD 1.5 (~135 MB)",
+          "component": "lora",
+          "target_type": "lora",
+          "source": "huggingface",
+          "repo_id": "latent-consistency/lcm-lora-sdv1-5",
+          "filename": "pytorch_lora_weights.safetensors",
+          "subfolder": "lcm-lora-sdv1-5",
+          "notes": "Turns any SD1.5 checkpoint into an LCM; use <lora:...:1> with lcm sampler"
+        }
+      ]
     },
     "SDXS-512": {
       "name": "SDXS-512",
@@ -83,7 +143,29 @@
         "scheduler": "discrete",
         "width": 512,
         "height": 512
-      }
+      },
+      "downloads": [
+        {
+          "id": "checkpoint-sdxs-512",
+          "label": "SDXS-512 (~880 MB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "akleine/sdxs-512",
+          "filename": "sdxs.safetensors",
+          "recommended": true,
+          "notes": "One-step model, single-file conversion linked by upstream docs"
+        },
+        {
+          "id": "checkpoint-sdxs-512-q8",
+          "label": "SDXS-512 tinySD distilled (Q8_0 GGUF, ~680 MB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "concedo/sdxs-512-tinySDdistilled-GGUF",
+          "filename": "sdxs-512-tinySDdistilled_Q8_0.gguf"
+        }
+      ]
     },
     "SDXL": {
       "name": "SDXL",
@@ -108,7 +190,30 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "checkpoint-sdxl-base",
+          "label": "SDXL base 1.0 (~6.9 GB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "stabilityai/stable-diffusion-xl-base-1.0",
+          "filename": "sd_xl_base_1.0.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "vae-sdxl-fp16-fix",
+          "label": "SDXL VAE fp16-fix (~335 MB)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "madebyollin/sdxl-vae-fp16-fix",
+          "filename": "sdxl_vae.safetensors",
+          "recommended": true,
+          "notes": "Avoids NaN/black images when the VAE runs in fp16"
+        }
+      ]
     },
     "SSD-1B": {
       "name": "SSD-1B (Segmind)",
@@ -133,7 +238,29 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "checkpoint-ssd-1b",
+          "label": "Segmind SSD-1B (~4.5 GB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "segmind/SSD-1B",
+          "filename": "SSD-1B-A1111.safetensors",
+          "recommended": true,
+          "notes": "Single-file A1111 format, as used by upstream docs"
+        },
+        {
+          "id": "vae-sdxl-fp16-fix",
+          "label": "SDXL VAE fp16-fix (~335 MB)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "madebyollin/sdxl-vae-fp16-fix",
+          "filename": "sdxl_vae.safetensors"
+        }
+      ]
     },
     "Vega": {
       "name": "Vega (Segmind)",
@@ -158,7 +285,39 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "checkpoint-segmind-vega",
+          "label": "Segmind Vega (~3.3 GB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "segmind/Segmind-Vega",
+          "filename": "segmind-vega.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "lora-vegart",
+          "label": "Segmind VegaRT LCM-LoRA (~239 MB)",
+          "component": "lora",
+          "target_type": "lora",
+          "source": "huggingface",
+          "repo_id": "segmind/Segmind-VegaRT",
+          "filename": "pytorch_lora_weights.safetensors",
+          "subfolder": "Segmind-VegaRT",
+          "notes": "Optional LCM LoRA for 2-8 step generation with Vega"
+        },
+        {
+          "id": "vae-sdxl-fp16-fix",
+          "label": "SDXL VAE fp16-fix (~335 MB)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "madebyollin/sdxl-vae-fp16-fix",
+          "filename": "sdxl_vae.safetensors"
+        }
+      ]
     },
     "LCM-SDXL": {
       "name": "LCM (SDXL)",
@@ -182,7 +341,39 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "lora-lcm-sdxl",
+          "label": "LCM-LoRA for SDXL (~394 MB)",
+          "component": "lora",
+          "target_type": "lora",
+          "source": "huggingface",
+          "repo_id": "latent-consistency/lcm-lora-sdxl",
+          "filename": "pytorch_lora_weights.safetensors",
+          "subfolder": "lcm-lora-sdxl",
+          "recommended": true,
+          "notes": "Apply to an SDXL checkpoint (see the SDXL card) with <lora:...:1>, lcm sampler, cfg 1-2"
+        },
+        {
+          "id": "checkpoint-sdxl-base",
+          "label": "SDXL base 1.0 (~6.9 GB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "stabilityai/stable-diffusion-xl-base-1.0",
+          "filename": "sd_xl_base_1.0.safetensors"
+        },
+        {
+          "id": "vae-sdxl-fp16-fix",
+          "label": "SDXL VAE fp16-fix (~335 MB)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "madebyollin/sdxl-vae-fp16-fix",
+          "filename": "sdxl_vae.safetensors"
+        }
+      ]
     },
     "SD3": {
       "name": "SD3 / SD3.5",
@@ -209,7 +400,71 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "checkpoint-sd35-medium-q8",
+          "label": "SD 3.5 Medium (Q8_0 GGUF incl. VAE, ~3.2 GB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "second-state/stable-diffusion-3.5-medium-GGUF",
+          "filename": "sd3.5_medium-Q8_0.gguf",
+          "recommended": true,
+          "notes": "Ungated mirror; contains diffusion + VAE (load as checkpoint)"
+        },
+        {
+          "id": "checkpoint-sd35-large-q8",
+          "label": "SD 3.5 Large (Q8_0 GGUF incl. VAE, ~9.1 GB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "second-state/stable-diffusion-3.5-large-GGUF",
+          "filename": "sd3.5_large-Q8_0.gguf",
+          "notes": "Ungated mirror; higher quality than Medium, needs more VRAM"
+        },
+        {
+          "id": "clip-l",
+          "label": "CLIP-L (~246 MB)",
+          "component": "clip_l",
+          "target_type": "clip",
+          "source": "huggingface",
+          "repo_id": "comfyanonymous/flux_text_encoders",
+          "filename": "clip_l.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "clip-g",
+          "label": "CLIP-G (~1.4 GB)",
+          "component": "clip_g",
+          "target_type": "clip",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/stable-diffusion-3.5-fp8",
+          "filename": "text_encoders/clip_g.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "t5xxl-fp16",
+          "label": "T5-XXL fp16 (~9.8 GB)",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "comfyanonymous/flux_text_encoders",
+          "filename": "t5xxl_fp16.safetensors",
+          "recommended": true,
+          "notes": "Shared with Flux / Chroma / PixArt"
+        },
+        {
+          "id": "t5xxl-q8",
+          "label": "T5-XXL (Q8_0 GGUF, ~5.2 GB)",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "second-state/stable-diffusion-3.5-medium-GGUF",
+          "filename": "t5xxl-Q8_0.gguf",
+          "notes": "Lower RAM/VRAM alternative"
+        }
+      ]
     },
     "Flux": {
       "name": "Flux",
@@ -318,7 +573,61 @@
         "scheduler": "simple",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q4k",
+          "label": "FLUX.1-schnell (Q4_K GGUF, ~6.9 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/FLUX.1-schnell-gguf",
+          "filename": "flux1-schnell-q4_k.gguf",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-q8",
+          "label": "FLUX.1-schnell (Q8_0 GGUF, ~12.8 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/FLUX.1-schnell-gguf",
+          "filename": "flux1-schnell-q8_0.gguf"
+        },
+        {
+          "id": "vae",
+          "label": "ae.safetensors (Flux VAE)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/z_image_turbo",
+          "filename": "split_files/vae/ae.safetensors",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "clip-l",
+          "label": "clip_l.safetensors",
+          "component": "clip_l",
+          "target_type": "clip",
+          "source": "huggingface",
+          "repo_id": "comfyanonymous/flux_text_encoders",
+          "filename": "clip_l.safetensors",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "t5xxl",
+          "label": "t5xxl_fp16.safetensors",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "comfyanonymous/flux_text_encoders",
+          "filename": "t5xxl_fp16.safetensors",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        }
+      ]
     },
     "Flux Kontext": {
       "name": "FLUX.1-Kontext-dev",
@@ -573,7 +882,53 @@
         "scheduler": "simple",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q8",
+          "label": "FLUX.2-klein-base-4B (Q8_0 GGUF, ~4.3 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/FLUX.2-klein-base-4B-GGUF",
+          "filename": "flux-2-klein-base-4b-Q8_0.gguf",
+          "subfolder": "FLUX.2-klein-base-4B",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-q4",
+          "label": "FLUX.2-klein-base-4B (Q4_0 GGUF, ~2.5 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/FLUX.2-klein-base-4B-GGUF",
+          "filename": "flux-2-klein-base-4b-Q4_0.gguf",
+          "subfolder": "FLUX.2-klein-base-4B"
+        },
+        {
+          "id": "vae",
+          "label": "FLUX.2 VAE (flux2-vae.safetensors)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/flux2-klein-4B",
+          "filename": "split_files/vae/flux2-vae.safetensors",
+          "subfolder": "FLUX.2",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "llm-qwen3-4b",
+          "label": "Qwen3 4B (safetensors)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/z_image_turbo",
+          "filename": "split_files/text_encoders/qwen_3_4b.safetensors",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        }
+      ]
     },
     "Flux2 Klein 9B": {
       "name": "Flux.2 Klein 9B",
@@ -600,7 +955,63 @@
         "scheduler": "simple",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q4",
+          "label": "FLUX.2-klein-9B (Q4_0 GGUF, ~5.6 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/FLUX.2-klein-9B-GGUF",
+          "filename": "flux-2-klein-9b-Q4_0.gguf",
+          "subfolder": "FLUX.2-klein-9B",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-q8",
+          "label": "FLUX.2-klein-9B (Q8_0 GGUF, ~10 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/FLUX.2-klein-9B-GGUF",
+          "filename": "flux-2-klein-9b-Q8_0.gguf",
+          "subfolder": "FLUX.2-klein-9B"
+        },
+        {
+          "id": "vae",
+          "label": "FLUX.2 VAE (flux2-vae.safetensors)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/flux2-klein-4B",
+          "filename": "split_files/vae/flux2-vae.safetensors",
+          "subfolder": "FLUX.2",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "llm-qwen3-8b-q4km",
+          "label": "Qwen3 8B (Q4_K_M GGUF, ~5 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "unsloth/Qwen3-8B-GGUF",
+          "filename": "Qwen3-8B-Q4_K_M.gguf",
+          "subfolder": "Qwen3-8B",
+          "recommended": true
+        },
+        {
+          "id": "llm-qwen3-8b",
+          "label": "Qwen3 8B (bf16 safetensors, ~16 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
+          "filename": "split_files/text_encoders/qwen_3_8b.safetensors",
+          "subfolder": "Qwen3-8B"
+        }
+      ]
     },
     "Flux2 Klein Base 9B": {
       "name": "Flux.2 Klein Base 9B",
@@ -627,7 +1038,63 @@
         "scheduler": "simple",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q4",
+          "label": "FLUX.2-klein-base-9B (Q4_0 GGUF, ~5.6 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/FLUX.2-klein-base-9B-GGUF",
+          "filename": "flux-2-klein-base-9b-Q4_0.gguf",
+          "subfolder": "FLUX.2-klein-base-9B",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-q8",
+          "label": "FLUX.2-klein-base-9B (Q8_0 GGUF, ~10 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/FLUX.2-klein-base-9B-GGUF",
+          "filename": "flux-2-klein-base-9b-Q8_0.gguf",
+          "subfolder": "FLUX.2-klein-base-9B"
+        },
+        {
+          "id": "vae",
+          "label": "FLUX.2 VAE (flux2-vae.safetensors)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/flux2-klein-4B",
+          "filename": "split_files/vae/flux2-vae.safetensors",
+          "subfolder": "FLUX.2",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "llm-qwen3-8b-q4km",
+          "label": "Qwen3 8B (Q4_K_M GGUF, ~5 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "unsloth/Qwen3-8B-GGUF",
+          "filename": "Qwen3-8B-Q4_K_M.gguf",
+          "subfolder": "Qwen3-8B",
+          "recommended": true
+        },
+        {
+          "id": "llm-qwen3-8b",
+          "label": "Qwen3 8B (bf16 safetensors, ~16 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
+          "filename": "split_files/text_encoders/qwen_3_8b.safetensors",
+          "subfolder": "Qwen3-8B"
+        }
+      ]
     },
     "Z-Image": {
       "name": "Z-Image Turbo",
@@ -733,7 +1200,63 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q4km",
+          "label": "Qwen-Image (Q4_K_M GGUF, ~13 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "QuantStack/Qwen-Image-GGUF",
+          "filename": "Qwen_Image-Q4_K_M.gguf",
+          "subfolder": "Qwen-Image",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-q8",
+          "label": "Qwen-Image (Q8_0 GGUF, ~21.8 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "QuantStack/Qwen-Image-GGUF",
+          "filename": "Qwen_Image-Q8_0.gguf",
+          "subfolder": "Qwen-Image"
+        },
+        {
+          "id": "vae",
+          "label": "qwen_image_vae.safetensors",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+          "filename": "split_files/vae/qwen_image_vae.safetensors",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "llm-q8",
+          "label": "Qwen2.5-VL 7B (Q8_0 GGUF)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "mradermacher/Qwen2.5-VL-7B-Instruct-GGUF",
+          "filename": "Qwen2.5-VL-7B-Instruct.Q8_0.gguf",
+          "subfolder": "Qwen2.5-VL-7B-Instruct",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "llm",
+          "label": "Qwen2.5-VL 7B (safetensors)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+          "filename": "split_files/text_encoders/qwen_2.5_vl_7b.safetensors",
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        }
+      ]
     },
     "Qwen-Image-2.1": {
       "name": "Qwen-Image 2.1",
@@ -769,10 +1292,16 @@
       },
       "componentScoring": {
         "vae": [
-          { "regex": "qwen[_.\\-]?image[_.\\-]?2[._\\-]?1[_.\\-]?vae", "score": 110 }
+          {
+            "regex": "qwen[_.\\-]?image[_.\\-]?2[._\\-]?1[_.\\-]?vae",
+            "score": 110
+          }
         ],
         "llm": [
-          { "regex": "qwen3[_.\\-]?vl[_.\\-]?8b", "score": 110 }
+          {
+            "regex": "qwen3[_.\\-]?vl[_.\\-]?8b",
+            "score": 110
+          }
         ]
       },
       "downloads": [
@@ -870,10 +1399,16 @@
       },
       "componentScoring": {
         "vae": [
-          { "regex": "llada[_.\\-]?vae", "score": 110 }
+          {
+            "regex": "llada[_.\\-]?vae",
+            "score": 110
+          }
         ],
         "llm": [
-          { "regex": "llada[_.\\-]?image[_.\\-]?(turbo[_.\\-]?)?text[_.\\-]?encoder", "score": 110 }
+          {
+            "regex": "llada[_.\\-]?image[_.\\-]?(turbo[_.\\-]?)?text[_.\\-]?encoder",
+            "score": 110
+          }
         ]
       },
       "downloads": [
@@ -1163,7 +1698,52 @@
         "scheduler": "simple",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q4",
+          "label": "Ovis-Image 7B (Q4_0 GGUF, ~4.2 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/Ovis-Image-7B-GGUF",
+          "filename": "ovis_image-Q4_0.gguf",
+          "subfolder": "Ovis-Image",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-q8",
+          "label": "Ovis-Image 7B (Q8_0 GGUF, ~7.9 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/Ovis-Image-7B-GGUF",
+          "filename": "ovis_image-Q8_0.gguf",
+          "subfolder": "Ovis-Image"
+        },
+        {
+          "id": "vae",
+          "label": "ae.safetensors (Flux VAE)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/z_image_turbo",
+          "filename": "split_files/vae/ae.safetensors",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "llm",
+          "label": "Ovis 2.5 text encoder (safetensors, ~5.1 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Ovis-Image",
+          "filename": "split_files/text_encoders/ovis_2.5.safetensors",
+          "subfolder": "Ovis-Image",
+          "recommended": true
+        }
+      ]
     },
     "Chroma": {
       "name": "Chroma",
@@ -1185,7 +1765,52 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q8",
+          "label": "Chroma1-HD (Q8_0 GGUF, ~9.7 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "silveroxides/Chroma-GGUF",
+          "filename": "Chroma1-HD/Chroma1-HD-Q8_0.gguf",
+          "subfolder": "Chroma",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-q4",
+          "label": "Chroma1-HD (Q4_0 GGUF, ~5.4 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "silveroxides/Chroma-GGUF",
+          "filename": "Chroma1-HD/Chroma1-HD-Q4_0.gguf",
+          "subfolder": "Chroma"
+        },
+        {
+          "id": "vae",
+          "label": "ae.safetensors (Flux VAE)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/z_image_turbo",
+          "filename": "split_files/vae/ae.safetensors",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "t5xxl",
+          "label": "t5xxl_fp16.safetensors",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "comfyanonymous/flux_text_encoders",
+          "filename": "t5xxl_fp16.safetensors",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        }
+      ]
     },
     "Chroma-Radiance": {
       "name": "Chroma1-Radiance",
@@ -1209,7 +1834,43 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q8",
+          "label": "Chroma1-Radiance v0.4 (Q8_0 GGUF, ~10.4 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "silveroxides/Chroma1-Radiance-GGUF",
+          "filename": "Chroma1-Radiance-v0.4/Chroma1-Radiance-v0.4-Q8_0.gguf",
+          "subfolder": "Chroma-Radiance",
+          "recommended": true,
+          "notes": "Pixel-space model: no VAE needed."
+        },
+        {
+          "id": "diffusion-q4ks",
+          "label": "Chroma1-Radiance v0.3 (Q4_K_S GGUF, ~5.8 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "silveroxides/Chroma1-Radiance-GGUF",
+          "filename": "Chroma1-Radiance-v0.3/Chroma1-Radiance-v0.3-Q4_K_S.gguf",
+          "subfolder": "Chroma-Radiance",
+          "notes": "Older release, smallest quant for low-VRAM cards."
+        },
+        {
+          "id": "t5xxl",
+          "label": "t5xxl_fp16.safetensors",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "comfyanonymous/flux_text_encoders",
+          "filename": "t5xxl_fp16.safetensors",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        }
+      ]
     },
     "Wan": {
       "name": "Wan T2V (Video)",
@@ -1296,11 +1957,20 @@
       },
       "componentScoring": {
         "vae": [
-          { "regex": "wan[_.\\-]?2[._\\-]1[_.\\-]?vae", "score": 100 },
-          { "regex": "wan.*vae", "score": 85 }
+          {
+            "regex": "wan[_.\\-]?2[._\\-]1[_.\\-]?vae",
+            "score": 100
+          },
+          {
+            "regex": "wan.*vae",
+            "score": 85
+          }
         ],
         "t5": [
-          { "regex": "umt5[_.\\-]?xxl", "score": 100 }
+          {
+            "regex": "umt5[_.\\-]?xxl",
+            "score": 100
+          }
         ]
       },
       "downloads": [
@@ -1442,7 +2112,7 @@
     },
     "HiDream-O1": {
       "name": "HiDream O1",
-      "description": "HiDream O1 image model (Comfy-Org). Self-contained checkpoint — bundles diffusion, Qwen2 text/vision conditioner, and FakeVAE. Defaults below match the Dev (distilled) variant; for the Full variant raise cfg_scale to ~5.0 and steps to ~28.",
+      "description": "HiDream O1 image model (Comfy-Org). Self-contained checkpoint - bundles diffusion, Qwen2 text/vision conditioner, and FakeVAE. Defaults below match the Dev (distilled) variant; for the Full variant raise cfg_scale to ~5.0 and steps to ~28.",
       "aliases": [
         "HiDream O1",
         "HiDream-O1-Image",
@@ -1462,7 +2132,30 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "checkpoint-dev-bf16",
+          "label": "HiDream-O1-Image Dev (bf16, ~16.4 GB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/HiDream-O1-Image",
+          "filename": "checkpoints/hidream_o1_image_dev_bf16.safetensors",
+          "recommended": true,
+          "notes": "Distilled variant, matches the preset defaults (cfg 1)"
+        },
+        {
+          "id": "checkpoint-full-bf16",
+          "label": "HiDream-O1-Image Full (bf16, ~16.4 GB)",
+          "component": "checkpoint",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/HiDream-O1-Image",
+          "filename": "checkpoints/hidream_o1_image_bf16.safetensors",
+          "notes": "Undistilled: raise cfg_scale to ~5 and steps to ~28"
+        }
+      ]
     },
     "Longcat-Image": {
       "name": "LongCat-Image",
@@ -1494,7 +2187,84 @@
         "flow_shift": 3.0,
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q4km",
+          "label": "LongCat-Image (Q4_K_M GGUF, ~3.7 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "vantagewithai/LongCat-Image-GGUF",
+          "filename": "comfy/LongCat-Image-Q4_K_M.gguf",
+          "subfolder": "LongCat-Image",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-q8",
+          "label": "LongCat-Image (Q8_0 GGUF, ~6.7 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "vantagewithai/LongCat-Image-GGUF",
+          "filename": "comfy/LongCat-Image-Q8_0.gguf",
+          "subfolder": "LongCat-Image"
+        },
+        {
+          "id": "diffusion-edit-q4km",
+          "label": "LongCat-Image-Edit (Q4_K_M GGUF, ~3.9 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "vantagewithai/LongCat-Image-Edit-GGUF",
+          "filename": "LongCat-Image-Edit-Q4_K_M.gguf",
+          "subfolder": "LongCat-Image",
+          "notes": "Image editing variant; with a GGUF LLM also download the mmproj below."
+        },
+        {
+          "id": "vae",
+          "label": "ae.safetensors (Flux VAE)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/z_image_turbo",
+          "filename": "split_files/vae/ae.safetensors",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "llm-q8",
+          "label": "Qwen2.5-VL 7B (Q8_0 GGUF)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "mradermacher/Qwen2.5-VL-7B-Instruct-GGUF",
+          "filename": "Qwen2.5-VL-7B-Instruct.Q8_0.gguf",
+          "subfolder": "Qwen2.5-VL-7B-Instruct",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "llm-vision",
+          "label": "Qwen2.5-VL-7B mmproj (Q8_0, needed for editing with a GGUF LLM)",
+          "component": "llm_vision",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "mradermacher/Qwen2.5-VL-7B-Instruct-GGUF",
+          "filename": "Qwen2.5-VL-7B-Instruct.mmproj-Q8_0.gguf",
+          "subfolder": "Qwen2.5-VL-7B-Instruct"
+        },
+        {
+          "id": "llm",
+          "label": "Qwen2.5-VL 7B (safetensors)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+          "filename": "split_files/text_encoders/qwen_2.5_vl_7b.safetensors",
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        }
+      ]
     },
     "LTXAV": {
       "name": "LTX 2.3 (LTXAV)",
@@ -1528,7 +2298,125 @@
         "video_frames": 33,
         "fps": 24,
         "negative_prompt": "worst quality, low quality, blurry, distorted, artifacts"
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-dev-q4km",
+          "label": "LTX-2.3 22B dev (Q4_K_M GGUF, ~14 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "unsloth/LTX-2.3-GGUF",
+          "filename": "ltx-2.3-22b-dev-Q4_K_M.gguf",
+          "subfolder": "LTX-2.3",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-dev-q8",
+          "label": "LTX-2.3 22B dev (Q8_0 GGUF, ~23 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "unsloth/LTX-2.3-GGUF",
+          "filename": "ltx-2.3-22b-dev-Q8_0.gguf",
+          "subfolder": "LTX-2.3"
+        },
+        {
+          "id": "diffusion-distilled-q4km",
+          "label": "LTX-2.3 22B distilled (Q4_K_M GGUF, ~14 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "unsloth/LTX-2.3-GGUF",
+          "filename": "distilled/ltx-2.3-22b-distilled-Q4_K_M.gguf",
+          "subfolder": "LTX-2.3",
+          "notes": "Few-step distilled variant; pair with the distilled connectors / VAEs."
+        },
+        {
+          "id": "llm-q4km",
+          "label": "gemma-3-12b-it (Q4_K_M GGUF, ~7.3 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "unsloth/gemma-3-12b-it-GGUF",
+          "filename": "gemma-3-12b-it-Q4_K_M.gguf",
+          "subfolder": "gemma-3-12b-it",
+          "recommended": true
+        },
+        {
+          "id": "llm-q8",
+          "label": "gemma-3-12b-it (Q8_0 GGUF, ~12.5 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "unsloth/gemma-3-12b-it-GGUF",
+          "filename": "gemma-3-12b-it-Q8_0.gguf",
+          "subfolder": "gemma-3-12b-it"
+        },
+        {
+          "id": "connectors-dev",
+          "label": "LTX-2.3 dev embeddings connectors",
+          "component": "embeddings_connectors",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "unsloth/LTX-2.3-GGUF",
+          "filename": "text_encoders/ltx-2.3-22b-dev_embeddings_connectors.safetensors",
+          "subfolder": "LTX-2.3",
+          "recommended": true
+        },
+        {
+          "id": "connectors-distilled",
+          "label": "LTX-2.3 distilled embeddings connectors",
+          "component": "embeddings_connectors",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "unsloth/LTX-2.3-GGUF",
+          "filename": "text_encoders/ltx-2.3-22b-distilled_embeddings_connectors.safetensors",
+          "subfolder": "LTX-2.3"
+        },
+        {
+          "id": "vae-dev",
+          "label": "LTX-2.3 dev video VAE",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "unsloth/LTX-2.3-GGUF",
+          "filename": "vae/ltx-2.3-22b-dev_video_vae.safetensors",
+          "subfolder": "LTX-2.3",
+          "recommended": true
+        },
+        {
+          "id": "audio-vae-dev",
+          "label": "LTX-2.3 dev audio VAE",
+          "component": "audio_vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "unsloth/LTX-2.3-GGUF",
+          "filename": "vae/ltx-2.3-22b-dev_audio_vae.safetensors",
+          "subfolder": "LTX-2.3",
+          "recommended": true
+        },
+        {
+          "id": "vae-distilled",
+          "label": "LTX-2.3 distilled video VAE",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "unsloth/LTX-2.3-GGUF",
+          "filename": "vae/ltx-2.3-22b-distilled_video_vae.safetensors",
+          "subfolder": "LTX-2.3"
+        },
+        {
+          "id": "audio-vae-distilled",
+          "label": "LTX-2.3 distilled audio VAE",
+          "component": "audio_vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "unsloth/LTX-2.3-GGUF",
+          "filename": "vae/ltx-2.3-22b-distilled_audio_vae.safetensors",
+          "subfolder": "LTX-2.3"
+        }
+      ]
     },
     "Ernie-Image": {
       "name": "ERNIE-Image",
@@ -1557,7 +2445,75 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-turbo-q4km",
+          "label": "ERNIE-Image-Turbo (Q4_K_M GGUF, ~5 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+          "filename": "ernie-image-turbo-Q4_K_M.gguf",
+          "subfolder": "ERNIE-Image",
+          "recommended": true,
+          "notes": "8 steps, cfg 1.0"
+        },
+        {
+          "id": "diffusion-turbo-q8",
+          "label": "ERNIE-Image-Turbo (Q8_0 GGUF, ~8.7 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+          "filename": "ernie-image-turbo-Q8_0.gguf",
+          "subfolder": "ERNIE-Image"
+        },
+        {
+          "id": "diffusion-q4km",
+          "label": "ERNIE-Image base (Q4_K_M GGUF, ~5 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "unsloth/ERNIE-Image-GGUF",
+          "filename": "ernie-image-Q4_K_M.gguf",
+          "subfolder": "ERNIE-Image",
+          "notes": "Base model: ~20+ steps, cfg ~5.0"
+        },
+        {
+          "id": "vae",
+          "label": "FLUX.2 VAE (flux2-vae.safetensors)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/flux2-klein-4B",
+          "filename": "split_files/vae/flux2-vae.safetensors",
+          "subfolder": "FLUX.2",
+          "recommended": true,
+          "notes": "Shared with other architectures; a second download of the same file is a no-op."
+        },
+        {
+          "id": "llm-q8",
+          "label": "Ministral-3 3B Instruct (Q8_0 GGUF, ~3.7 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "unsloth/Ministral-3-3B-Instruct-2512-GGUF",
+          "filename": "Ministral-3-3B-Instruct-2512-Q8_0.gguf",
+          "subfolder": "Ministral-3-3B",
+          "recommended": true
+        },
+        {
+          "id": "llm",
+          "label": "Ministral-3 3B (safetensors, ~7.7 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/ERNIE-Image",
+          "filename": "text_encoders/ministral-3-3b.safetensors",
+          "subfolder": "Ministral-3-3B"
+        }
+      ]
     },
     "Lens": {
       "name": "Lens",
@@ -1569,7 +2525,8 @@
       ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (FLUX.2 VAE)",
-        "llm": "GPT-OSS-20B (GGUF, ~20 GB on disk — needs significant RAM)"
+        "llm": "GPT-OSS-20B (GGUF, ~12 GB on disk - needs significant RAM)",
+        "tokenizer": "GPT-OSS tokenizer.json (openai/gpt-oss-20b)"
       },
       "optionalComponents": {},
       "loadOptions": {
@@ -1584,7 +2541,90 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-turbo-bf16",
+          "label": "Lens Turbo (BF16, ~8.2 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Lens",
+          "filename": "diffusion_models/lens_turbo_bf16.safetensors",
+          "subfolder": "Lens",
+          "recommended": true,
+          "notes": "4-step distilled variant: use cfg 1.0, 4 steps."
+        },
+        {
+          "id": "diffusion-bf16",
+          "label": "Lens (BF16, ~8.2 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Lens",
+          "filename": "diffusion_models/lens_bf16.safetensors",
+          "subfolder": "Lens",
+          "notes": "Base model: cfg around 5.0."
+        },
+        {
+          "id": "diffusion-turbo-q8",
+          "label": "Lens Turbo (Q8_0 GGUF, ~4.4 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "rootonchair/Lens-Turbo-GGUF",
+          "filename": "lens_turbo-q8_0.gguf",
+          "subfolder": "Lens",
+          "notes": "Community GGUF quant; smaller VRAM footprint."
+        },
+        {
+          "id": "diffusion-q8",
+          "label": "Lens (Q8_0 GGUF, ~4.4 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "rootonchair/Lens-GGUF",
+          "filename": "lens-q8_0.gguf",
+          "subfolder": "Lens",
+          "notes": "Community GGUF quant."
+        },
+        {
+          "id": "vae",
+          "label": "FLUX.2 VAE (flux2-vae.safetensors)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/flux2-klein-4B",
+          "filename": "split_files/vae/flux2-vae.safetensors",
+          "subfolder": "FLUX.2",
+          "recommended": true,
+          "notes": "Same file as the Flux2 presets; downloading it twice is a no-op."
+        },
+        {
+          "id": "llm-q8",
+          "label": "GPT-OSS-20B (Q8_0 GGUF, ~12 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "unsloth/gpt-oss-20b-GGUF",
+          "filename": "gpt-oss-20b-Q8_0.gguf",
+          "subfolder": "Lens",
+          "recommended": true,
+          "notes": "GPT-OSS is MXFP4-native, so every quant is ~12 GB."
+        },
+        {
+          "id": "tokenizer",
+          "label": "GPT-OSS tokenizer.json",
+          "component": "tokenizer",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "openai/gpt-oss-20b",
+          "filename": "tokenizer.json",
+          "subfolder": "Lens",
+          "recommended": true,
+          "notes": "Required. Not embedded in sd.cpp; select it in the Tokenizer field when loading."
+        }
+      ]
     },
     "Ideogram-4": {
       "name": "Ideogram 4",
@@ -1613,7 +2653,59 @@
         "scheduler": "discrete",
         "width": 1024,
         "height": 1024
-      }
+      },
+      "match": {
+        "architecture": "Ideogram 4"
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q4",
+          "label": "Ideogram 4 (Q4_0 GGUF, ~5.6 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/ideogram-4-GGUF",
+          "filename": "ideogram4-Q4_0.gguf",
+          "subfolder": "Ideogram-4",
+          "recommended": true
+        },
+        {
+          "id": "uncond-q4",
+          "label": "Ideogram 4 unconditional model (Q4_0 GGUF, ~5.6 GB)",
+          "component": "uncond_diffusion_model",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/ideogram-4-GGUF",
+          "filename": "ideogram4_uncond-Q4_0.gguf",
+          "subfolder": "Ideogram-4",
+          "recommended": true,
+          "notes": "Load it in the Uncond diffusion model field; must match the main model's quantization."
+        },
+        {
+          "id": "vae",
+          "label": "FLUX.2 VAE (flux2-vae.safetensors)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/flux2-klein-4B",
+          "filename": "split_files/vae/flux2-vae.safetensors",
+          "subfolder": "FLUX.2",
+          "recommended": true,
+          "notes": "Same file as the Flux2 presets; downloading it twice is a no-op."
+        },
+        {
+          "id": "llm-q4km",
+          "label": "Qwen3-VL-8B-Instruct (Q4_K_M GGUF, ~5 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "unsloth/Qwen3-VL-8B-Instruct-GGUF",
+          "filename": "Qwen3-VL-8B-Instruct-Q4_K_M.gguf",
+          "subfolder": "Qwen3-VL-8B-Instruct",
+          "recommended": true,
+          "notes": "Shared with Boogu-Image."
+        }
+      ]
     },
     "PiD": {
       "name": "PiD (NVIDIA Pixel Diffusion Decoder)",
@@ -1625,8 +2717,9 @@
         "PixelDiT"
       ],
       "requiredComponents": {
-        "vae": "matches the PiD checkpoint backbone (Flux / SD3 / Flux.2 ae.safetensors)",
-        "llm": "Gemma 2 2B"
+        "vae": "matches the PiD checkpoint backbone (Flux / SD3 / Flux.2 / Qwen-Image VAE); set vae_format accordingly",
+        "llm": "Gemma 2 2B (gemma_2_2b_it_elm)",
+        "tokenizer": "Gemma 2 tokenizer.json"
       },
       "optionalComponents": {},
       "loadOptions": {
@@ -1642,7 +2735,122 @@
         "scheduler": "discrete",
         "width": 2048,
         "height": 2048
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-15-flux1-4step",
+          "label": "PiD 1.5 for Flux.1 latents, 1024 to 4096, 4-step (BF16, ~2.8 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/PixelDiT",
+          "filename": "diffusion_models/pid_1.5_flux1_1024_to_4096_4step_bf16.safetensors",
+          "subfolder": "PiD",
+          "recommended": true,
+          "notes": "Pair with the Flux VAE and vae_format=flux. A reference image is required."
+        },
+        {
+          "id": "diffusion-15-flux2-4step",
+          "label": "PiD 1.5 for Flux.2 latents, 1024 to 4096, 4-step (BF16)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/PixelDiT",
+          "filename": "diffusion_models/pid_1.5_flux2_1024_to_4096_4step_bf16.safetensors",
+          "subfolder": "PiD",
+          "notes": "Pair with the Flux.2 VAE and vae_format=flux2."
+        },
+        {
+          "id": "diffusion-15-qwen-4step",
+          "label": "PiD 1.5 for Qwen-Image latents, 1024 to 4096, 4-step (BF16)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/PixelDiT",
+          "filename": "diffusion_models/pid_1.5_qwenimage_1024_to_4096_4step_bf16.safetensors",
+          "subfolder": "PiD",
+          "notes": "Pair with the Qwen-Image VAE and vae_format=wan."
+        },
+        {
+          "id": "diffusion-flux1-512",
+          "label": "PiD for Flux.1 latents, 512 to 2048, 4-step (BF16)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/PixelDiT",
+          "filename": "diffusion_models/pid_flux1_512_to_2048_4step_bf16.safetensors",
+          "subfolder": "PiD",
+          "notes": "The checkpoint used in the upstream example."
+        },
+        {
+          "id": "diffusion-sd3",
+          "label": "PiD for SD3 latents, 1024 to 4096, 4-step (BF16)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/PixelDiT",
+          "filename": "diffusion_models/pid_sd3_1024_to_4096_4step_bf16.safetensors",
+          "subfolder": "PiD",
+          "notes": "Pair with the SD3 VAE and vae_format=sd3."
+        },
+        {
+          "id": "llm",
+          "label": "Gemma 2 2B ELM text encoder (BF16, ~5.2 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/PixelDiT",
+          "filename": "text_encoders/gemma_2_2b_it_elm_bf16.safetensors",
+          "subfolder": "PiD",
+          "recommended": true
+        },
+        {
+          "id": "tokenizer",
+          "label": "Gemma 2 tokenizer.json",
+          "component": "tokenizer",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "unsloth/gemma-2-2b-it",
+          "filename": "tokenizer.json",
+          "subfolder": "PiD",
+          "recommended": true,
+          "notes": "Required. Ungated mirror of the Gemma 2 tokenizer (google/gemma-2-2b needs a license click-through)."
+        },
+        {
+          "id": "vae-flux",
+          "label": "Flux VAE (ae.safetensors)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "nvidia/PiD",
+          "filename": "checkpoints/ae.safetensors",
+          "subfolder": "PiD",
+          "recommended": true,
+          "notes": "For Flux.1 / Z-Image PiD checkpoints."
+        },
+        {
+          "id": "vae-flux2",
+          "label": "Flux.2 VAE (flux2_ae.safetensors)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "nvidia/PiD",
+          "filename": "checkpoints/flux2_ae.safetensors",
+          "subfolder": "PiD",
+          "notes": "For Flux.2 PiD checkpoints."
+        },
+        {
+          "id": "vae-sd3",
+          "label": "SD3 VAE",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "nvidia/PiD",
+          "filename": "checkpoints/sd3_vae/vae/diffusion_pytorch_model.safetensors",
+          "subfolder": "PiD-SD3",
+          "notes": "For SD3 PiD checkpoints."
+        }
+      ]
     },
     "Boogu-Image": {
       "name": "Boogu Image",
@@ -1744,7 +2952,7 @@
     },
     "SeFi-Image-Turbo": {
       "name": "SeFi-Image (Turbo)",
-      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, TURBO variants (1B-turbo / 2B-turbo / 5B-turbo) — 4 steps, CFG 1.0 (distilled). Now in leejet/master (PR #1707 merged via 03e9a22).",
+      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, TURBO variants (1B-turbo / 2B-turbo / 5B-turbo) - 4 steps, CFG 1.0 (distilled). Now in leejet/master (PR #1707 merged via 03e9a22).",
       "aliases": [
         "sefi-turbo",
         "sefi_turbo",
@@ -1804,7 +3012,7 @@
     },
     "SeFi-Image-Base": {
       "name": "SeFi-Image (Base)",
-      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, BASE variants (1B-Base / 2B-Base / 5B-Base) — 50 steps, CFG 4.0. Now in leejet/master (PR #1707 merged via 03e9a22).",
+      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, BASE variants (1B-Base / 2B-Base / 5B-Base) - 50 steps, CFG 4.0. Now in leejet/master (PR #1707 merged via 03e9a22).",
       "aliases": [
         "sefi-base",
         "sefi_base",
@@ -1863,7 +3071,7 @@
     },
     "SeFi-Image-RL": {
       "name": "SeFi-Image (RL)",
-      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, RL-finetuned variant (5B-RL) — 50 steps, CFG 4.0. Now in leejet/master (PR #1707 merged via 03e9a22).",
+      "description": "Dual-time flow-matching T2I, Flux2 backbone + Qwen3-VL encoder, RL-finetuned variant (5B-RL) - 50 steps, CFG 4.0. Now in leejet/master (PR #1707 merged via 03e9a22).",
       "aliases": [
         "sefi-rl",
         "sefi_rl",
@@ -1923,7 +3131,7 @@
     },
     "Krea2-Raw": {
       "name": "Krea2 (Raw)",
-      "description": "Krea2 diffusion transformer (Raw variant) — 50 steps, CFG 4.0. Uses Wan 2.1 VAE and Qwen3-VL 4B encoder. Added in leejet/master via PR #1705.",
+      "description": "Krea2 diffusion transformer (Raw variant) - 50 steps, CFG 4.0. Uses Wan 2.1 VAE and Qwen3-VL 4B encoder. Added in leejet/master via PR #1705.",
       "aliases": [
         "krea2-raw",
         "krea2_raw",
@@ -2019,7 +3227,7 @@
     },
     "Krea2-Turbo": {
       "name": "Krea2 (Turbo)",
-      "description": "Krea2 diffusion transformer (Turbo variant) — 4 steps, CFG 1.0. Uses Wan 2.1 VAE and Qwen3-VL 4B encoder. Added in leejet/master via PR #1705.",
+      "description": "Krea2 diffusion transformer (Turbo variant) - 4 steps, CFG 1.0. Uses Wan 2.1 VAE and Qwen3-VL 4B encoder. Added in leejet/master via PR #1705.",
       "aliases": [
         "krea2-turbo",
         "krea2_turbo",
@@ -2115,56 +3323,111 @@
     },
     "Krea2OstrisEdit": {
       "name": "Krea2 (Ostris Edit)",
-      "description": "Krea2 Flux2-family edit variant by Ostris. Uses flux2_ae VAE and Mistral-Small-Instruct or Qwen3-VL as the text encoder.",
+      "description": "Krea2 with a community image-edit LoRA trained with the Ostris toolkit. Load a Krea2 checkpoint (Raw or Turbo) plus its Wan 2.1 VAE and Qwen3-VL 4B, then apply the edit LoRA and pass the source image as a reference image.",
       "aliases": [
         "krea2-ostris-edit",
         "ostris-edit"
       ],
       "requiredComponents": {
-        "vae": "flux2_ae.safetensors (Flux2 VAE)",
-        "llm": "Mistral-Small-Instruct or Qwen3-VL"
+        "vae": "Wan 2.1 VAE (wan_2.1_vae.safetensors)",
+        "llm": "Qwen3-VL 4B Instruct"
       },
       "optionalComponents": {},
       "loadOptions": {
         "flash_attn": true,
-        "diffusion_flash_attn": true,
-        "prediction": "flux2_flow"
+        "diffusion_flash_attn": true
       },
       "imageEditMode": "ref_images",
       "generationDefaults": {
-        "cfg_scale": 3.5,
-        "steps": 30,
+        "cfg_scale": 4.0,
+        "steps": 50,
         "sampler": "euler",
-        "scheduler": "flux2",
+        "scheduler": "discrete",
         "width": 1024,
         "height": 1024
       },
       "match": {
-        "architecture": "Flux2",
+        "architecture": "Krea2",
         "nameRegex": "krea2.*ostris|ostris.*edit"
       },
       "componentScoring": {
-        "vae": [
-          {
-            "regex": "flux2[_.\\-]?ae",
-            "score": 110
-          },
-          {
-            "regex": "flux2.*vae",
-            "score": 90
-          }
-        ],
         "llm": [
           {
-            "regex": "mistral[_.\\-]?small.*instruct",
-            "score": 100
+            "regex": "qwen3[_.\\-]?vl[_.\\-]?4b",
+            "score": 110
           },
           {
             "regex": "qwen3[_.\\-]?vl",
             "score": 90
           }
+        ],
+        "vae": [
+          {
+            "regex": "wan[_.\\-]?2[._\\-]1[_.\\-]?vae",
+            "score": 100
+          },
+          {
+            "regex": "wan.*vae",
+            "score": 85
+          }
         ]
-      }
+      },
+      "downloads": [
+        {
+          "id": "diffusion-q8",
+          "label": "Krea-2 Base (Q8_0 GGUF)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "realrebelai/KREA-2_GGUFs",
+          "filename": "BASE/Krea-2-Base-Q8_0.gguf",
+          "subfolder": "Krea-2-Raw",
+          "recommended": true,
+          "notes": "Base checkpoint for the edit LoRA (the LoRA itself is not in this catalog)."
+        },
+        {
+          "id": "diffusion-q4km",
+          "label": "Krea-2 Base (Q4_K_M GGUF)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "realrebelai/KREA-2_GGUFs",
+          "filename": "BASE/Krea-2-Base-Q4_K_M.gguf",
+          "subfolder": "Krea-2-Raw"
+        },
+        {
+          "id": "turbo-diffusion-q8",
+          "label": "Krea-2 Turbo (Q8_0 GGUF)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "realrebelai/KREA-2_GGUFs",
+          "filename": "TURBO/Krea-2-Turbo-Q8_0.gguf",
+          "subfolder": "Krea-2-Turbo"
+        },
+        {
+          "id": "vae",
+          "label": "wan_2.1_vae.safetensors",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/vae/wan_2.1_vae.safetensors",
+          "recommended": true,
+          "notes": "Shared with Wan / Wan-S2V; a second click is a no-op."
+        },
+        {
+          "id": "llm-q4km",
+          "label": "Qwen3-VL 4B Instruct (Q4_K_M GGUF)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Qwen/Qwen3-VL-4B-Instruct-GGUF",
+          "filename": "Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+          "subfolder": "Qwen3-VL-4B-Instruct",
+          "recommended": true
+        }
+      ]
     },
     "Lingbot": {
       "name": "Lingbot (Video)",
@@ -2173,8 +3436,8 @@
         "lingbot"
       ],
       "requiredComponents": {
-        "vae": "Video VAE",
-        "t5xxl": "T5-XXL text encoder"
+        "vae": "Wan 2.1 VAE (wan_2.1_vae.safetensors)",
+        "llm": "Qwen3-VL 4B Instruct"
       },
       "optionalComponents": {},
       "videoModel": true,
@@ -2193,8 +3456,55 @@
         "video_frames": 24
       },
       "match": {
-        "nameRegex": "lingbot"
-      }
+        "architecture": "LingBot Video"
+      },
+      "downloads": [
+        {
+          "id": "diffusion-dense-1.3b",
+          "label": "LingBot Video dense 1.3B (~2.8 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "robbyant/lingbot-video-dense-1.3b",
+          "filename": "transformer/diffusion_pytorch_model.safetensors",
+          "subfolder": "lingbot-video-dense-1.3b",
+          "recommended": true,
+          "notes": "The MoE 30B-A3B variant ships as 13 shards and is not listed."
+        },
+        {
+          "id": "vae",
+          "label": "wan_2.1_vae.safetensors",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/vae/wan_2.1_vae.safetensors",
+          "recommended": true,
+          "notes": "Shared with Wan / Krea2."
+        },
+        {
+          "id": "llm-q4km",
+          "label": "Qwen3-VL-4B-Instruct (Q4_K_M GGUF, ~2.5 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Qwen/Qwen3-VL-4B-Instruct-GGUF",
+          "filename": "Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+          "subfolder": "Qwen3-VL-4B-Instruct",
+          "recommended": true,
+          "notes": "Shared with Krea2."
+        },
+        {
+          "id": "llm-q8",
+          "label": "Qwen3-VL-4B-Instruct (Q8_0 GGUF, ~4.3 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Qwen/Qwen3-VL-4B-Instruct-GGUF",
+          "filename": "Qwen3VL-4B-Instruct-Q8_0.gguf",
+          "subfolder": "Qwen3-VL-4B-Instruct"
+        }
+      ]
     },
     "AnimateDiff-v3": {
       "name": "AnimateDiff v3 (SD1.5)",
@@ -2243,7 +3553,48 @@
             "score": 80
           }
         ]
-      }
+      },
+      "downloads": [
+        {
+          "id": "motion-module-v3",
+          "label": "AnimateDiff motion module v3 (fp16 safetensors, ~836 MB)",
+          "component": "motion_module",
+          "target_type": "motion_module",
+          "source": "huggingface",
+          "repo_id": "conrevo/AnimateDiff-A1111",
+          "filename": "motion_module/mm_sd15_v3.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "motion-module-v3-ckpt",
+          "label": "AnimateDiff motion module v3 (original ckpt, ~1.7 GB)",
+          "component": "motion_module",
+          "target_type": "motion_module",
+          "source": "huggingface",
+          "repo_id": "guoyww/animatediff",
+          "filename": "v3_sd15_mm.ckpt"
+        },
+        {
+          "id": "lora-v3-adapter",
+          "label": "AnimateDiff v3 Domain Adapter LoRA (~100 MB)",
+          "component": "lora",
+          "target_type": "lora",
+          "source": "huggingface",
+          "repo_id": "guoyww/animatediff",
+          "filename": "v3_sd15_adapter.ckpt",
+          "notes": "Optional; use as <lora:v3_sd15_adapter:1.0>"
+        },
+        {
+          "id": "checkpoint-v15",
+          "label": "Stable Diffusion 1.5 base (~4.3 GB)",
+          "component": "base",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+          "filename": "v1-5-pruned-emaonly.safetensors",
+          "notes": "Any SD 1.5 checkpoint works; fine-tunes usually look better"
+        }
+      ]
     },
     "AnimateDiff-v2": {
       "name": "AnimateDiff v2 (SD1.5)",
@@ -2292,53 +3643,38 @@
             "score": 70
           }
         ]
-      }
-    },
-    "PiD-1.5": {
-      "name": "PiD (SD1.5)",
-      "description": "PiD motion module for SD 1.5 (AnimateDiff-family). Requires an SD1.5 base plus the PiD motion module.",
-      "aliases": [
-        "PiD",
-        "pid-1.5",
-        "pid_sd15"
-      ],
-      "requiredComponents": {
-        "base": "SD 1.5 checkpoint",
-        "motion_module": "PiD motion module"
       },
-      "optionalComponents": {
-        "vae": "Improves color accuracy"
-      },
-      "videoModel": true,
-      "loadOptions": {
-        "flash_attn": true
-      },
-      "generationDefaults": {
-        "cfg_scale": 7.0,
-        "steps": 25,
-        "sampler": "euler_a",
-        "scheduler": "karras",
-        "width": 512,
-        "height": 512,
-        "fps": 8,
-        "video_frames": 16
-      },
-      "match": {
-        "architecture": "SD 1.x",
-        "nameRegex": "^pid|/pid[-_ ]?1\\.?5|pid[_.\\-]?sd15"
-      },
-      "componentScoring": {
-        "motion_module": [
-          {
-            "regex": "^pid",
-            "score": 110
-          },
-          {
-            "regex": "pid[_.\\-]?sd15",
-            "score": 100
-          }
-        ]
-      }
+      "downloads": [
+        {
+          "id": "motion-module-v2",
+          "label": "AnimateDiff motion module v2 (fp16 safetensors, ~900 MB)",
+          "component": "motion_module",
+          "target_type": "motion_module",
+          "source": "huggingface",
+          "repo_id": "conrevo/AnimateDiff-A1111",
+          "filename": "motion_module/mm_sd15_v2.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "motion-module-v2-ckpt",
+          "label": "AnimateDiff motion module v2 (original ckpt, ~1.8 GB)",
+          "component": "motion_module",
+          "target_type": "motion_module",
+          "source": "huggingface",
+          "repo_id": "guoyww/animatediff",
+          "filename": "mm_sd_v15_v2.ckpt"
+        },
+        {
+          "id": "checkpoint-v15",
+          "label": "Stable Diffusion 1.5 base (~4.3 GB)",
+          "component": "base",
+          "target_type": "checkpoint",
+          "source": "huggingface",
+          "repo_id": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+          "filename": "v1-5-pruned-emaonly.safetensors",
+          "notes": "Any SD 1.5 checkpoint works; fine-tunes usually look better"
+        }
+      ]
     },
     "HunyuanVideo-1.5": {
       "name": "HunyuanVideo 1.5",
@@ -2348,8 +3684,9 @@
         "hunyuan-video-1.5"
       ],
       "requiredComponents": {
-        "llm": "LLaMA text encoder",
-        "clip_l": "CLIP-L text encoder"
+        "vae": "hunyuanvideo15_vae_fp16.safetensors",
+        "llm": "Qwen2.5-VL 7B",
+        "t5xxl": "byt5_small_glyphxl (loaded in the T5-XXL slot)"
       },
       "optionalComponents": {
         "vae": "Video VAE"
@@ -2370,8 +3707,95 @@
         "video_frames": 30
       },
       "match": {
-        "nameRegex": "hunyuan.*video.*1\\.?5|hunyuanvideo[_.\\-]?1[_.\\-]?5"
-      }
+        "architecture": "Hunyuan Video"
+      },
+      "downloads": [
+        {
+          "id": "diffusion-720p-t2v",
+          "label": "HunyuanVideo 1.5 720p T2V (FP16, ~16.7 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+          "filename": "split_files/diffusion_models/hunyuanvideo1.5_720p_t2v_fp16.safetensors",
+          "subfolder": "HunyuanVideo-1.5",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-720p-i2v",
+          "label": "HunyuanVideo 1.5 720p I2V (FP16, ~16.7 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+          "filename": "split_files/diffusion_models/hunyuanvideo1.5_720p_i2v_fp16.safetensors",
+          "subfolder": "HunyuanVideo-1.5"
+        },
+        {
+          "id": "diffusion-480p-t2v",
+          "label": "HunyuanVideo 1.5 480p T2V (FP16, ~16.7 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+          "filename": "split_files/diffusion_models/hunyuanvideo1.5_480p_t2v_fp16.safetensors",
+          "subfolder": "HunyuanVideo-1.5"
+        },
+        {
+          "id": "diffusion-480p-i2v-step",
+          "label": "HunyuanVideo 1.5 480p I2V step-distilled (FP16, ~16.7 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+          "filename": "split_files/diffusion_models/hunyuanvideo1.5_480p_i2v_step_distilled_fp16.safetensors",
+          "subfolder": "HunyuanVideo-1.5"
+        },
+        {
+          "id": "vae",
+          "label": "HunyuanVideo 1.5 VAE (FP16)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+          "filename": "split_files/vae/hunyuanvideo15_vae_fp16.safetensors",
+          "subfolder": "HunyuanVideo-1.5",
+          "recommended": true
+        },
+        {
+          "id": "llm-q8",
+          "label": "Qwen2.5-VL-7B-Instruct (Q8_0 GGUF)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "mradermacher/Qwen2.5-VL-7B-Instruct-GGUF",
+          "filename": "Qwen2.5-VL-7B-Instruct.Q8_0.gguf",
+          "subfolder": "Qwen2.5-VL-7B-Instruct",
+          "recommended": true,
+          "notes": "Shared with Qwen Image Edit."
+        },
+        {
+          "id": "llm-bf16",
+          "label": "qwen_2.5_vl_7b (safetensors, ~16.6 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+          "filename": "split_files/text_encoders/qwen_2.5_vl_7b.safetensors"
+        },
+        {
+          "id": "byt5",
+          "label": "byT5 small GlyphXL text encoder (FP16)",
+          "component": "t5xxl",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+          "filename": "split_files/text_encoders/byt5_small_glyphxl_fp16.safetensors",
+          "subfolder": "HunyuanVideo-1.5",
+          "recommended": true,
+          "notes": "Glyph / text-rendering encoder, loaded through the T5-XXL slot."
+        }
+      ]
     },
     "MiniT2I": {
       "name": "MiniT2I",
@@ -2399,8 +3823,14 @@
       },
       "componentScoring": {
         "t5": [
-          { "regex": "flan[_.\\-]?t5[_.\\-]?large", "score": 110 },
-          { "regex": "flan[_.\\-]?t5", "score": 85 }
+          {
+            "regex": "flan[_.\\-]?t5[_.\\-]?large",
+            "score": 110
+          },
+          {
+            "regex": "flan[_.\\-]?t5",
+            "score": 85
+          }
         ]
       },
       "downloads": [
@@ -2898,7 +4328,9 @@
         "minimax-h3"
       ],
       "requiredComponents": {
-        "vae": "Minimax-H3 VAE"
+        "vae": "minimax_h3_video_vae_fp16.safetensors",
+        "audio_vae": "minimax_h3_audio_vae_fp32.safetensors",
+        "llm": "qwen3vl_32b_minimax_h3 (Qwen3-VL 32B fine-tune)"
       },
       "optionalComponents": {},
       "loadOptions": {
@@ -2914,8 +4346,76 @@
         "height": 1024
       },
       "match": {
-        "nameRegex": "minimax.?h3|minimax_h3"
-      }
+        "architecture": "MiniMax-H3"
+      },
+      "downloads": [
+        {
+          "id": "diffusion-fl2va-pruned-q4km",
+          "label": "MiniMax-H3 FL2VA pruned (Q4_K_M GGUF, ~11.4 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/MiniMax-H3-GGUF",
+          "filename": "minimax_h3_fl2va_pruned-Q4_K_M.gguf",
+          "subfolder": "MiniMax-H3",
+          "recommended": true,
+          "notes": "Text / first-last-frame to video+audio."
+        },
+        {
+          "id": "diffusion-fl2va-q4km",
+          "label": "MiniMax-H3 FL2VA full (Q4_K_M GGUF, ~18.8 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/MiniMax-H3-GGUF",
+          "filename": "minimax_h3_fl2va-Q4_K_M.gguf",
+          "subfolder": "MiniMax-H3"
+        },
+        {
+          "id": "diffusion-ref2va-pruned-q4km",
+          "label": "MiniMax-H3 REF2VA pruned (Q4_K_M GGUF, ~11.4 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "leejet/MiniMax-H3-GGUF",
+          "filename": "minimax_h3_ref2va_pruned-Q4_K_M.gguf",
+          "subfolder": "MiniMax-H3",
+          "notes": "Reference-image to video+audio (pass the reference as a ref image)."
+        },
+        {
+          "id": "llm-q4km",
+          "label": "qwen3vl_32b_minimax_h3 (Q4_K_M GGUF, ~18.2 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "leejet/MiniMax-H3-GGUF",
+          "filename": "qwen3vl_32b_minimax_h3-Q4_K_M.gguf",
+          "subfolder": "MiniMax-H3",
+          "recommended": true
+        },
+        {
+          "id": "vae",
+          "label": "MiniMax-H3 video VAE (FP16, ~5.2 GB)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/MiniMax-H3",
+          "filename": "vae/minimax_h3_video_vae_fp16.safetensors",
+          "subfolder": "MiniMax-H3",
+          "recommended": true
+        },
+        {
+          "id": "audio-vae",
+          "label": "MiniMax-H3 audio VAE (FP32)",
+          "component": "audio_vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/MiniMax-H3",
+          "filename": "vae/minimax_h3_audio_vae_fp32.safetensors",
+          "subfolder": "MiniMax-H3",
+          "recommended": true
+        }
+      ]
     },
     "LTX-2.5": {
       "name": "LTX 2.5",
@@ -2948,7 +4448,92 @@
         "video_frames": 121,
         "fps": 24,
         "negative_prompt": "worst quality, low quality, blurry, distorted, artifacts"
-      }
+      },
+      "match": {
+        "architecture": "LTXAV",
+        "nameRegex": "ltx[-_.]?2[-_.]?5"
+      },
+      "downloads": [
+        {
+          "id": "diffusion-dev-q4km",
+          "label": "LTX-2.5 22B dev (Q4_K_M GGUF, ~15.7 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "vantagewithai/LTX-2.5-GGUF",
+          "filename": "dev/ltx-2.5-22b-dev-transformer-Q4_K_M.gguf",
+          "subfolder": "LTX-2.5",
+          "recommended": true
+        },
+        {
+          "id": "diffusion-dev-q8",
+          "label": "LTX-2.5 22B dev (Q8_0 GGUF, ~23.6 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "vantagewithai/LTX-2.5-GGUF",
+          "filename": "dev/ltx-2.5-22b-dev-transformer-Q8_0.gguf",
+          "subfolder": "LTX-2.5",
+          "notes": "The quant used in the upstream examples."
+        },
+        {
+          "id": "diffusion-distilled-q4km",
+          "label": "LTX-2.5 22B distilled (Q4_K_M GGUF, ~15.7 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "vantagewithai/LTX-2.5-GGUF",
+          "filename": "distilled/ltx-2.5-22b-distilled-transformer-Q4_K_M.gguf",
+          "subfolder": "LTX-2.5"
+        },
+        {
+          "id": "llm-q4km",
+          "label": "Gemma 4 12B with LTX projection (Q4_K_M GGUF, ~8.4 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "elix3r/gemma4-12b-with-proj-ltx-2.5-GGUF",
+          "filename": "gemma4-12b-with-proj-ltx-2.5-Q4_K_M.gguf",
+          "subfolder": "LTX-2.5",
+          "recommended": true,
+          "notes": "Community quant. Gated repo: accept the license on huggingface.co and set an HF token in Settings > Integrations."
+        },
+        {
+          "id": "llm-bf16",
+          "label": "Gemma 4 12B with LTX projection (BF16, ~26 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Lightricks/LTX-2.5",
+          "filename": "text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+          "subfolder": "LTX-2.5",
+          "notes": "Official weights; convert to Q8_0 with sd-cli -M convert to save memory. Gated repo: accept the license on huggingface.co and set an HF token in Settings > Integrations."
+        },
+        {
+          "id": "vae",
+          "label": "LTX-2.5 video VAE (conv variant)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Lightricks/LTX-2.5",
+          "filename": "vae/ltx-2.5-video-vae-conv-bf16.safetensors",
+          "subfolder": "LTX-2.5",
+          "recommended": true,
+          "notes": "Use the conv variant, not ltx-2.5-video-vae-bf16. Gated repo: accept the license on huggingface.co and set an HF token in Settings > Integrations."
+        },
+        {
+          "id": "audio-vae",
+          "label": "LTX-2.5 audio VAE",
+          "component": "audio_vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "Lightricks/LTX-2.5",
+          "filename": "vae/ltx-2.5-audio-vae-bf16.safetensors",
+          "subfolder": "LTX-2.5",
+          "recommended": true,
+          "notes": "Gated repo: accept the license on huggingface.co and set an HF token in Settings > Integrations."
+        }
+      ]
     }
   },
   "version": 2,

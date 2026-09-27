@@ -18,7 +18,7 @@ struct LoadModelRequest {
             .optional_field("t5xxl", schema::FieldType::String, "T5-XXL text encoder name")
             .optional_field("controlnet", schema::FieldType::String, "ControlNet model name")
             .optional_field("ip_adapter", schema::FieldType::String, "IP-Adapter model name (leejet PR #1803/#1815/#1824/#1839). Both classic and Plus/Resampler variants supported.")
-            .optional_field("motion_module", schema::FieldType::String, "Motion module for AnimateDiff/PiD (SD1.5)")
+            .optional_field("motion_module", schema::FieldType::String, "Motion module for AnimateDiff (SD1.5)")
             .optional_field("llm", schema::FieldType::String, "LLM model name")
             .optional_field("llm_vision", schema::FieldType::String, "LLM vision model name")
             .optional_field("tokenizer", schema::FieldType::String, "External tokenizer.json (from GET /models tokenizers[]); required by LLaDA-Image, Ming-Image, PiD and Lens")
