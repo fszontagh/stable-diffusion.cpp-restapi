@@ -1176,6 +1176,80 @@
         }
       ]
     },
+    "Z-Image-L2P": {
+      "name": "Z-Image L2P",
+      "description": "Z-Image-Turbo transferred to pixel space (L2P, Latent-to-Pixel): 16x16 patch tokenization on RGB plus a small local decoder replace the VAE, so do not load a VAE. Text encoder is the Z-Image Qwen3 4B. Width and height must be multiples of 16. The checkpoint keeps part of the transformer in F32; weight_type bf16 (preset default) cuts it from about 18.6 GB to 11.8 GB. No reference-image editing.",
+      "aliases": [
+        "Z-Image L2P",
+        "L2P",
+        "ZImage L2P"
+      ],
+      "requiredComponents": {
+        "llm": "Qwen3 4B (same as Z-Image Turbo)"
+      },
+      "optionalComponents": {},
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true,
+        "weight_type": "bf16"
+      },
+      "generationDefaults": {
+        "cfg_scale": 2.0,
+        "steps": 30,
+        "sampler": "euler",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "Z-Image L2P"
+      },
+      "componentScoring": {
+        "llm": [
+          {
+            "regex": "qwen[_.\\-]?3[_.\\-]?4b",
+            "score": 110
+          },
+          {
+            "regex": "qwen3",
+            "score": 80
+          }
+        ]
+      },
+      "downloads": [
+        {
+          "id": "diffusion-1k",
+          "label": "Z-Image L2P 1K (model-1k-merge, ~19.6 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "zhen-nan/L2P",
+          "filename": "model-1k-merge.safetensors",
+          "subfolder": "Z-Image-L2P",
+          "recommended": true,
+          "notes": "Official release. Load with weight_type bf16 (preset default) to fit in about 11.8 GB."
+        },
+        {
+          "id": "llm-qwen3-4b-safetensors",
+          "label": "Qwen3 4B (safetensors)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/z_image_turbo",
+          "filename": "split_files/text_encoders/qwen_3_4b.safetensors",
+          "recommended": true
+        },
+        {
+          "id": "llm-qwen3-4b-gguf",
+          "label": "Qwen3-4B-Instruct-2507 (Q4_K_M GGUF)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+          "filename": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "notes": "GGUF alternative for lower-VRAM setups"
+        }
+      ]
+    },
     "Qwen": {
       "name": "Qwen-Image",
       "description": "Qwen-based image generation. Requires VAE and LLM (Qwen2.5-VL 7B).",
