@@ -4,6 +4,8 @@
 #include <vector>
 #include <cstdint>
 #include <chrono>
+#include <filesystem>
+#include <optional>
 
 namespace sdcpp {
 namespace utils {
@@ -134,6 +136,19 @@ std::string sanitize_filename(const std::string& filename);
  * @return true if file starts with ZIP signature (PK)
  */
 bool is_zip_archive(const std::string& filepath);
+
+/**
+ * Resolve an untrusted relative path under a base directory.
+ *
+ * `rel` must already be URL-decoded exactly once (cpp-httplib decodes
+ * req.path before routing; do not decode the regex capture again).
+ * Returns nullopt when `rel` is absolute, has a root name / root directory,
+ * contains a NUL byte or a ".." component, or when the resolved path
+ * (symlinks followed) is not inside the canonical base. An empty `rel`
+ * resolves to the base itself.
+ */
+std::optional<std::filesystem::path> resolve_under(const std::filesystem::path& base,
+                                                   const std::string& rel);
 
 } // namespace utils
 } // namespace sdcpp

@@ -295,5 +295,34 @@ bool is_zip_archive(const std::string& filepath) {
     return magic[0] == 0x50 && magic[1] == 0x4B;
 }
 
+std::optional<fs::path> resolve_under(const fs::path& base, const std::string& rel) {
+    if (rel.find('\0') != std::string::npos) return std::nullopt;
+
+    fs::path rel_path(rel);
+    if (rel_path.is_absolute() || rel_path.has_root_name() || rel_path.has_root_directory()) {
+        return std::nullopt;
+    }
+    for (const auto& part : rel_path) {
+        if (part == "..") return std::nullopt;
+    }
+
+    // Containment is checked on the resolved paths, so a symlink inside the
+    // base that points outside of it is refused as well.
+    std::error_code ec;
+    fs::path canon_base = fs::weakly_canonical(base, ec);
+    if (ec) return std::nullopt;
+    // A configured base like "/srv/out/" canonicalizes with a trailing empty
+    // element, which would never prefix-match a child path.
+    if (canon_base.filename().empty()) canon_base = canon_base.parent_path();
+    fs::path canon_full = fs::weakly_canonical(canon_base / rel_path, ec);
+    if (ec) return std::nullopt;
+
+    if (std::mismatch(canon_base.begin(), canon_base.end(),
+                      canon_full.begin(), canon_full.end()).first != canon_base.end()) {
+        return std::nullopt;
+    }
+    return canon_full;
+}
+
 } // namespace utils
 } // namespace sdcpp

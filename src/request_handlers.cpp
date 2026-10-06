@@ -2872,30 +2872,17 @@ void RequestHandlers::handle_thumbnail(const httplib::Request& req, httplib::Res
         rel_path = req.matches[1].str();
     }
 
-    // URL decode
-    std::string decoded_path;
-    for (size_t i = 0; i < rel_path.size(); ++i) {
-        if (rel_path[i] == '%' && i + 2 < rel_path.size()) {
-            int hex_val;
-            std::istringstream iss(rel_path.substr(i + 1, 2));
-            if (iss >> std::hex >> hex_val) {
-                decoded_path += static_cast<char>(hex_val);
-                i += 2;
-                continue;
-            }
-        }
-        decoded_path += rel_path[i];
-    }
-    rel_path = decoded_path;
+    // req.path (and so this capture) is already URL-decoded once by
+    // cpp-httplib. Decoding it again would turn %252F into a separator.
 
-    // Security: prevent path traversal
-    if (rel_path.find("..") != std::string::npos) {
+    // Security: the path must resolve inside output_dir_ (rejects absolute
+    // paths, ".." components and symlinks that point outside).
+    auto resolved = utils::resolve_under(output_dir_, rel_path);
+    if (!resolved) {
         send_error(res, "Invalid path", 400);
         return;
     }
-
-    // Build full path
-    fs::path source_path = fs::path(output_dir_) / rel_path;
+    fs::path source_path = *resolved;
 
     if (!fs::exists(source_path) || !fs::is_regular_file(source_path)) {
         send_error(res, "Not found", 404);
@@ -3541,30 +3528,17 @@ void RequestHandlers::handle_file_browser(const httplib::Request& req, httplib::
         rel_path = req.matches[1].str();
     }
 
-    // URL decode the path
-    std::string decoded_path;
-    for (size_t i = 0; i < rel_path.size(); ++i) {
-        if (rel_path[i] == '%' && i + 2 < rel_path.size()) {
-            int hex_val;
-            std::istringstream iss(rel_path.substr(i + 1, 2));
-            if (iss >> std::hex >> hex_val) {
-                decoded_path += static_cast<char>(hex_val);
-                i += 2;
-                continue;
-            }
-        }
-        decoded_path += rel_path[i];
-    }
-    rel_path = decoded_path;
+    // req.path (and so this capture) is already URL-decoded once by
+    // cpp-httplib. Decoding it again would turn %252F into a separator.
 
-    // Security: prevent path traversal
-    if (rel_path.find("..") != std::string::npos) {
+    // Security: the path must resolve inside output_dir_ (rejects absolute
+    // paths, ".." components and symlinks that point outside).
+    auto resolved = utils::resolve_under(output_dir_, rel_path);
+    if (!resolved) {
         send_error(res, "Invalid path", 400);
         return;
     }
-
-    // Build full filesystem path
-    fs::path full_path = fs::path(output_dir_) / rel_path;
+    fs::path full_path = *resolved;
 
     // Check if path exists
     if (!fs::exists(full_path)) {
@@ -3629,34 +3603,22 @@ void RequestHandlers::handle_webui(const httplib::Request& req, httplib::Respons
         rel_path = req.matches[1].str();
     }
 
-    // URL decode the path
-    std::string decoded_path;
-    for (size_t i = 0; i < rel_path.size(); ++i) {
-        if (rel_path[i] == '%' && i + 2 < rel_path.size()) {
-            int value;
-            std::istringstream iss(rel_path.substr(i + 1, 2));
-            if (iss >> std::hex >> value) {
-                decoded_path += static_cast<char>(value);
-                i += 2;
-                continue;
-            }
-        }
-        decoded_path += rel_path[i];
-    }
-    rel_path = decoded_path;
+    // req.path (and so this capture) is already URL-decoded once by
+    // cpp-httplib. Decoding it again would turn %252F into a separator.
 
     // Default to index.html for empty path
     if (rel_path.empty()) {
         rel_path = "index.html";
     }
 
-    // Security: prevent path traversal
-    if (rel_path.find("..") != std::string::npos) {
+    // Security: the path must resolve inside webui_dir_ (rejects absolute
+    // paths, ".." components and symlinks that point outside).
+    auto resolved = utils::resolve_under(webui_dir_, rel_path);
+    if (!resolved) {
         send_error(res, "Invalid path", 400);
         return;
     }
-
-    fs::path full_path = fs::path(webui_dir_) / rel_path;
+    fs::path full_path = *resolved;
 
     // If path doesn't exist or is a directory, serve index.html for SPA routing
     if (!fs::exists(full_path) || fs::is_directory(full_path)) {
@@ -3757,24 +3719,13 @@ void RequestHandlers::handle_docs(const httplib::Request& req, httplib::Response
         rel_path = req.matches[1].str();
     }
 
-    // URL decode
-    std::string decoded_path;
-    for (size_t i = 0; i < rel_path.size(); ++i) {
-        if (rel_path[i] == '%' && i + 2 < rel_path.size()) {
-            int value;
-            std::istringstream iss(rel_path.substr(i + 1, 2));
-            if (iss >> std::hex >> value) {
-                decoded_path += static_cast<char>(value);
-                i += 2;
-                continue;
-            }
-        }
-        decoded_path += rel_path[i];
-    }
-    rel_path = decoded_path;
+    // req.path (and so this capture) is already URL-decoded once by
+    // cpp-httplib. Decoding it again would turn %252F into a separator.
 
-    // Security: prevent path traversal
-    if (rel_path.find("..") != std::string::npos) {
+    // Security: the path must resolve inside docs_dir_ (rejects absolute
+    // paths, ".." components and symlinks that point outside).
+    auto resolved = utils::resolve_under(docs_dir_, rel_path);
+    if (!resolved) {
         send_error(res, "Invalid path", 400);
         return;
     }
@@ -3791,7 +3742,7 @@ void RequestHandlers::handle_docs(const httplib::Request& req, httplib::Response
         return;
     }
 
-    fs::path full_path = fs::path(docs_dir_) / rel_path;
+    fs::path full_path = *resolved;
 
     if (!fs::exists(full_path)) {
         send_error(res, "Document not found: " + rel_path, 404);
@@ -4354,6 +4305,20 @@ void RequestHandlers::handle_download_model(const httplib::Request& req, httplib
         std::string subfolder = body.value("subfolder", "");
         std::string revision = body.value("revision", "main");
         std::string bundle = body.value("bundle", "");
+        // subfolder is joined onto the model-type directory, so it must stay
+        // a plain relative path (same rule as the upload endpoint).
+        if (!subfolder.empty()) {
+            fs::path sp(subfolder);
+            bool bad = sp.is_absolute() || sp.has_root_name() || sp.has_root_directory() ||
+                       subfolder.find('\0') != std::string::npos;
+            for (const auto& part : sp) {
+                if (part == "..") bad = true;
+            }
+            if (bad) {
+                send_error(res, "subfolder must be a relative path without '..'", 400);
+                return;
+            }
+        }
         // include_patterns / exclude_patterns are forwarded opaquely; only
         // used by download_hf_directory when bundle == "directory".
 
