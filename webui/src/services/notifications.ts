@@ -246,23 +246,15 @@ class NotificationService {
   }
 
   /**
-   * Helper to notify about job completion
+   * Notify about a finished job. Title and body are built from the job's
+   * real type (image / video / upscale / conversion / download / hash) and
+   * its identity (user title, prompt or file name). The tag is per job, so
+   * two jobs finishing close together show two notifications instead of
+   * the second silently replacing the first.
    */
-  notifyJobComplete(jobType: string): Notification | null {
-    return this.notify('Job Completed', {
-      body: `${jobType} finished successfully`,
-      tag: 'job-complete'
-    })
-  }
-
-  /**
-   * Helper to notify about job failure
-   */
-  notifyJobFailed(jobType: string, error?: string): Notification | null {
-    return this.notify('Job Failed', {
-      body: error ? `${jobType}: ${error}` : `${jobType} failed`,
-      tag: 'job-failed'
-    })
+  notifyJobFinished(status: 'completed' | 'failed', job: JobNotificationInfo): Notification | null {
+    const { title, body } = describeJobNotification(status, job)
+    return this.notify(title, { body, tag: `job-${job.jobId}` })
   }
 
   /**
@@ -276,25 +268,82 @@ class NotificationService {
     })
   }
 
-  /**
-   * Helper to notify about download completion
-   */
-  notifyDownloadComplete(filename: string): Notification | null {
-    return this.notify('Download Complete', {
-      body: filename,
-      tag: 'download-complete'
-    })
+}
+
+export interface JobNotificationInfo {
+  jobId: string
+  type?: string
+  title?: string
+  params?: Record<string, unknown>
+  outputs?: string[]
+  error?: string
+}
+
+const JOB_NOTIFICATION_LABELS: Record<string, { done: string; failed: string }> = {
+  txt2img: { done: 'Image ready', failed: 'Image generation failed' },
+  img2img: { done: 'Image ready (img2img)', failed: 'Image-to-image failed' },
+  txt2vid: { done: 'Video ready', failed: 'Video generation failed' },
+  upscale: { done: 'Upscale finished', failed: 'Upscale failed' },
+  convert: { done: 'Model conversion finished', failed: 'Model conversion failed' },
+  model_download: { done: 'Download finished', failed: 'Download failed' },
+  model_hash: { done: 'Model hash computed', failed: 'Model hashing failed' },
+}
+
+function basename(path: string): string {
+  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path
+}
+
+function truncate(text: string, max = 80): string {
+  const clean = text.replace(/\s+/g, ' ').trim()
+  return clean.length > max ? clean.slice(0, max - 1) + '…' : clean
+}
+
+function str(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+/** What the job was about: user title first, then the type-specific identity. */
+function jobSubject(job: JobNotificationInfo): string {
+  if (job.title) return truncate(job.title)
+  const p = job.params ?? {}
+  const firstOutput = job.outputs?.[0] ? basename(job.outputs[0]) : ''
+  switch (job.type) {
+    case 'txt2img':
+    case 'img2img':
+    case 'txt2vid':
+      return str(p.prompt) ? truncate(str(p.prompt)) : ''
+    case 'upscale':
+      return firstOutput
+    case 'convert':
+      return str(p.output_path) ? basename(str(p.output_path)) : firstOutput
+    case 'model_download':
+      return firstOutput
+        || (str(p.filename) && basename(str(p.filename)))
+        || str(p.repo_id)
+        || str(p.url)
+    case 'model_hash':
+      return str(p.file_name) || (str(p.file_path) && basename(str(p.file_path)))
+    default:
+      return ''
+  }
+}
+
+export function describeJobNotification(
+  status: 'completed' | 'failed',
+  job: JobNotificationInfo
+): { title: string; body: string } {
+  const labels = (job.type && JOB_NOTIFICATION_LABELS[job.type]) || { done: 'Job finished', failed: 'Job failed' }
+  const subject = jobSubject(job)
+
+  if (status === 'failed') {
+    const error = job.error ? truncate(job.error, 160) : 'Unknown error'
+    return { title: labels.failed, body: subject ? `${subject}\n${error}` : error }
   }
 
-  /**
-   * Helper to notify about conversion completion
-   */
-  notifyConversionComplete(filename: string): Notification | null {
-    return this.notify('Conversion Complete', {
-      body: filename,
-      tag: 'conversion-complete'
-    })
-  }
+  const count = job.outputs?.length ?? 0
+  const isMedia = job.type === 'txt2img' || job.type === 'img2img' || job.type === 'txt2vid'
+  const countNote = isMedia && count > 1 ? ` (${count} ${job.type === 'txt2vid' ? 'videos' : 'images'})` : ''
+  return { title: labels.done + countNote, body: subject || 'Finished successfully' }
 }
 
 // Export singleton instance

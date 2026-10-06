@@ -1028,6 +1028,8 @@ void QueueManager::worker_thread() {
                     if (auto* ws = get_websocket_server()) {
                         ws->broadcast(WSEventType::JobStatusChanged, {
                             {"job_id", job_id},
+                            {"type", generation_type_to_string(it->second.type)},
+                            {"title", it->second.title},
                             {"status", "waiting"},
                             {"previous_status", "pending"},
                             {"message", "Waiting for model to finish loading"}
@@ -1064,6 +1066,8 @@ void QueueManager::worker_thread() {
                     if (auto* ws = get_websocket_server()) {
                         ws->broadcast(WSEventType::JobStatusChanged, {
                             {"job_id", job_id},
+                            {"type", generation_type_to_string(it->second.type)},
+                            {"title", it->second.title},
                             {"status", "failed"},
                             {"previous_status", went_waiting ? "waiting" : "pending"},
                             {"error", err_msg},
@@ -1112,6 +1116,8 @@ void QueueManager::worker_thread() {
             if (auto* ws = get_websocket_server()) {
                 ws->broadcast(WSEventType::JobStatusChanged, {
                     {"job_id", job_id},
+                    {"type", generation_type_to_string(it->second.type)},
+                    {"title", it->second.title},
                     {"status", "processing"},
                     {"previous_status", prev},
                     {"started_at", utils::time_to_string(it->second.started_at)}
@@ -1210,6 +1216,8 @@ void QueueManager::worker_thread() {
                     if (auto* ws = get_websocket_server()) {
                         ws->broadcast(WSEventType::JobStatusChanged, {
                             {"job_id", job_id},
+                            {"type", generation_type_to_string(it->second.type)},
+                            {"title", it->second.title},
                             {"status", "completed"},
                             {"previous_status", "processing"},
                             {"outputs", outputs},
@@ -1229,6 +1237,8 @@ void QueueManager::worker_thread() {
                     if (auto* ws = get_websocket_server()) {
                         ws->broadcast(WSEventType::JobStatusChanged, {
                             {"job_id", job_id},
+                            {"type", generation_type_to_string(it->second.type)},
+                            {"title", it->second.title},
                             {"status", "failed"},
                             {"previous_status", "processing"},
                             {"error", error_message},
@@ -2158,8 +2168,11 @@ void QueueManager::fail_linked_job(const std::string& job_id, const std::string&
         if (auto* ws = get_websocket_server()) {
             ws->broadcast(WSEventType::JobStatusChanged, {
                 {"job_id", job_id},
+                {"type", generation_type_to_string(it->second.type)},
+                {"title", it->second.title},
                 {"status", "failed"},
-                {"error_message", error_message},
+                {"previous_status", "pending"},
+                {"error", error_message},
                 {"completed_at", utils::time_to_string(it->second.completed_at)}
             });
         }

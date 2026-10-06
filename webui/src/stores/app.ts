@@ -461,11 +461,19 @@ export const useAppStore = defineStore('app', () => {
               break
             case 'completed':
               showToast(`Job completed: ${getJobTypeLabel(job.type)}`, 'success')
+              notificationService.notifyJobFinished('completed', {
+                jobId: job.job_id, type: job.type, title: job.title,
+                params: job.params, outputs: job.outputs,
+              })
               playSound(soundEventForJobCompleted(job.type))
               break
             case 'failed':
               showToast(`Job failed: ${getJobTypeLabel(job.type)}${job.error ? ' - ' + job.error : ''}`, 'error')
               addRecentError(`${getJobTypeLabel(job.type)} failed: ${job.error || 'Unknown error'}`, 'job_failed')
+              notificationService.notifyJobFinished('failed', {
+                jobId: job.job_id, type: job.type, title: job.title,
+                params: job.params, outputs: job.outputs, error: job.error,
+              })
               playSound('job.failed')
               break
             case 'cancelled':
@@ -504,6 +512,8 @@ export const useAppStore = defineStore('app', () => {
       case 'txt2vid': return 'Text to Video'
       case 'upscale': return 'Upscale'
       case 'convert': return 'Model Conversion'
+      case 'model_download': return 'Model Download'
+      case 'model_hash': return 'Model Hash'
       default: return type
     }
   }
@@ -736,19 +746,30 @@ export const useAppStore = defineStore('app', () => {
         // Sound plays the type-specific chime; the toast text can be
         // generic since the queue-card + desktop notification already
         // carry the identity of the finished job.
-        const jobType = queue.value?.items?.find(j => j.job_id === data.job_id)?.type ?? 'txt2img'
+        // Type comes from the event itself (newer servers); the queue list
+        // is only a fallback because it is paginated and may not hold the job.
+        const queuedJob = queue.value?.items?.find(j => j.job_id === data.job_id)
+        const jobType = data.type || queuedJob?.type || 'txt2img'
+        const notifyInfo = {
+          jobId: data.job_id,
+          type: jobType,
+          title: data.title || queuedJob?.title,
+          params: queuedJob?.params,
+          outputs: data.outputs ?? queuedJob?.outputs,
+          error: data.error,
+        }
         switch (data.status) {
           case 'processing':
             showToast(`Job started`, 'info')
             break
           case 'completed':
             showToast(`Job completed`, 'success')
-            notificationService.notifyJobComplete('Generation')
+            notificationService.notifyJobFinished('completed', notifyInfo)
             playSound(soundEventForJobCompleted(jobType))
             break
           case 'failed':
             showToast(`Job failed${data.error ? ': ' + data.error : ''}`, 'error')
-            notificationService.notifyJobFailed('Generation', data.error)
+            notificationService.notifyJobFinished('failed', notifyInfo)
             addRecentError(`Job failed: ${data.error || 'Unknown error'}`, 'job_failed')
             playSound('job.failed')
             break

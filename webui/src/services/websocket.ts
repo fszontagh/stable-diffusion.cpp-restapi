@@ -29,6 +29,10 @@ export interface JobAddedData {
 
 export interface JobStatusChangedData {
   job_id: string
+  // Job type and user title, sent by servers that include them (older
+  // servers omit both; the store then falls back to the queue list).
+  type?: string
+  title?: string
   status: 'pending' | 'waiting' | 'processing' | 'completed' | 'failed' | 'cancelled'
   previous_status: string
   outputs?: string[]

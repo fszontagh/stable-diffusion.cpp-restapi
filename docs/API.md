@@ -3051,12 +3051,17 @@ Sent during generation when previews are enabled. Contains a base64-encoded JPEG
     "timestamp": "2024-01-01T12:01:00.789Z",
     "data": {
         "job_id": "550e8400-e29b-41d4-a716-446655440000",
+        "type": "txt2img",
+        "title": "",
         "status": "completed",
         "previous_status": "processing",
-        "outputs": ["550e8400-e29b-41d4-a716-446655440000/image_0.png"]
+        "outputs": ["550e8400-e29b-41d4-a716-446655440000/image_0.png"],
+        "completed_at": "2024-01-01T12:01:00.789Z"
     }
 }
 ```
+
+Every `job_status_changed` event carries the job's `type` (`txt2img`, `img2img`, `txt2vid`, `upscale`, `convert`, `model_download`, `model_hash`) and its user `title` (empty when none was set), so clients can label the change without looking the job up. `failed` events carry the reason in `error`; `processing` events carry `started_at`.
 
 ### JavaScript Example
 
