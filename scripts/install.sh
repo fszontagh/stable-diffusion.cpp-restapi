@@ -851,7 +851,7 @@ CONFIGEOF
 
         # Compose optional memory-limit directives. Each is emitted only when
         # the user passed the matching --memory-* flag, so this script keeps
-        # the previous "no cap by default" behavior — a value-less flag would
+        # the previous "no cap by default" behavior; a value-less flag would
         # silently change the security/availability profile of an existing
         # install on upgrade.
         local memory_directives=""
@@ -891,7 +891,7 @@ PrivateTmp=true
 ReadWritePaths=${OUTPUT_DIR} ${CONFIG_DIR} ${MODELS_DIR}
 ReadOnlyPaths=${INSTALL_DIR}/webui ${INSTALL_DIR}/docs ${INSTALL_DIR}/data
 
-# Resource limits — set via install.sh --memory-max / --memory-high /
+# Resource limits: set via install.sh --memory-max / --memory-high /
 # --memory-swap-max. Empty by default (no cap), preserving prior behavior.
 # LimitNOFILE=65535
 ${memory_directives}
@@ -900,9 +900,9 @@ Environment=LD_LIBRARY_PATH=${INSTALL_DIR}/lib
 Environment=SDCPP_WEBUI_PATH=${INSTALL_DIR}/webui
 Environment=SDCPP_DOCS_PATH=${INSTALL_DIR}/docs
 # Optional env-file for operator secrets that don't belong in the unit.
-# Create /etc/sdcpp-restapi/env with e.g. `HF_TOKEN=hf_xxx` if you want
+# Create /etc/sdcpp-restapi/env with e.g. "HF_TOKEN=hf_xxx" if you want
 # authenticated HuggingFace downloads (avoids stalls on large repos and
-# lets you fetch gated models). The leading `-` makes the file optional.
+# lets you fetch gated models). The leading "-" makes the file optional.
 EnvironmentFile=-${CONFIG_DIR}/env
 
 [Install]
