@@ -296,6 +296,19 @@ export const useAppStore = defineStore('app', () => {
   const quantizationTypes = computed(() => options.value?.quantization_types ?? [])
 
   // Actions
+  // Copy every component slot the server reports (taesd, audio_vae, ...),
+  // not just the eight typed ones - the old field-by-field copy dropped the
+  // rest, so the load form couldn't restore them.
+  function toLoadedComponents(
+    lc?: Record<string, string | null | undefined> | null
+  ): HealthResponse['loaded_components'] {
+    return {
+      vae: null, clip_l: null, clip_g: null, t5xxl: null,
+      controlnet: null, ip_adapter: null, llm: null, llm_vision: null,
+      ...(lc ?? {}),
+    } as HealthResponse['loaded_components']
+  }
+
   async function fetchHealth() {
     try {
       const newHealth = await api.getHealth()
@@ -976,16 +989,7 @@ export const useAppStore = defineStore('app', () => {
           health.value.model_type = data.model_type
           health.value.model_architecture = data.model_architecture
           if (data.loaded_components) {
-            health.value.loaded_components = {
-              vae: data.loaded_components.vae ?? null,
-              clip_l: data.loaded_components.clip_l ?? null,
-              clip_g: data.loaded_components.clip_g ?? null,
-              t5xxl: data.loaded_components.t5xxl ?? null,
-              controlnet: data.loaded_components.controlnet ?? null,
-              ip_adapter: data.loaded_components.ip_adapter ?? null,
-              llm: data.loaded_components.llm ?? null,
-              llm_vision: data.loaded_components.llm_vision ?? null
-            }
+            health.value.loaded_components = toLoadedComponents(data.loaded_components)
           }
           if (data.upscaler_loaded !== undefined) {
             health.value.upscaler_loaded = data.upscaler_loaded
@@ -1008,25 +1012,7 @@ export const useAppStore = defineStore('app', () => {
             model_name: data.model_name,
             model_type: data.model_type,
             model_architecture: data.model_architecture,
-            loaded_components: data.loaded_components ? {
-              vae: data.loaded_components.vae ?? null,
-              clip_l: data.loaded_components.clip_l ?? null,
-              clip_g: data.loaded_components.clip_g ?? null,
-              t5xxl: data.loaded_components.t5xxl ?? null,
-              controlnet: data.loaded_components.controlnet ?? null,
-              ip_adapter: data.loaded_components.ip_adapter ?? null,
-              llm: data.loaded_components.llm ?? null,
-              llm_vision: data.loaded_components.llm_vision ?? null
-            } : {
-              vae: null,
-              clip_l: null,
-              clip_g: null,
-              t5xxl: null,
-              controlnet: null,
-              ip_adapter: null,
-              llm: null,
-              llm_vision: null
-            },
+            loaded_components: toLoadedComponents(data.loaded_components),
             upscaler_loaded: data.upscaler_loaded ?? false,
             upscaler_name: data.upscaler_name ?? null,
             ws_enabled: false

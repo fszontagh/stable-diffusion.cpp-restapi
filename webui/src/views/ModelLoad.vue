@@ -267,6 +267,23 @@ async function handleLoadModel() {
   }
 }
 
+// Component slots the form can set. Restoring from a hand-written subset is
+// what dropped TAESD (and llm_vision, tokenizer, audio_vae, connectors) on
+// every edit: the field came up empty, and loading from that form then
+// saved the load without it.
+const COMPONENT_KEYS = [
+  'vae', 'clip_l', 'clip_g', 't5xxl', 'controlnet', 'ip_adapter', 'motion_module',
+  'llm', 'llm_vision', 'tokenizer', 'embeddings_connectors', 'audio_vae',
+  'clip_vision', 'taesd',
+] as const
+
+function restoreComponents(src: Record<string, string | null | undefined>) {
+  const target = loadParams.value as unknown as Record<string, string>
+  for (const key of COMPONENT_KEYS) {
+    target[key] = src[key] || ''
+  }
+}
+
 // Initialize on mount
 onMounted(async () => {
   // Always refresh /health so the loaded-model state we restore from is
@@ -323,14 +340,7 @@ onMounted(async () => {
 
     // If model is already loaded, pre-populate with current components and options
     if (thisModelLoaded && store.loadedComponents) {
-      loadParams.value.vae = store.loadedComponents.vae || ''
-      loadParams.value.clip_l = store.loadedComponents.clip_l || ''
-      loadParams.value.clip_g = store.loadedComponents.clip_g || ''
-      loadParams.value.t5xxl = store.loadedComponents.t5xxl || ''
-      loadParams.value.controlnet = store.loadedComponents.controlnet || ''
-      loadParams.value.ip_adapter = (store.loadedComponents as Record<string, string | null | undefined>).ip_adapter || ''
-      loadParams.value.motion_module = (store.loadedComponents as Record<string, string | null | undefined>).motion_module || ''
-      loadParams.value.llm = store.loadedComponents.llm || ''
+      restoreComponents(store.loadedComponents)
 
       // Pre-populate load options from currently loaded model.
       // Spread store.loadOptions wholesale so every field the backend exposes
@@ -357,15 +367,7 @@ onMounted(async () => {
       // a prior session — restore those choices from localStorage instead of
       // overwriting with raw architecture defaults.
       const last = store.lastLoadOptions
-      loadParams.value.vae = last.vae || ''
-      loadParams.value.clip_l = last.clip_l || ''
-      loadParams.value.clip_g = last.clip_g || ''
-      loadParams.value.t5xxl = last.t5xxl || ''
-      loadParams.value.controlnet = last.controlnet || ''
-      loadParams.value.ip_adapter = (last as unknown as { ip_adapter?: string | null }).ip_adapter || ''
-      loadParams.value.motion_module = (last as unknown as { motion_module?: string | null }).motion_module || ''
-      loadParams.value.llm = last.llm || ''
-      loadParams.value.taesd = last.taesd || ''
+      restoreComponents(last as unknown as Record<string, string | null | undefined>)
       if (last.options) {
         loadParams.value.options = {
           ...loadParams.value.options,

@@ -572,6 +572,11 @@ private:
     std::string loaded_llm_;
     std::string loaded_llm_vision_;
     std::string loaded_tokenizer_;
+    // Every other component slot of the last load (taesd, clip_vision, audio_vae,
+    // embeddings_connectors, high_noise/uncond diffusion, photo_maker, pulid),
+    // name -> file. Reported in loaded_components so the WebUI can restore the
+    // whole load on edit.
+    nlohmann::json loaded_extra_components_ = nlohmann::json::object();
 
     // Store the load options used when loading the model
     nlohmann::json loaded_options_;

@@ -122,6 +122,7 @@ export interface ServerStatusData {
     ip_adapter?: string | null
     llm?: string | null
     llm_vision?: string | null
+    [component: string]: string | null | undefined
   }
   upscaler_loaded?: boolean
   upscaler_name?: string | null
