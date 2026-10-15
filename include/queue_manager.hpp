@@ -459,6 +459,12 @@ private:
     std::vector<std::string> process_model_download_unlocked(const nlohmann::json& params, const std::string& job_id);
     std::vector<std::string> process_model_hash_unlocked(const nlohmann::json& params, const std::string& job_id);
 
+    // Fill the defaultable keys a caller omitted from the loaded architecture's
+    // generationDefaults. Returns true if anything was filled. Caller holds
+    // queue_mutex_.
+    bool apply_generation_defaults(GenerationType type, nlohmann::json& params,
+                                   const std::string& job_id);
+
     // delete_job() without locking or saving; caller holds queue_mutex_.
     bool delete_job_locked(const std::string& job_id);
 

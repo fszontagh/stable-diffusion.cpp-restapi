@@ -353,6 +353,48 @@ const std::vector<std::string>& QueueManager::defaultable_generation_keys() {
     return keys;
 }
 
+bool QueueManager::apply_generation_defaults(GenerationType type,
+                                             nlohmann::json& params,
+                                             const std::string& job_id) {
+    // Only the defaultable keys, and only when absent - an explicit value
+    // from the caller always wins, including an explicit 0.
+    //
+    // The WebUI pre-fills its form from /architectures so it never needed
+    // this; MCP and raw REST callers did, and without it they silently got
+    // sd_wrapper.cpp's steps=20 fallback. On a 4-step model like Flux2 Klein
+    // that is 5x the work for a worse image.
+    if (!generation_defaults_provider_ ||
+        (type != GenerationType::Text2Image &&
+         type != GenerationType::Image2Image &&
+         type != GenerationType::Text2Video)) {
+        return false;
+    }
+    nlohmann::json defaults;
+    try {
+        defaults = generation_defaults_provider_();
+    } catch (const std::exception& e) {
+        std::cerr << "[QueueManager] generation defaults provider threw: "
+                  << e.what() << std::endl;
+    }
+    if (!defaults.is_object()) {
+        return false;
+    }
+    std::vector<std::string> applied;
+    for (const auto& key : defaultable_generation_keys()) {
+        if (defaults.contains(key) && !params.contains(key)) {
+            params[key] = defaults[key];
+            applied.emplace_back(key);
+        }
+    }
+    if (applied.empty()) {
+        return false;
+    }
+    std::cout << "[QueueManager] applied architecture defaults to " << job_id << ":";
+    for (const auto& k : applied) std::cout << " " << k;
+    std::cout << std::endl;
+    return true;
+}
+
 std::string QueueManager::add_job(GenerationType type, const nlohmann::json& params,
                                   const std::string& title) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -366,40 +408,9 @@ std::string QueueManager::add_job(GenerationType type, const nlohmann::json& par
     item.created_at = utils::get_time_now();
 
     // Fill in whatever the caller left out from the loaded architecture's
-    // generationDefaults. Only these keys, and only when absent - an explicit
-    // value from the caller always wins, including an explicit 0.
-    //
-    // The WebUI pre-fills its form from /architectures so it never needed
-    // this; MCP and raw REST callers did, and without it they silently got
-    // sd_wrapper.cpp's steps=20 fallback. On a 4-step model like Flux2 Klein
-    // that is 5x the work for a worse image.
-    if (generation_defaults_provider_ &&
-        (type == GenerationType::Text2Image ||
-         type == GenerationType::Image2Image ||
-         type == GenerationType::Text2Video)) {
-        nlohmann::json defaults;
-        try {
-            defaults = generation_defaults_provider_();
-        } catch (const std::exception& e) {
-            std::cerr << "[QueueManager] generation defaults provider threw: "
-                      << e.what() << std::endl;
-        }
-        if (defaults.is_object()) {
-            std::vector<std::string> applied;
-            for (const auto& key : defaultable_generation_keys()) {
-                if (defaults.contains(key) && !item.params.contains(key)) {
-                    item.params[key] = defaults[key];
-                    applied.emplace_back(key);
-                }
-            }
-            if (!applied.empty()) {
-                std::cout << "[QueueManager] applied architecture defaults to "
-                          << item.job_id << ":";
-                for (const auto& k : applied) std::cout << " " << k;
-                std::cout << std::endl;
-            }
-        }
-    }
+    // generationDefaults. The worker repeats this when it picks the job up,
+    // for jobs submitted while the model was still loading.
+    apply_generation_defaults(type, item.params, item.job_id);
 
     // Capture current model settings at job creation time
     item.model_settings = model_manager_.get_loaded_models_info();
@@ -1173,6 +1184,14 @@ void QueueManager::worker_thread() {
                 !it->second.model_settings["model_name"].get<std::string>().empty();
             if (!have_model_name) {
                 it->second.model_settings = model_manager_.get_loaded_models_info();
+            }
+
+            // Same reason: a job submitted while the model was loading saw
+            // no architecture yet, so add_job() could not fill its defaults.
+            // Fill them now that the model is loaded. Keys the caller sent,
+            // or that add_job() already filled, are left alone.
+            if (apply_generation_defaults(job_type, it->second.params, job_id)) {
+                job_params = it->second.params;
             }
 
             if (auto* ws = get_websocket_server()) {
