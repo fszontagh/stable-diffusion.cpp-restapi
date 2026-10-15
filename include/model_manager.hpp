@@ -558,7 +558,10 @@ private:
     std::string loading_model_name_;         // Name of model currently being loaded
     std::string last_load_error_;            // Last model load error message
     ModelType loaded_model_type_ = ModelType::Checkpoint;
+    // Guarded by arch_mutex_, not context_mutex_ - see get_loaded_model_architecture().
     std::string loaded_model_architecture_;  // Caller override if set, else what sd.cpp detected
+    mutable std::mutex arch_mutex_;
+    void set_loaded_architecture(const std::string& arch);
     
     // Track all loaded component models
     std::string loaded_vae_;

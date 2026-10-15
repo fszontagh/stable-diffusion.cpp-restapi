@@ -1327,7 +1327,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         free_sd_ctx(context_);
         context_ = nullptr;
         loaded_model_name_.clear();
-        loaded_model_architecture_.clear();
+        set_loaded_architecture("");
     }
     
     // Initialize context parameters
@@ -1719,7 +1719,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         std::string error_msg = "Failed to load model: " + params.model_name + " (" + reason + ")";
         last_load_error_ = error_msg;
         loaded_model_name_.clear();
-        loaded_model_architecture_.clear();
+        set_loaded_architecture("");
         loaded_model_type_ = ModelType::Checkpoint;
         loaded_vae_.clear();
         loaded_clip_l_.clear();
@@ -1758,14 +1758,14 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     const char* arch_name = sd_get_model_version_name(context_);
     const std::string detected_architecture = arch_name ? arch_name : "Unknown";
     if (!params.architecture.empty()) {
-        loaded_model_architecture_ = params.architecture;
+        set_loaded_architecture(params.architecture);
         if (params.architecture != detected_architecture) {
             std::cout << "[ModelManager] architecture override: '"
                       << detected_architecture << "' (sd.cpp) -> '"
                       << params.architecture << "' (caller)" << std::endl;
         }
     } else {
-        loaded_model_architecture_ = detected_architecture;
+        set_loaded_architecture(detected_architecture);
     }
 
     // Track loaded component models
@@ -2005,7 +2005,7 @@ void ModelManager::unload_model() {
         free_sd_ctx(context_);
         context_ = nullptr;
         loaded_model_name_.clear();
-        loaded_model_architecture_.clear();
+        set_loaded_architecture("");
 
         // Clear all loaded component tracking
         loaded_vae_.clear();
@@ -2043,8 +2043,18 @@ std::string ModelManager::get_loaded_model_name() const {
 }
 
 std::string ModelManager::get_loaded_model_architecture() const {
-    std::lock_guard<std::mutex> lock(context_mutex_);
+    // Not context_mutex_: the worker holds that for a whole generation, and
+    // QueueManager::add_job() reads this (via the generation-defaults
+    // provider) while holding queue_mutex_. Waiting on context_mutex_ there
+    // deadlocked the server as soon as a job was queued mid-generation and
+    // the worker then needed queue_mutex_ to finish its job.
+    std::lock_guard<std::mutex> lock(arch_mutex_);
     return loaded_model_architecture_;
+}
+
+void ModelManager::set_loaded_architecture(const std::string& arch) {
+    std::lock_guard<std::mutex> lock(arch_mutex_);
+    loaded_model_architecture_ = arch;
 }
 
 std::string ModelManager::compute_model_hash(const std::string& name, ModelType type) {
@@ -2143,7 +2153,8 @@ nlohmann::json ModelManager::get_loaded_models_info() const {
     // modified when loading/unloading (which sets model_loaded_ flag)
     result["model_name"] = loaded_model_name_;
     result["model_type"] = model_type_to_string(loaded_model_type_);
-    result["model_architecture"] = loaded_model_architecture_.empty() ? nullptr : nlohmann::json(loaded_model_architecture_);
+    const std::string arch = get_loaded_model_architecture();
+    result["model_architecture"] = arch.empty() ? nullptr : nlohmann::json(arch);
     
     // Build loaded components object
     nlohmann::json components = nlohmann::json::object();

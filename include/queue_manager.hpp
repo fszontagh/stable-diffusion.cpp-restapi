@@ -216,6 +216,28 @@ public:
                         const std::string& title = "");
 
     /**
+     * Supply per-architecture generation defaults (steps, cfg_scale, sampler,
+     * scheduler, width, height) for the currently loaded model.
+     *
+     * add_job() fills in any of those a caller omitted. Without this the WebUI
+     * was the only client getting architecture-appropriate values, because it
+     * reads /architectures and pre-fills its form - MCP and raw REST callers
+     * fell through to the hardcoded steps=20 in sd_wrapper.cpp, which is
+     * badly wrong for 4-step turbo models like Flux2 Klein.
+     *
+     * Injected rather than taking an ArchitectureManager& because the manager
+     * is constructed by RequestHandlers, after the queue manager exists.
+     */
+    void set_generation_defaults_provider(std::function<nlohmann::json()> provider) {
+        generation_defaults_provider_ = std::move(provider);
+    }
+
+    // The keys add_job() fills from generationDefaults when a caller omits
+    // them. Shared with the REST body normalizer so it can leave those keys
+    // absent instead of baking in the typed structs' generic fallbacks.
+    static const std::vector<std::string>& defaultable_generation_keys();
+
+    /**
      * Add a model download job with automatic hash job
      * Creates both download and hash jobs, with hash linked to download
      * @param params Download parameters (url, model_type, subfolder, source, etc.)
@@ -427,6 +449,9 @@ private:
     void save_job_config(const std::string& job_id, GenerationType type, const nlohmann::json& params);
     
     ModelManager& model_manager_;
+    // Supplies the loaded architecture's generationDefaults; see
+    // set_generation_defaults_provider(). Null until RequestHandlers wires it.
+    std::function<nlohmann::json()> generation_defaults_provider_;
     std::string output_dir_;
     std::string state_file_;
     RecycleBinConfig recycle_bin_config_;

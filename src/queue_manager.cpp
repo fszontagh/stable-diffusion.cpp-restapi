@@ -346,6 +346,13 @@ void QueueManager::stop() {
     std::cout << "[QueueManager] Worker thread stopped" << std::endl;
 }
 
+const std::vector<std::string>& QueueManager::defaultable_generation_keys() {
+    static const std::vector<std::string> keys = {
+        "steps", "cfg_scale", "sampler", "scheduler", "width", "height"
+    };
+    return keys;
+}
+
 std::string QueueManager::add_job(GenerationType type, const nlohmann::json& params,
                                   const std::string& title) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -357,6 +364,42 @@ std::string QueueManager::add_job(GenerationType type, const nlohmann::json& par
     item.params = params;
     item.title = title;
     item.created_at = utils::get_time_now();
+
+    // Fill in whatever the caller left out from the loaded architecture's
+    // generationDefaults. Only these keys, and only when absent - an explicit
+    // value from the caller always wins, including an explicit 0.
+    //
+    // The WebUI pre-fills its form from /architectures so it never needed
+    // this; MCP and raw REST callers did, and without it they silently got
+    // sd_wrapper.cpp's steps=20 fallback. On a 4-step model like Flux2 Klein
+    // that is 5x the work for a worse image.
+    if (generation_defaults_provider_ &&
+        (type == GenerationType::Text2Image ||
+         type == GenerationType::Image2Image ||
+         type == GenerationType::Text2Video)) {
+        nlohmann::json defaults;
+        try {
+            defaults = generation_defaults_provider_();
+        } catch (const std::exception& e) {
+            std::cerr << "[QueueManager] generation defaults provider threw: "
+                      << e.what() << std::endl;
+        }
+        if (defaults.is_object()) {
+            std::vector<std::string> applied;
+            for (const auto& key : defaultable_generation_keys()) {
+                if (defaults.contains(key) && !item.params.contains(key)) {
+                    item.params[key] = defaults[key];
+                    applied.emplace_back(key);
+                }
+            }
+            if (!applied.empty()) {
+                std::cout << "[QueueManager] applied architecture defaults to "
+                          << item.job_id << ":";
+                for (const auto& k : applied) std::cout << " " << k;
+                std::cout << std::endl;
+            }
+        }
+    }
 
     // Capture current model settings at job creation time
     item.model_settings = model_manager_.get_loaded_models_info();

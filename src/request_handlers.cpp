@@ -187,6 +187,21 @@ RequestHandlers::RequestHandlers(ModelManager& model_manager, QueueManager& queu
         std::cerr << "[RequestHandlers] Warning: Failed to initialize settings manager" << std::endl;
     }
 
+    // Let the queue fill in generation params the caller omitted from the
+    // loaded architecture's preset. The WebUI never needed this (it pre-fills
+    // its form from /architectures) but MCP and raw REST callers did - without
+    // it they silently inherited sd_wrapper.cpp's steps=20, which is 5x too
+    // many on a 4-step model. Resolved per job rather than cached so a model
+    // swap takes effect immediately.
+    queue_manager_.set_generation_defaults_provider(
+        [this]() -> nlohmann::json {
+            const std::string arch = model_manager_.get_loaded_model_architecture();
+            if (arch.empty()) return nlohmann::json::object();
+            const auto* preset = architecture_manager_->get(arch);
+            if (!preset) return nlohmann::json::object();
+            return preset->generationDefaults;
+        });
+
 #ifdef SDCPP_ASSISTANT_ENABLED
     // Build the documentation index up front so the assistant's
     // search_docs tool can answer "how do I…" questions about features
@@ -1708,6 +1723,18 @@ nlohmann::json normalize_generation_body(GenerationType type,
             if (!normalized.contains(it.key())) {
                 normalized[it.key()] = it.value();
             }
+        }
+    }
+    // The roundtrip fills every field the caller omitted with the typed
+    // struct's generic fallback (steps=20, cfg_scale=7, euler_a, 512x512).
+    // Left in place, add_job() sees those keys as caller-set and never applies
+    // the loaded architecture's generationDefaults - so a raw REST call on
+    // Flux2 Klein ran at cfg 7 / 20 steps. Drop the defaultable keys the
+    // caller didn't actually send (absent or null); the worker's own parsing
+    // still supplies the fallback when no preset matches.
+    for (const auto& key : QueueManager::defaultable_generation_keys()) {
+        if (!body.is_object() || !body.contains(key) || body[key].is_null()) {
+            normalized.erase(key);
         }
     }
     return normalized;

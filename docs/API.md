@@ -1050,6 +1050,8 @@ Generate images from text prompt.
 
 > **Per-field rationale + recommendations**: the table below is a one-line summary. Full per-field documentation for every generation parameter (across `/txt2img`, `/img2img`, `/txt2vid`, `/upscale`) is served at **`GET /options/generation`** (sourced from `data/generation_options.json`). The WebUI fetches it on mount and surfaces each field's description as a hover tooltip; an LLM agent can fetch it directly to pick the right values for a given architecture.
 
+> **Architecture defaults**: the defaults below are generic fallbacks. When a model is loaded, any omitted `steps`, `cfg_scale`, `sampler`, `scheduler`, `width` and `height` are filled from the loaded architecture's `generationDefaults` (see [`GET /architectures`](#get-architectures)), for `/txt2img`, `/img2img` and `/txt2vid` alike. Values you send always win.
+
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `prompt` | string | Yes | - | Text prompt for generation (supports `<lora:name:weight>` syntax) |
