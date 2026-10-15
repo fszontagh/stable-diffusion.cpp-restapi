@@ -156,6 +156,12 @@ api.addEndpoint<Txt2ImgRequest, JobCreatedResponse>(
 7. Add UI controls in `webui/src/views/ModelLoad.vue`
 8. Add display label in `webui/src/views/Dashboard.vue` formatOptionLabel()
 
+**Adding a new component slot** (a model file like `taesd`, not an option): also add it to the
+`loaded_extra_components_` list in `ModelManager::load_model()` so `/health` reports it in
+`loaded_components`, and to `COMPONENT_KEYS` in `webui/src/views/ModelLoad.vue` so editing the
+loaded model restores it. Missing either one, the edit form comes up blank for that slot and
+re-loading from it silently drops the component (this is how TAESD kept disappearing).
+
 ### WebSocket Events
 
 Events broadcast from `src/websocket_server.cpp`:

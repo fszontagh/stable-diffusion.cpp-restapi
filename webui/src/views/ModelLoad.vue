@@ -275,6 +275,23 @@ async function handleLoadModel() {
 }
 
 // Initialize on mount
+// Component slots the form can set. Restoring from a hand-written subset is
+// what dropped TAESD (and llm_vision, tokenizer, audio_vae, connectors) on
+// every edit: the field came up empty, and loading from that form then
+// saved the load without it.
+const COMPONENT_KEYS = [
+  'vae', 'clip_l', 'clip_g', 't5xxl', 'controlnet', 'ip_adapter', 'motion_module',
+  'llm', 'llm_vision', 'tokenizer', 'embeddings_connectors', 'audio_vae',
+  'clip_vision', 'taesd',
+] as const
+
+function restoreComponents(src: Record<string, string | null | undefined>) {
+  const target = loadParams.value as unknown as Record<string, string>
+  for (const key of COMPONENT_KEYS) {
+    target[key] = src[key] || ''
+  }
+}
+
 onMounted(async () => {
   // Always refresh /health so the loaded-model state we restore from is
   // fresh. Without this, navigating Models → Edit right after loading
@@ -283,10 +300,10 @@ onMounted(async () => {
   // the values the user actually loaded with.
   await store.fetchHealth()
 
-  // Ensure we have models data
-  if (!store.models) {
-    await store.fetchModels()
-  }
+  // Refetch the models list too: a cached copy keeps the is_loaded flags of
+  // whatever was loaded when it was fetched, so the "loaded" badge lagged a
+  // model swap until the page was refreshed.
+  await store.fetchModels()
 
   // Always refetch architectures on mount — drops the stale-cache problem
   // where a tab opened before the server was upgraded keeps an old preset
@@ -324,20 +341,16 @@ onMounted(async () => {
     // stale (e.g. last fetched before the load completed); /health is the
     // source of truth. Comparing the canonical loaded name to the
     // selected model name closes that window.
+    // Only /health (refetched above) decides. The cached list's is_loaded
+    // flag is not consulted: after loading model X it could still mark the
+    // previously-loaded Y as loaded, and editing Y then showed X's
+    // components and options until a page refresh.
     const thisModelLoaded =
-      (selectedModel.value.is_loaded === true) ||
-      (store.modelLoaded && store.health?.model_name === selectedModel.value.name)
+      store.modelLoaded && store.health?.model_name === selectedModel.value.name
 
     // If model is already loaded, pre-populate with current components and options
     if (thisModelLoaded && store.loadedComponents) {
-      loadParams.value.vae = store.loadedComponents.vae || ''
-      loadParams.value.clip_l = store.loadedComponents.clip_l || ''
-      loadParams.value.clip_g = store.loadedComponents.clip_g || ''
-      loadParams.value.t5xxl = store.loadedComponents.t5xxl || ''
-      loadParams.value.controlnet = store.loadedComponents.controlnet || ''
-      loadParams.value.ip_adapter = (store.loadedComponents as Record<string, string | null | undefined>).ip_adapter || ''
-      loadParams.value.motion_module = (store.loadedComponents as Record<string, string | null | undefined>).motion_module || ''
-      loadParams.value.llm = store.loadedComponents.llm || ''
+      restoreComponents(store.loadedComponents)
 
       // Pre-populate load options from currently loaded model.
       // Spread store.loadOptions wholesale so every field the backend exposes
@@ -364,15 +377,7 @@ onMounted(async () => {
       // a prior session — restore those choices from localStorage instead of
       // overwriting with raw architecture defaults.
       const last = store.lastLoadOptions
-      loadParams.value.vae = last.vae || ''
-      loadParams.value.clip_l = last.clip_l || ''
-      loadParams.value.clip_g = last.clip_g || ''
-      loadParams.value.t5xxl = last.t5xxl || ''
-      loadParams.value.controlnet = last.controlnet || ''
-      loadParams.value.ip_adapter = (last as unknown as { ip_adapter?: string | null }).ip_adapter || ''
-      loadParams.value.motion_module = (last as unknown as { motion_module?: string | null }).motion_module || ''
-      loadParams.value.llm = last.llm || ''
-      loadParams.value.taesd = last.taesd || ''
+      restoreComponents(last as unknown as Record<string, string | null | undefined>)
       if (last.options) {
         loadParams.value.options = {
           ...loadParams.value.options,

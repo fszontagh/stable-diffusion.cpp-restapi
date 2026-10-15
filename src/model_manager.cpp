@@ -1731,6 +1731,7 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         loaded_llm_.clear();
         loaded_llm_vision_.clear();
         loaded_tokenizer_.clear();
+        loaded_extra_components_ = nlohmann::json::object();
         clear_loading();
 
         if (auto* ws = get_websocket_server()) {
@@ -1779,6 +1780,20 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_llm_ = params.llm.value_or("");
     loaded_llm_vision_ = params.llm_vision.value_or("");
     loaded_tokenizer_ = params.tokenizer.value_or("");
+    loaded_extra_components_ = nlohmann::json::object();
+    for (const auto& [key, value] : {
+             std::pair<const char*, const std::optional<std::string>*>{"taesd", &params.taesd},
+             {"clip_vision", &params.clip_vision},
+             {"audio_vae", &params.audio_vae},
+             {"embeddings_connectors", &params.embeddings_connectors},
+             {"high_noise_diffusion_model", &params.high_noise_diffusion_model},
+             {"uncond_diffusion_model", &params.uncond_diffusion_model},
+             {"photo_maker", &params.photo_maker},
+             {"pulid_weights", &params.pulid_weights}}) {
+        if (value->has_value() && !value->value().empty()) {
+            loaded_extra_components_[key] = value->value();
+        }
+    }
 
     // Store the load options for later retrieval (for queue job reload)
     loaded_options_ = nlohmann::json::object();
@@ -2018,6 +2033,7 @@ void ModelManager::unload_model() {
         loaded_llm_.clear();
         loaded_llm_vision_.clear();
         loaded_tokenizer_.clear();
+        loaded_extra_components_ = nlohmann::json::object();
 
         // Clear load options
         loaded_options_.clear();
@@ -2188,6 +2204,9 @@ nlohmann::json ModelManager::get_loaded_models_info() const {
     }
     if (!loaded_tokenizer_.empty()) {
         components["tokenizer"] = loaded_tokenizer_;
+    }
+    for (auto it = loaded_extra_components_.begin(); it != loaded_extra_components_.end(); ++it) {
+        components[it.key()] = it.value();
     }
     
     result["loaded_components"] = components;
