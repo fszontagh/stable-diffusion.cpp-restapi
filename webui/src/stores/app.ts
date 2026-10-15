@@ -727,6 +727,15 @@ export const useAppStore = defineStore('app', () => {
             if (data.completed_at) {
               queue.value.items[jobIndex].completed_at = data.completed_at
             }
+            // The completion event carries the LoRAs the job actually loaded.
+            // Merge them into params so the Queue view shows them as
+            // recorded, not as unconfirmed prompt tags.
+            if (data.applied_loras) {
+              queue.value.items[jobIndex].params = {
+                ...queue.value.items[jobIndex].params,
+                applied_loras: data.applied_loras,
+              }
+            }
           }
         }
 

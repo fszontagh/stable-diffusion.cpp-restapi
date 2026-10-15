@@ -43,6 +43,9 @@ export interface JobStatusChangedData {
   // the queue item so the duration / live-elapsed display can render.
   started_at?: string
   completed_at?: string
+  // On 'completed': the LoRAs the job actually loaded, as recorded in its
+  // params. Absent when the prompt had no LoRA tags.
+  applied_loras?: unknown[]
 }
 
 export interface JobProgressData {

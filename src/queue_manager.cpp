@@ -1316,7 +1316,7 @@ void QueueManager::worker_thread() {
 
                     // Broadcast job completed via WebSocket
                     if (auto* ws = get_websocket_server()) {
-                        ws->broadcast(WSEventType::JobStatusChanged, {
+                        nlohmann::json event = {
                             {"job_id", job_id},
                             {"type", generation_type_to_string(it->second.type)},
                             {"title", it->second.title},
@@ -1324,7 +1324,14 @@ void QueueManager::worker_thread() {
                             {"previous_status", "processing"},
                             {"outputs", outputs},
                             {"completed_at", completed_at_iso}
-                        });
+                        };
+                        // Recorded just before this by record_applied_loras().
+                        // Sent along so a client watching the job can show it
+                        // without refetching the whole job.
+                        if (it->second.params.contains("applied_loras")) {
+                            event["applied_loras"] = it->second.params["applied_loras"];
+                        }
+                        ws->broadcast(WSEventType::JobStatusChanged, event);
                     }
 
                     std::cout << "[QueueManager] Job status: " << job_id
