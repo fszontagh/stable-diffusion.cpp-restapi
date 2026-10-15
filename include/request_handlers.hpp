@@ -100,6 +100,7 @@ private:
     void handle_get_job(const httplib::Request& req, httplib::Response& res);
     void handle_cancel_job(const httplib::Request& req, httplib::Response& res);
     void handle_delete_jobs(const httplib::Request& req, httplib::Response& res);
+    void handle_clear_finished(const httplib::Request& req, httplib::Response& res);
 
     // Recycle bin endpoints
     void handle_get_recycle_bin(const httplib::Request& req, httplib::Response& res);

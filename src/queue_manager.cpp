@@ -778,7 +778,27 @@ bool QueueManager::cancel_job(const std::string& job_id) {
 
 bool QueueManager::delete_job(const std::string& job_id) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
+    if (!delete_job_locked(job_id)) return false;
+    save_state();
+    return true;
+}
 
+int QueueManager::delete_jobs(const std::vector<std::string>& job_ids,
+                              std::vector<std::string>& failed_job_ids) {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    int deleted = 0;
+    for (const auto& job_id : job_ids) {
+        if (delete_job_locked(job_id)) {
+            ++deleted;
+        } else {
+            failed_job_ids.push_back(job_id);
+        }
+    }
+    if (deleted > 0) save_state();
+    return deleted;
+}
+
+bool QueueManager::delete_job_locked(const std::string& job_id) {
     auto it = jobs_.find(job_id);
     if (it == jobs_.end()) {
         std::cout << "[QueueManager] Delete failed: job " << job_id << " not found" << std::endl;
@@ -806,7 +826,6 @@ bool QueueManager::delete_job(const std::string& job_id) {
         it->second.previous_status = it->second.status;
         it->second.status = QueueStatus::Deleted;
         it->second.deleted_at = std::chrono::system_clock::now();
-        save_state();
 
         // Broadcast job deleted event via WebSocket
         if (auto* ws = get_websocket_server()) {
@@ -821,7 +840,6 @@ bool QueueManager::delete_job(const std::string& job_id) {
     } else {
         // Hard delete - permanent removal
         jobs_.erase(it);
-        save_state();
 
         // Broadcast job deleted event via WebSocket
         if (auto* ws = get_websocket_server()) {
@@ -838,7 +856,7 @@ bool QueueManager::delete_job(const std::string& job_id) {
     return true;
 }
 
-void QueueManager::clear_completed() {
+int QueueManager::clear_completed() {
     std::lock_guard<std::mutex> lock(queue_mutex_);
 
     int cleared = 0;
@@ -871,6 +889,7 @@ void QueueManager::clear_completed() {
     } else {
         std::cout << "[QueueManager] Cleared " << cleared << " completed/failed/cancelled jobs" << std::endl;
     }
+    return cleared;
 }
 
 bool QueueManager::restore_job(const std::string& job_id) {

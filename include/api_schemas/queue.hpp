@@ -70,6 +70,15 @@ struct DeleteJobsResponse {
     }
 };
 
+struct ClearFinishedResponse {
+    static schema::SchemaDescriptor schema() {
+        return schema::SchemaBuilder("ClearFinishedResponse", "Result of clearing finished jobs")
+            .required_field("success", schema::FieldType::Boolean, "Whether operation completed")
+            .required_field("cleared", schema::FieldType::Integer, "Number of completed, failed and cancelled jobs cleared")
+            .build();
+    }
+};
+
 struct RecycleBinResponse {
     static schema::SchemaDescriptor schema() {
         return schema::SchemaBuilder("RecycleBinResponse", "Recycle bin contents")

@@ -317,11 +317,21 @@ public:
     bool delete_job(const std::string& job_id);
 
     /**
+     * delete_job() for many ids under one lock and one state save. Per-id
+     * save_state() rewrote the whole queue file (tens of MB once jobs carry
+     * input images) for every job while holding the queue lock.
+     * @param failed_job_ids receives the ids that were not deleted
+     * @return number of jobs deleted/moved to the recycle bin
+     */
+    int delete_jobs(const std::vector<std::string>& job_ids,
+                    std::vector<std::string>& failed_job_ids);
+
+    /**
      * Clear all completed jobs from history
      * If recycle bin is enabled, moves to recycle bin
      * If recycle bin is disabled, permanently deletes
      */
-    void clear_completed();
+    int clear_completed();  // returns the number of jobs cleared
 
     /**
      * Restore a deleted job from recycle bin
@@ -444,6 +454,9 @@ private:
     std::vector<std::string> process_convert_unlocked(const nlohmann::json& params, const std::string& job_id);
     std::vector<std::string> process_model_download_unlocked(const nlohmann::json& params, const std::string& job_id);
     std::vector<std::string> process_model_hash_unlocked(const nlohmann::json& params, const std::string& job_id);
+
+    // delete_job() without locking or saving; caller holds queue_mutex_.
+    bool delete_job_locked(const std::string& job_id);
 
     // Save job config to output folder
     void save_job_config(const std::string& job_id, GenerationType type, const nlohmann::json& params);

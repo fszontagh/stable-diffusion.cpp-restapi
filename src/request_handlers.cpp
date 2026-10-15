@@ -613,6 +613,11 @@ void RequestHandlers::register_routes(httplib::Server& server) {
         "Batch delete jobs (soft-delete to recycle bin)", "Queue", 200,
         [this](auto& req, auto& res) { handle_delete_jobs(req, res); });
 
+    api.addEndpoint<void, ClearFinishedResponse>(
+        server, "DELETE", "/queue/finished",
+        "Clear every completed, failed and cancelled job (to the recycle bin when it is enabled). Pending and running jobs are kept.", "Queue", 200,
+        [this](auto& req, auto& res) { handle_clear_finished(req, res); });
+
     // ── Recycle Bin ──────────────────────────────────────────────────
     api.addEndpoint<void, RecycleBinResponse>(
         server, "GET", "/queue/recycle-bin",
@@ -2499,18 +2504,9 @@ void RequestHandlers::handle_delete_jobs(const httplib::Request& req, httplib::R
             return;
         }
         
-        int deleted = 0;
-        int failed = 0;
         std::vector<std::string> failed_job_ids;
-        
-        for (const auto& job_id : job_ids) {
-            if (queue_manager_.delete_job(job_id)) {
-                deleted++;
-            } else {
-                failed++;
-                failed_job_ids.push_back(job_id);
-            }
-        }
+        const int deleted = queue_manager_.delete_jobs(job_ids, failed_job_ids);
+        const int failed = static_cast<int>(failed_job_ids.size());
         
         nlohmann::json response = {
             {"success", true},
@@ -2527,6 +2523,15 @@ void RequestHandlers::handle_delete_jobs(const httplib::Request& req, httplib::R
         
     } catch (const std::exception& e) {
         send_error(res, std::string("Failed to delete jobs: ") + e.what(), 500);
+    }
+}
+
+void RequestHandlers::handle_clear_finished(const httplib::Request& /*req*/, httplib::Response& res) {
+    try {
+        const int cleared = queue_manager_.clear_completed();
+        send_json(res, {{"success", true}, {"cleared", cleared}});
+    } catch (const std::exception& e) {
+        send_error(res, std::string("Failed to clear finished jobs: ") + e.what(), 500);
     }
 }
 

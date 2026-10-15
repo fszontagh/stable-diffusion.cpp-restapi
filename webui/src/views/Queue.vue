@@ -733,6 +733,73 @@ async function deleteJob(jobId: string) {
   }
 }
 
+// ── Bulk actions ────────────────────────────────────────────────────────
+// Select mode adds a checkbox to every card; the selection survives paging
+// and filtering so jobs from several pages can be removed in one go.
+const selectMode = ref(false)
+const selectedJobs = ref(new Set<string>())
+const bulkBusy = ref(false)
+
+// The jobs rendered right now, in either view.
+const visibleJobs = computed(() =>
+  viewMode.value === 'dates' ? dateGroups.value.flatMap(g => g.items) : sortedJobs.value
+)
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value
+  if (!selectMode.value) selectedJobs.value.clear()
+}
+
+function toggleJobSelected(jobId: string) {
+  if (selectedJobs.value.has(jobId)) selectedJobs.value.delete(jobId)
+  else selectedJobs.value.add(jobId)
+}
+
+function selectAllVisible() {
+  // A running job can't be deleted, so don't offer it.
+  for (const job of visibleJobs.value) {
+    if (job.status !== 'processing') selectedJobs.value.add(job.job_id)
+  }
+}
+
+async function deleteSelected() {
+  const ids = [...selectedJobs.value]
+  if (ids.length === 0) return
+  if (!confirm(`Move ${ids.length} ${ids.length === 1 ? 'job' : 'jobs'} to the recycle bin?`)) return
+  bulkBusy.value = true
+  try {
+    const r = await api.deleteJobs(ids)
+    selectedJobs.value.clear()
+    store.showToast(
+      r.failed > 0
+        ? `Deleted ${r.deleted} of ${r.total} jobs (${r.failed} could not be deleted - running or already gone)`
+        : `Deleted ${r.deleted} ${r.deleted === 1 ? 'job' : 'jobs'}`,
+      r.failed > 0 ? 'info' : 'success'
+    )
+    await fetchWithFilters()
+  } catch (e) {
+    store.showToast(e instanceof Error ? e.message : 'Failed to delete jobs', 'error')
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+async function clearFinished() {
+  if (!confirm('Move every completed, failed and cancelled job to the recycle bin? Pending and running jobs are kept.')) return
+  bulkBusy.value = true
+  try {
+    const r = await api.clearFinishedJobs()
+    selectedJobs.value.clear()
+    store.showToast(`Cleared ${r.cleared} finished ${r.cleared === 1 ? 'job' : 'jobs'}`, 'success')
+    currentPage.value = 1
+    await fetchWithFilters()
+  } catch (e) {
+    store.showToast(e instanceof Error ? e.message : 'Failed to clear finished jobs', 'error')
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
 function getOutputUrl(path: string): string {
   return `/output/${path}`
 }
@@ -1402,6 +1469,28 @@ async function sendImageToUpscale(outputPath: string) {
       </div>
     </div>
 
+    <!-- Bulk actions -->
+    <div class="bulk-bar">
+      <button class="btn btn-secondary btn-sm" :class="{ active: selectMode }" @click="toggleSelectMode">
+        {{ selectMode ? 'Done' : 'Select' }}
+      </button>
+      <template v-if="selectMode">
+        <button class="btn btn-secondary btn-sm" :disabled="bulkBusy" @click="selectAllVisible">Select page</button>
+        <button class="btn btn-secondary btn-sm" :disabled="bulkBusy || selectedJobs.size === 0" @click="selectedJobs.clear()">Clear selection</button>
+        <button class="btn btn-danger btn-sm" :disabled="bulkBusy || selectedJobs.size === 0" @click="deleteSelected">
+          Delete selected ({{ selectedJobs.size }})
+        </button>
+      </template>
+      <button
+        class="btn btn-secondary btn-sm bulk-clear-finished"
+        :disabled="bulkBusy"
+        title="Move every completed, failed and cancelled job to the recycle bin"
+        @click="clearFinished"
+      >
+        Clear finished
+      </button>
+    </div>
+
     <!-- Top Pagination -->
     <div v-if="store.queue && store.queue.total_count > itemsPerPage" class="pagination-bar pagination-top">
       <div class="pagination-info">
@@ -1485,6 +1574,7 @@ async function sendImageToUpscale(outputPath: string) {
             'job-card',
             `job-${job.status}`,
             {
+              'job-selected': selectMode && selectedJobs.has(job.job_id),
               'in-variation-group': !!getGroupId(job),
               'group-first': isGroupHead(job, idx),
               'group-last': isGroupTail(job, idx),
@@ -1494,6 +1584,16 @@ async function sendImageToUpscale(outputPath: string) {
         <!-- Job Header -->
         <div class="job-header">
           <div class="job-type">
+            <input
+              v-if="selectMode"
+              type="checkbox"
+              class="job-select"
+              :checked="selectedJobs.has(job.job_id)"
+              :disabled="job.status === 'processing'"
+              :title="job.status === 'processing' ? 'A running job cannot be deleted' : 'Select'"
+              @click.stop
+              @change="toggleJobSelected(job.job_id)"
+            />
             <span class="job-icon" v-html="getTypeIcon(job.type, job)"></span>
             <span class="job-type-label">{{ getTypeName(job.type, job) }}</span>
             <span v-if="job.title" class="job-title-suffix"> - {{ job.title }}</span>
@@ -1803,11 +1903,21 @@ async function sendImageToUpscale(outputPath: string) {
           <div
             v-for="job in group.items"
             :key="job.job_id"
-            :class="['job-card', `job-${job.status}`]"
+            :class="['job-card', `job-${job.status}`, { 'job-selected': selectMode && selectedJobs.has(job.job_id) }]"
           >
             <!-- Job Header -->
             <div class="job-header">
               <div class="job-type">
+                <input
+                  v-if="selectMode"
+                  type="checkbox"
+                  class="job-select"
+                  :checked="selectedJobs.has(job.job_id)"
+                  :disabled="job.status === 'processing'"
+                  :title="job.status === 'processing' ? 'A running job cannot be deleted' : 'Select'"
+                  @click.stop
+                  @change="toggleJobSelected(job.job_id)"
+                />
                 <span class="job-icon" v-html="getTypeIcon(job.type, job)"></span>
                 <span class="job-type-label">{{ getTypeName(job.type, job) }}</span>
                 <span v-if="job.title" class="job-title-suffix"> - {{ job.title }}</span>
@@ -2398,6 +2508,30 @@ async function sendImageToUpscale(outputPath: string) {
 
 .filter-clear {
   align-self: flex-end;
+}
+
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.bulk-bar .bulk-clear-finished {
+  margin-left: auto;
+}
+
+.job-select {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.job-card.job-selected {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
 }
 
 .filter-results {

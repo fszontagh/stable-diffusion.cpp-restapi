@@ -1719,6 +1719,25 @@ Delete multiple jobs at once (soft-delete to recycle bin).
 }
 ```
 
+All ids are deleted under one lock with a single state save. A job that is
+running, already in the recycle bin, or unknown is reported in
+`failed_job_ids`.
+
+#### `DELETE /queue/finished`
+
+Clear every completed, failed and cancelled job across all pages (to the
+recycle bin when it is enabled, so they can be restored). Pending, waiting and
+running jobs are kept. No request body.
+
+**Success Response (200):**
+
+```json
+{
+    "success": true,
+    "cleared": 42
+}
+```
+
 ---
 
 ### Get Job Preview

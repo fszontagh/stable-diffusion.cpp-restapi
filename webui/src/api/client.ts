@@ -1043,6 +1043,12 @@ class ApiClient {
     return this.request('DELETE', `/queue/${jobId}/purge`)
   }
 
+  // Every completed, failed and cancelled job, across all pages. Goes to the
+  // recycle bin when it is enabled; pending and running jobs are kept.
+  async clearFinishedJobs(): Promise<{ success: boolean; cleared: number }> {
+    return this.request('DELETE', '/queue/finished')
+  }
+
   async clearRecycleBin(): Promise<{ success: boolean; purged: number; message: string }> {
     return this.request('DELETE', '/queue/recycle-bin')
   }
