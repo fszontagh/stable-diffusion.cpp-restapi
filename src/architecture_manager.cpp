@@ -211,9 +211,16 @@ std::vector<ArchitecturePreset> ArchitectureManager::get_all() const {
     return result;
 }
 
-const ArchitecturePreset* ArchitectureManager::get(const std::string& name) const {
+std::optional<ArchitecturePreset> ArchitectureManager::get(const std::string& name) const {
     std::lock_guard<std::mutex> lock(mutex_);
+    const ArchitecturePreset* preset = find_unlocked(name);
+    if (!preset) {
+        return std::nullopt;
+    }
+    return *preset;
+}
 
+const ArchitecturePreset* ArchitectureManager::find_unlocked(const std::string& name) const {
     // First try direct lookup
     auto it = presets_.find(name);
     if (it != presets_.end()) {
@@ -251,7 +258,7 @@ const ArchitecturePreset* ArchitectureManager::get(const std::string& name) cons
 }
 
 int ArchitectureManager::get_default_steps(const std::string& arch_name, int fallback) const {
-    const auto* preset = get(arch_name);
+    const auto preset = get(arch_name);
     if (preset && preset->generationDefaults.contains("steps")) {
         return preset->generationDefaults["steps"].get<int>();
     }

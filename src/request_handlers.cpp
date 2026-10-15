@@ -4157,7 +4157,7 @@ void RequestHandlers::handle_get_architectures(const httplib::Request& /*req*/, 
     auto architectures = architecture_manager_->to_json();
 
     // If we have a current architecture, include its info separately for convenience
-    const ArchitecturePreset* current_preset = nullptr;
+    std::optional<ArchitecturePreset> current_preset;
     if (!current_arch.empty()) {
         current_preset = architecture_manager_->get(current_arch);
     }
@@ -4178,7 +4178,7 @@ void RequestHandlers::handle_detect_architecture(const httplib::Request& req, ht
         return;
     }
 
-    const auto* preset = architecture_manager_->get(model);
+    const auto preset = architecture_manager_->get(model);
     if (preset) {
         send_json(res, {
             {"detected", true},
