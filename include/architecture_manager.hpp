@@ -2,6 +2,7 @@
 
 #include <string>
 #include <map>
+#include <optional>
 #include <mutex>
 #include <thread>
 #include <atomic>
@@ -70,9 +71,11 @@ public:
     /**
      * Get architecture preset by ID or alias
      * @param name Architecture ID or alias (case-insensitive)
-     * @return Preset or nullptr if not found
+     * @return A copy of the preset, or std::nullopt if not found. A copy, not
+     *         a pointer: the file watcher's reload clears presets_, so a
+     *         pointer into it could dangle as soon as the lock is released.
      */
-    const ArchitecturePreset* get(const std::string& name) const;
+    std::optional<ArchitecturePreset> get(const std::string& name) const;
 
     /**
      * Get default steps for an architecture
@@ -99,6 +102,10 @@ public:
     std::filesystem::file_time_type get_file_mtime() const;
 
 private:
+    // get() without locking; caller holds mutex_. The pointer is only valid
+    // while the lock is held.
+    const ArchitecturePreset* find_unlocked(const std::string& name) const;
+
     void load_from_file();
     void start_file_watcher();
     void stop_file_watcher();
