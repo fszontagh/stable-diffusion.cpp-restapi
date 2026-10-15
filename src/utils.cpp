@@ -3,7 +3,8 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
-#include <random>
+#include <openssl/rand.h>
+#include <stdexcept>
 #include <filesystem>
 #include <algorithm>
 #include <ctime>
@@ -15,13 +16,29 @@ namespace sdcpp {
 namespace utils {
 
 std::string generate_uuid() {
-    static std::random_device rd;
-    static std::mt19937_64 gen(rd());
-    static std::uniform_int_distribution<uint64_t> dis;
-    
-    uint64_t ab = dis(gen);
-    uint64_t cd = dis(gen);
-    
+    // A job id is a capability, not just a label: generated media is served at
+    // /output/<job_id>/<fixed-filename> (source.png, upscaled.png, ...), so
+    // anyone who can derive an id can fetch that job's output.
+    //
+    // This used to be std::mt19937_64 seeded from one std::random_device draw.
+    // Mersenne Twister is a simulation PRNG with no unpredictability guarantee,
+    // and that construction failed twice over: the seed carried only 32 bits
+    // (rd() returns unsigned int), so the entire stream was brute-forceable
+    // from a couple of known ids; and MT's 312-word state is recoverable
+    // outright from ~156 observed ids, then invertible to expose earlier ones.
+    // Either way a caller holding their own job ids could derive everyone's.
+    unsigned char bytes[16];
+    if (RAND_bytes(bytes, sizeof(bytes)) != 1) {
+        // Fail closed. Falling back to a weaker generator on CSPRNG failure
+        // would quietly reintroduce guessable ids - exactly the bug above.
+        throw std::runtime_error("Failed to obtain secure random bytes for UUID generation");
+    }
+
+    uint64_t ab = 0;
+    uint64_t cd = 0;
+    for (int i = 0; i < 8; ++i)  { ab = (ab << 8) | bytes[i]; }
+    for (int i = 8; i < 16; ++i) { cd = (cd << 8) | bytes[i]; }
+
     // Set version to 4
     ab = (ab & 0xFFFFFFFFFFFF0FFFULL) | 0x0000000000004000ULL;
     // Set variant to 1
