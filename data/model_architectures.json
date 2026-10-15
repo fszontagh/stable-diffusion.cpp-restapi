@@ -717,7 +717,8 @@
       "aliases": [
         "Flux.2-dev",
         "Flux2-dev",
-        "Flux 2 Dev"
+        "Flux 2 Dev",
+        "Flux.2"
       ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (Flux2 VAE)",
@@ -936,7 +937,8 @@
       "aliases": [
         "Flux.2-klein-9B",
         "Flux2-klein-9b",
-        "Klein 9B"
+        "Klein 9B",
+        "Flux.2 klein"
       ],
       "requiredComponents": {
         "vae": "flux2_ae.safetensors (Flux2 VAE)",

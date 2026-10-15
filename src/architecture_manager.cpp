@@ -1,3 +1,4 @@
+#include <cctype>
 #include "architecture_manager.hpp"
 #include <fstream>
 #include <iostream>
@@ -211,6 +212,59 @@ std::vector<ArchitecturePreset> ArchitectureManager::get_all() const {
     return result;
 }
 
+namespace {
+
+// Lowercase and drop every non-alphanumeric character, so that punctuation
+// differences between a filename and a preset alias stop mattering:
+//   "flux-2-klein-9b-Q4_0.gguf" -> "flux2klein9bq40gguf"
+//   "Flux.2-klein-9B"           -> "flux2klein9b"       (a substring of it)
+std::string normalize_for_match(const std::string& in) {
+    std::string out;
+    out.reserve(in.size());
+    for (unsigned char c : in) {
+        if (std::isalnum(c)) {
+            out.push_back(static_cast<char>(std::tolower(c)));
+        }
+    }
+    return out;
+}
+
+// Split on runs of non-alphanumerics, lowercased.
+//   "wan2.2-ti2v-5b-Q4_0.gguf" -> {wan2, 2, ti2v, 5b, q4, 0, gguf}
+std::vector<std::string> tokenize_for_match(const std::string& in) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (unsigned char c : in) {
+        if (std::isalnum(c)) {
+            cur.push_back(static_cast<char>(std::tolower(c)));
+        } else if (!cur.empty()) {
+            out.push_back(cur);
+            cur.clear();
+        }
+    }
+    if (!cur.empty()) out.push_back(cur);
+    return out;
+}
+
+// Short needles (<4 chars: SD1, SD2, SD3, LCM, Wan, PiD) are matched only at a
+// token boundary, never as a free substring. Plain substring matching at that
+// length produces nonsense - "pid" sits inside "rapid-mix-v2", which would
+// otherwise resolve to the PiD architecture. A trailing digit is allowed to be
+// part of the token so "wan" still matches "wan2.2-ti2v-5b".
+bool short_token_hit(const std::string& needle, const std::vector<std::string>& tokens) {
+    for (const auto& t : tokens) {
+        if (t == needle) return true;
+        if (t.size() > needle.size() &&
+            t.compare(0, needle.size(), needle) == 0 &&
+            std::isdigit(static_cast<unsigned char>(t[needle.size()]))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
 const ArchitecturePreset* ArchitectureManager::get(const std::string& name) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -232,18 +286,47 @@ const ArchitecturePreset* ArchitectureManager::get(const std::string& name) cons
         }
     }
 
-    // Try partial match - prefer longest (most specific) key match
+    // Partial match, preferring the longest (most specific) hit.
+    //
+    // Two things this has to get right, because the common caller is
+    // /architectures/detect passing a raw filename:
+    //
+    //  1. Aliases must participate. Matching preset ids alone meant
+    //     "flux-2-klein-9b-Q4_0.gguf" degraded to plain "Flux" - the only id
+    //     whose text appears anywhere in that filename - and the user got the
+    //     Flux preset's 20 steps instead of Klein's 4.
+    //  2. Separators must be ignored. Releases punctuate the same model every
+    //     which way ("Flux.2-klein-9B", "flux2_klein_9b", "flux-2-klein-9b"),
+    //     and none of it is meaningful. Compare with [^a-z0-9] stripped.
+    //  3. Short needles need a token boundary. See short_token_hit().
+    const std::string name_norm = normalize_for_match(name);
+    if (name_norm.empty()) {
+        return nullptr;
+    }
+    const std::vector<std::string> name_tokens = tokenize_for_match(name);
+
     const ArchitecturePreset* best_match = nullptr;
     size_t best_match_len = 0;
+
+    auto consider = [&](const std::string& candidate, const ArchitecturePreset& preset) {
+        const std::string cand_norm = normalize_for_match(candidate);
+        if (cand_norm.empty() || cand_norm.size() <= best_match_len) {
+            return;
+        }
+        const bool hit = cand_norm.size() < 4
+            ? short_token_hit(cand_norm, name_tokens)
+            : (name_norm.find(cand_norm) != std::string::npos ||
+               cand_norm.find(name_norm) != std::string::npos);
+        if (hit) {
+            best_match = &preset;
+            best_match_len = cand_norm.size();
+        }
+    };
+
     for (const auto& [id, preset] : presets_) {
-        std::string id_lower = id;
-        std::transform(id_lower.begin(), id_lower.end(), id_lower.begin(), ::tolower);
-        if (name_lower.find(id_lower) != std::string::npos ||
-            id_lower.find(name_lower) != std::string::npos) {
-            if (id_lower.size() > best_match_len) {
-                best_match = &preset;
-                best_match_len = id_lower.size();
-            }
+        consider(id, preset);
+        for (const auto& alias : preset.aliases) {
+            consider(alias, preset);
         }
     }
 
