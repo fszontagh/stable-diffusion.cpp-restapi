@@ -349,6 +349,8 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
             // leejet PR #1748 — see the /txt2img /img2img /txt2vid schemas.
             // Backend routing (sd.cpp post-2026-05-16; rpc_servers added in leejet PR #1629)
             "backend", "params_backend", "rpc_servers",
+            // Architecture preset override - see ModelLoadParams::architecture
+            "architecture",
             // Experimental offload (only honored when SDCPP_EXPERIMENTAL_OFFLOAD is on,
             // but accepted in the schema regardless so OFFLOAD=OFF builds don't 400
             // on configs authored against an OFFLOAD=ON build). Both fork variants'
@@ -432,6 +434,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.backend = opts.value("backend", "");
         params.params_backend = opts.value("params_backend", "");
         params.rpc_servers = opts.value("rpc_servers", "");
+        params.architecture = opts.value("architecture", "");
 
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
         // ── feature/vram-offloading-v2 path ──────────────────────────────
@@ -1743,9 +1746,27 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_model_name_ = params.model_name;
     loaded_model_type_ = params.model_type;
 
-    // Cache the model architecture name (e.g., "Z-Image", "Flux", "SDXL")
+    // Cache the model architecture name (e.g., "Z-Image", "Flux", "SDXL").
+    // sd.cpp reports a family-level name, which for some families is too coarse
+    // to pick the right preset: VERSION_FLUX2_KLEIN stringifies to
+    // "Flux.2 klein" for all four Klein variants, and the distilled ones want
+    // 4 steps where the base ones want 20. The caller may therefore override
+    // it - the WebUI and MCP both know the filename, which is what actually
+    // disambiguates. This only affects the reported name and the
+    // generationDefaults derived from it; sd.cpp has already built the model
+    // from its own detection by this point.
     const char* arch_name = sd_get_model_version_name(context_);
-    loaded_model_architecture_ = arch_name ? arch_name : "Unknown";
+    const std::string detected_architecture = arch_name ? arch_name : "Unknown";
+    if (!params.architecture.empty()) {
+        loaded_model_architecture_ = params.architecture;
+        if (params.architecture != detected_architecture) {
+            std::cout << "[ModelManager] architecture override: '"
+                      << detected_architecture << "' (sd.cpp) -> '"
+                      << params.architecture << "' (caller)" << std::endl;
+        }
+    } else {
+        loaded_model_architecture_ = detected_architecture;
+    }
 
     // Track loaded component models
     loaded_vae_ = params.vae.value_or("");
@@ -1803,6 +1824,12 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     loaded_options_["vae_format"] = params.vae_format;
     // circular_x / circular_y are per-gen now (leejet PR #1748); they no
     // longer live on load params so no echo-back here.
+
+    // Echo the architecture override so the WebUI edit form (and MCP callers)
+    // restore it instead of falling back to sd.cpp detection on reload.
+    if (!params.architecture.empty()) {
+        loaded_options_["architecture"] = params.architecture;
+    }
 
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
     // ── feature/vram-offloading-v2 echoes back the full legacy offload set ──

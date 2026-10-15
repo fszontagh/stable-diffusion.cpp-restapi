@@ -141,6 +141,14 @@ struct ModelLoadParams {
                                                  // with legacy offload_mode on the fork build. Negative
                                                  // values (the old "-1 = auto" sentinel) are no longer
                                                  // meaningful upstream - the restapi coerces them to 0.
+    // Architecture preset override, e.g. "Flux2 Klein 9B". Empty = trust
+    // sd.cpp's own detection. Needed because sd.cpp reports a family name
+    // ("Flux.2 klein") that cannot distinguish 4B from 9B, or distilled from
+    // base - and those disagree on steps (4 vs 20). Only the filename knows,
+    // and the client is the one holding it. Affects the reported architecture
+    // and therefore which generationDefaults apply; it does NOT change how
+    // sd.cpp builds or runs the model.
+    std::string architecture;
     std::string weight_type;                    // Weight type (f32, f16, q8_0, q4_0, etc.)
     std::string tensor_type_rules;              // Per-tensor weight rules (e.g., "^vae\.=f16")
 
@@ -550,7 +558,7 @@ private:
     std::string loading_model_name_;         // Name of model currently being loaded
     std::string last_load_error_;            // Last model load error message
     ModelType loaded_model_type_ = ModelType::Checkpoint;
-    std::string loaded_model_architecture_;  // Cached architecture name (e.g., "Z-Image", "Flux")
+    std::string loaded_model_architecture_;  // Caller override if set, else what sd.cpp detected
     
     // Track all loaded component models
     std::string loaded_vae_;

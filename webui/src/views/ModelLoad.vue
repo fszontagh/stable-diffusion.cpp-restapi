@@ -247,6 +247,16 @@ async function handleLoadModel() {
     if (loadParams.value.taesd) params.taesd = loadParams.value.taesd
     params.options = loadParams.value.options
 
+    // Send the architecture the form resolved. sd.cpp only reports a family
+    // name - "Flux.2 klein" covers 4B, 9B and both base variants, which
+    // disagree on steps (4 vs 20) - so without this the server picks the
+    // wrong preset and every MCP/REST caller inherits the wrong defaults.
+    // It also makes a manual override stick: /health echoes this back, and
+    // the dropdown is restored from /health on reload.
+    if (selectedArchitecture.value) {
+      params.options = { ...params.options, architecture: selectedArchitecture.value }
+    }
+
     // Backend now returns 202 Accepted immediately; the actual load runs
     // in a detached thread and reports completion via WebSocket events
     // (model_loaded / model_load_failed). The api client doesn't reject

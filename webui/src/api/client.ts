@@ -53,6 +53,14 @@ export interface LoadOptions {
   // Parameter storage backend (replaces offload_to_cpu). Set to "*=cpu"
   // to keep all weights in host RAM and stream into VRAM on demand.
   params_backend?: string
+  /**
+   * Architecture preset override, e.g. "Flux2 Klein 9B". Empty/absent = trust
+   * sd.cpp's detection. sd.cpp reports a family name ("Flux.2 klein") that
+   * can't distinguish 4B from 9B or distilled from base, and those disagree on
+   * steps (4 vs 20); only the filename knows. Drives which generationDefaults
+   * fill in omitted generation params for MCP and REST callers.
+   */
+  architecture?: string
   // Comma-separated host:port pairs for distributed-backend (rpc) workers.
   rpc_servers?: string
   // qwen_image_zero_cond_t consolidated into `model_args` in leejet PR #1757.

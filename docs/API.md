@@ -765,6 +765,7 @@ Concurrency: only one load can be in flight at a time. A second `POST /models/lo
 | `backend` | string | "" | Per-component placement, e.g. `"te=cpu"`, `"te=cpu,vae=cpu,controlnet=cpu"` to hold specific components on CPU RAM |
 | `params_backend` | string | "" | Global params placement, e.g. `"*=cpu"` to hold model weights on CPU RAM |
 | `model_args` | string | "" | Comma-separated architecture-specific `key=value` knobs (Chroma DiT/T5 masking, Qwen-Image conditioning, etc.). See `/openapi.json` for the current set. |
+| `architecture` | string | "" | Architecture preset override, e.g. `"Flux2 Klein 9B"`. Empty = use sd.cpp's detection. sd.cpp reports some families with one name (`"Flux.2 klein"` covers the 4B/9B and distilled/base variants), so set this when the filename says which variant it is. It changes the reported architecture and the presets derived from it, not how the model runs. |
 
 **Streaming execution.** Prefetch-streamed segmented execution is the default in upstream sd.cpp now (`stream_layers` was removed - segmented compute + async prefetch just run). Use `max_vram` to cap the per-device managed-weight budget; the planner picks a residency split from it. The two advanced switches below let you opt out of the default behavior:
 

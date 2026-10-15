@@ -68,6 +68,7 @@ struct LoadOptions {
             // leejet PR #1748 - see GenerationRequestBase.
             .optional_field("backend", schema::FieldType::String, "Main compute backend override (empty = sd.cpp picks). Use per-component placement here too - e.g. \"diffusion=cuda0,vae=cpu\" - that's how per-component CPU keeping is expressed now (formerly keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu).")
             .optional_field("params_backend", schema::FieldType::String, "Parameter storage backend override (empty = same as backend). Set to \"*=cpu\" for the global \"keep all weights in RAM\" mode that was previously offload_to_cpu.")
+            .optional_field("architecture", schema::FieldType::String, "Architecture preset override, e.g. \"Flux2 Klein 9B\". Empty = trust sd.cpp's detection. Needed because sd.cpp reports a family name (\"Flux.2 klein\") that cannot tell 4B from 9B or distilled from base, and those disagree on steps (4 vs 20). Sets the reported architecture and therefore which generationDefaults apply to omitted generation params; does not change how the model is built or run.")
             .optional_field("rpc_servers", schema::FieldType::String, "RPC distributed-backend node list, comma-separated host:port pairs (leejet PR #1629). Empty = no RPC.")
 #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
             // ── feature/vram-offloading-v2 fields (legacy multi-mode API) ──
