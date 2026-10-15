@@ -625,12 +625,15 @@ std::vector<std::string> parse_string_array(const nlohmann::json& j, const std::
 // 400 instead of being silently dropped. `where` is a label for the error
 // message, `j` is the object to scan, `known` enumerates accepted keys.
 //
-// Note: server-side metadata fields stamped onto queued jobs by the
-// expand_prompt path (variation_group_id, variation_index, variation_total,
-// variation_template) are listed here and are accepted on submit too — a
-// client replaying a prior job's params shouldn't be forced to strip them.
-static const std::unordered_set<std::string> VARIATION_METADATA_KEYS = {
+// Note: server-side metadata fields stamped onto queued jobs are listed here
+// and are accepted on submit too — a client replaying a prior job's params
+// (the WebUI's Restart does exactly that) shouldn't be forced to strip them.
+// The variation_* keys come from the expand_prompt path; applied_loras is
+// recorded by the worker after a generation (QueueManager::add_job drops it
+// again so the new job records its own).
+static const std::unordered_set<std::string> SERVER_METADATA_KEYS = {
     "variation_group_id", "variation_index", "variation_total", "variation_template",
+    "applied_loras",
 };
 static void reject_unknown_keys(const std::string& where,
                                 const nlohmann::json& j,
@@ -639,7 +642,7 @@ static void reject_unknown_keys(const std::string& where,
     std::vector<std::string> unknown;
     for (auto it = j.begin(); it != j.end(); ++it) {
         if (known.find(it.key()) == known.end() &&
-            VARIATION_METADATA_KEYS.find(it.key()) == VARIATION_METADATA_KEYS.end()) {
+            SERVER_METADATA_KEYS.find(it.key()) == SERVER_METADATA_KEYS.end()) {
             unknown.push_back(it.key());
         }
     }

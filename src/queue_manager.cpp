@@ -407,6 +407,13 @@ std::string QueueManager::add_job(GenerationType type, const nlohmann::json& par
     item.title = title;
     item.created_at = utils::get_time_now();
 
+    // applied_loras describes what a finished job actually loaded. A client
+    // replaying an earlier job's params (the WebUI's Restart) sends it back;
+    // drop it so this job records its own instead of inheriting a stale list.
+    if (item.params.is_object()) {
+        item.params.erase("applied_loras");
+    }
+
     // Fill in whatever the caller left out from the loaded architecture's
     // generationDefaults. The worker repeats this when it picks the job up,
     // for jobs submitted while the model was still loading.
