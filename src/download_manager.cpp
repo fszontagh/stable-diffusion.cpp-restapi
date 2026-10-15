@@ -7,6 +7,7 @@
 #include <chrono>
 #include <thread>
 #include <cstring>
+#include <mutex>
 #include <curl/curl.h>
 
 namespace fs = std::filesystem;
