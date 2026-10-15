@@ -611,6 +611,15 @@ class ApiClient {
     this.responseCache.clear()
   }
 
+  /** Drop the cached GET responses for one endpoint (any query string). */
+  invalidateCache(endpoint: string): void {
+    for (const key of this.responseCache.keys()) {
+      if (key.startsWith(`GET:${endpoint}:`) || key.startsWith(`GET:${endpoint}?`)) {
+        this.responseCache.delete(key)
+      }
+    }
+  }
+
   private async sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
   }

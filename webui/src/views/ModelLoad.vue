@@ -304,10 +304,10 @@ onMounted(async () => {
   // the values the user actually loaded with.
   await store.fetchHealth()
 
-  // Ensure we have models data
-  if (!store.models) {
-    await store.fetchModels()
-  }
+  // Refetch the models list too: a cached copy keeps the is_loaded flags of
+  // whatever was loaded when it was fetched, so the "loaded" badge lagged a
+  // model swap until the page was refreshed.
+  await store.fetchModels()
 
   // Always refetch architectures on mount — drops the stale-cache problem
   // where a tab opened before the server was upgraded keeps an old preset
@@ -340,14 +340,13 @@ onMounted(async () => {
     // user's options with raw architecture defaults.
     let restoredFromPriorLoad = false
 
-    // Decide "is THIS model currently loaded?" from live /health, not just
-    // the cached `is_loaded` flag on the models list. The list can be
-    // stale (e.g. last fetched before the load completed); /health is the
-    // source of truth. Comparing the canonical loaded name to the
-    // selected model name closes that window.
+    // Decide "is THIS model currently loaded?" only from live /health
+    // (refetched above), not from the cached `is_loaded` flag on the models
+    // list. That list can be stale: after loading model X it could still
+    // mark the previously-loaded Y as loaded, and editing Y then showed X's
+    // components and options until a page refresh.
     const thisModelLoaded =
-      (selectedModel.value.is_loaded === true) ||
-      (store.modelLoaded && store.health?.model_name === selectedModel.value.name)
+      store.modelLoaded && store.health?.model_name === selectedModel.value.name
 
     // Opened from "Load" on the Downloads / Models architecture view: that
     // choice wins over every restore path and over name detection.

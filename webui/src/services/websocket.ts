@@ -124,6 +124,8 @@ export interface ServerStatusData {
     llm_vision?: string | null
     [component: string]: string | null | undefined
   }
+  // Options the loaded model was loaded with (same shape as /health)
+  load_options?: Record<string, unknown>
   upscaler_loaded?: boolean
   upscaler_name?: string | null
 }
