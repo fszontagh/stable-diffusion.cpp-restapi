@@ -387,16 +387,26 @@ onMounted(async () => {
       restoredFromPriorLoad = true
     }
 
-    // Auto-detect architecture from model name
-    const detected = await detectArchitecture(decodedName)
-    if (detected) {
-      selectedArchitecture.value = detected.id
-      isAutoDetected.value = true
-      // Only apply raw architecture defaults if we did NOT restore prior user
-      // options — otherwise the detected arch's loadOptions would clobber
-      // values like params_backend / disable_prefetch the user already chose.
-      if (!restoredFromPriorLoad) {
-        applyArchitectureOptions(detected)
+    // An architecture the user loaded with (from /health or localStorage)
+    // wins over filename detection. Detection can't tell every variant apart
+    // - that is why the override exists - so re-detecting here would quietly
+    // swap e.g. a Klein Base choice back to the distilled preset on edit.
+    const savedArchitecture = loadParams.value.options?.architecture
+    if (savedArchitecture) {
+      selectedArchitecture.value = savedArchitecture
+      isAutoDetected.value = false
+    } else {
+      // Auto-detect architecture from model name
+      const detected = await detectArchitecture(decodedName)
+      if (detected) {
+        selectedArchitecture.value = detected.id
+        isAutoDetected.value = true
+        // Only apply raw architecture defaults if we did NOT restore prior user
+        // options — otherwise the detected arch's loadOptions would clobber
+        // values like params_backend / disable_prefetch the user already chose.
+        if (!restoredFromPriorLoad) {
+          applyArchitectureOptions(detected)
+        }
       }
     }
   }
