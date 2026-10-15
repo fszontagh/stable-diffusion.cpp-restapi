@@ -1638,7 +1638,7 @@ Get status of a specific job.
 | `completed_at` | string | ISO 8601 timestamp when job completed (if applicable) |
 | `outputs` | array | List of output file paths (relative to `/output/`) |
 | `output_urls` | array | Absolute URLs to each output file. Built from the request's `Host` header by default; promoted to `X-Forwarded-Host` / `X-Forwarded-Proto` when the connecting peer is in `server.trusted_proxies`. Direct GETs to these URLs work without auth when `auth.allow_public_outputs` is `true` (default). |
-| `params` | object | Original request parameters |
+| `params` | object | Original request parameters. After a generation whose prompt has `<lora:...>` tags, also `applied_loras`: one `{name, path, weight, high_noise}` entry per LoRA that resolved to a file. A tag that matched no file is left out. |
 | `model_settings` | object | Model configuration at job creation time |
 | `linked_job_id` | string | ID of linked job (e.g., hash job linked to download job) |
 | `title` | string | User-supplied display title (only present when set at submission time). |

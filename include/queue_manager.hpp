@@ -437,6 +437,10 @@ private:
     void update_download_progress(uint64_t bytes_done, uint64_t bytes_total);
     void set_batch_info(int total_images);
     void update_job_params(const std::string& job_id, const nlohmann::json& params);
+
+    /** Merge `applied_loras` into a finished job's params. Must run after
+     *  process_*_unlocked's typed-params write, which would drop it. */
+    void record_applied_loras(const std::string& job_id, const std::string& prompt);
     
     // Process job without holding queue_mutex_ (to avoid deadlock)
     std::vector<std::string> process_job_unlocked(

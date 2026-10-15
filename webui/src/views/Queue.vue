@@ -612,6 +612,58 @@ function getJobDimensions(job: Job): string {
   return ''
 }
 
+// LoRAs a job used. Prefers `applied_loras`, which the backend records from the
+// same resolver the generator uses - so it lists what actually loaded, and a
+// tag pointing at a missing file is absent rather than silently shown as used.
+//
+// Falls back to parsing <lora:name:weight> out of the prompt for jobs created
+// before that field existed; those are marked `recorded: false` so the UI can
+// say "requested" rather than claim it was applied.
+interface JobLora { name: string; weight: number | null; highNoise: boolean; recorded: boolean }
+
+// LoRA weights arrive as a C++ float widened to a double, so 0.7 serializes as
+// 0.69999998807907104. Weights are authored to one or two decimals, so round
+// for display and drop trailing zeros: 0.7 -> "0.7", 1.0 -> "1", 0.75 -> "0.75".
+// Display-only; the stored value stays exactly what was applied.
+function formatLoraWeight(w: number): string {
+  return String(Number(w.toFixed(2)))
+}
+
+function getJobLoras(job: Job): JobLora[] {
+  const p = job.params as Record<string, unknown> | undefined
+  const recorded = p?.applied_loras
+  if (Array.isArray(recorded)) {
+    return recorded.map((l) => {
+      const e = l as Record<string, unknown>
+      return {
+        name: String(e.name ?? e.path ?? '?').replace(/\.(safetensors|ckpt|pt|gguf)$/i, ''),
+        weight: typeof e.weight === 'number' ? e.weight : null,
+        highNoise: e.high_noise === true,
+        recorded: true,
+      }
+    })
+  }
+
+  const prompt = typeof p?.prompt === 'string' ? p.prompt : ''
+  const out: JobLora[] = []
+  // Mirrors the backend regex: <lora:name:weight>, optional |high_noise| prefix.
+  const re = /<lora:([^:>]+):([^>]+)>/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(prompt)) !== null) {
+    let raw = m[1]
+    let highNoise = false
+    if (raw.startsWith('|high_noise|')) { highNoise = true; raw = raw.slice('|high_noise|'.length) }
+    const w = parseFloat(m[2])
+    out.push({
+      name: raw.replace(/^.*[/\\]/, '').replace(/\.(safetensors|ckpt|pt|gguf)$/i, ''),
+      weight: Number.isFinite(w) ? w : null,
+      highNoise,
+      recorded: false,
+    })
+  }
+  return out
+}
+
 function getJobSteps(job: Job): number | null {
   return (job.params?.steps as number) || null
 }
@@ -1673,6 +1725,20 @@ async function sendImageToUpscale(outputPath: string) {
               <span v-if="getJobBatchCount(job) > 1" class="meta-item" title="Batch count">
                 <span class="meta-icon">&#128451;</span>{{ getJobBatchCount(job) }}x
               </span>
+              <span
+                v-for="(lora, li) in getJobLoras(job)"
+                :key="'lora-' + li"
+                class="meta-item meta-lora"
+                :class="{ 'meta-lora-unverified': !lora.recorded }"
+                :title="lora.recorded
+                  ? 'LoRA applied' + (lora.highNoise ? ' (high-noise pass)' : '')
+                  : 'LoRA requested in the prompt. This job predates applied-LoRA recording, so it is not confirmed to have loaded.'"
+              >
+                <span class="meta-icon">&#127912;</span>{{ lora.name
+                }}<template v-if="lora.weight !== null">:{{ formatLoraWeight(lora.weight) }}</template
+                ><template v-if="lora.highNoise"> (hi)</template
+                ><template v-if="!lora.recorded">&nbsp;?</template>
+              </span>
               <span v-if="job.started_at && job.completed_at" class="meta-item meta-duration" title="Duration">
                 <span class="meta-icon">&#9201;</span>{{ formatDuration(job.started_at, job.completed_at) }}
               </span>
@@ -1968,6 +2034,20 @@ async function sendImageToUpscale(outputPath: string) {
                   </span>
                   <span v-if="getJobSeed(job) !== null" class="meta-item" title="Seed">
                     <span class="meta-icon">&#127793;</span>{{ getJobSeed(job) }}
+                  </span>
+                  <span
+                    v-for="(lora, li) in getJobLoras(job)"
+                    :key="'lora-' + li"
+                    class="meta-item meta-lora"
+                    :class="{ 'meta-lora-unverified': !lora.recorded }"
+                    :title="lora.recorded
+                      ? 'LoRA applied' + (lora.highNoise ? ' (high-noise pass)' : '')
+                      : 'LoRA requested in the prompt. This job predates applied-LoRA recording, so it is not confirmed to have loaded.'"
+                  >
+                    <span class="meta-icon">&#127912;</span>{{ lora.name
+                    }}<template v-if="lora.weight !== null">:{{ formatLoraWeight(lora.weight) }}</template
+                    ><template v-if="lora.highNoise"> (hi)</template
+                    ><template v-if="!lora.recorded">&nbsp;?</template>
                   </span>
                   <span v-if="job.started_at && job.completed_at" class="meta-item meta-duration" title="Duration">
                     <span class="meta-icon">&#9201;</span>{{ formatDuration(job.started_at, job.completed_at) }}
@@ -3693,5 +3773,18 @@ async function sendImageToUpscale(outputPath: string) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* LoRA chips in the queue metadata row. Tinted so they read as a distinct
+   class of fact from the numeric generation settings beside them. */
+.meta-lora {
+  border-color: var(--accent, #e8833a);
+  color: var(--accent, #e8833a);
+}
+/* Pre-recording jobs: the tag was in the prompt but we cannot confirm the file
+   resolved, so it is shown muted with a trailing "?" rather than as fact. */
+.meta-lora-unverified {
+  opacity: 0.65;
+  font-style: italic;
 }
 </style>

@@ -1207,6 +1207,20 @@ void QueueManager::worker_thread() {
         try {
             outputs = process_job_unlocked(job_type, job_params, job_id);
             success = true;
+
+            // Record which LoRAs this job applied.
+            //
+            // Must happen AFTER process_job_unlocked: that path ends by
+            // writing the typed params back (Txt2ImgParams::to_json() et al),
+            // merged only against the raw params it was handed. A field added
+            // to the job before generation is therefore not in `raw` and gets
+            // dropped by that merge - which is exactly what happened when this
+            // ran up-front: the "N LoRA(s) applied" line appeared in the log
+            // while applied_loras never reached queue_state.json.
+            //
+            // Running here means the merge has already happened and the
+            // following status write persists the field.
+            record_applied_loras(job_id, job_params.value("prompt", std::string{}));
         } catch (const std::exception& e) {
             error_message = e.what();
             std::cerr << "[QueueManager] Job error: " << job_id << " | " << e.what() << std::endl;
@@ -1608,6 +1622,46 @@ void QueueManager::set_preview_settings(PreviewMode mode, int interval, int max_
 QueueManager::PreviewSettings QueueManager::get_preview_settings() const {
     std::lock_guard<std::mutex> lock(preview_mutex_);
     return preview_settings_;
+}
+
+// Resolve the prompt's <lora:name:weight> tags with the same function and
+// lora_dir the generator uses, and merge the result into the job's params as
+// `applied_loras`. A tag whose file cannot be resolved is skipped by the
+// resolver, so this lists what actually loaded rather than what was asked for.
+//
+// Merges into the live params instead of replacing them: a plain
+// update_job_params() here would clobber the typed round-trip that
+// process_*_unlocked just wrote.
+void QueueManager::record_applied_loras(const std::string& job_id,
+                                        const std::string& prompt) {
+    if (prompt.find("<lora:") == std::string::npos) {
+        return;
+    }
+    try {
+        auto [cleaned, parsed] = SDWrapper::parse_loras_from_prompt(
+            prompt, model_manager_.get_lora_dir());
+        nlohmann::json applied = nlohmann::json::array();
+        for (const auto& l : parsed) {
+            applied.push_back({
+                {"name", std::filesystem::path(l.path).filename().string()},
+                {"path", l.path},
+                {"weight", l.multiplier},
+                {"high_noise", l.is_high_noise}
+            });
+        }
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            auto it = jobs_.find(job_id);
+            if (it == jobs_.end()) return;
+            it->second.params["applied_loras"] = applied;
+        }
+        std::cout << "[QueueManager] job " << job_id << ": "
+                  << applied.size() << " LoRA(s) applied" << std::endl;
+    } catch (const std::exception& e) {
+        // Never fail a completed generation over bookkeeping.
+        std::cerr << "[QueueManager] could not record applied LoRAs: "
+                  << e.what() << std::endl;
+    }
 }
 
 void QueueManager::update_job_params(const std::string& job_id, const nlohmann::json& params) {
