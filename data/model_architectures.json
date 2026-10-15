@@ -715,6 +715,7 @@
       "name": "Flux.2 Dev",
       "description": "Flux 2 development model with advanced LLM integration. Requires Flux2 VAE (flux2_ae.safetensors) and Mistral-Small-3.2-24B LLM. Supports image editing with reference images.",
       "aliases": [
+        "Flux.2",
         "Flux.2-dev",
         "Flux2-dev",
         "Flux 2 Dev"
@@ -736,6 +737,9 @@
         "scheduler": "simple",
         "width": 1024,
         "height": 1024
+      },
+      "match": {
+        "architecture": "Flux.2"
       },
       "downloads": [
         {
@@ -810,6 +814,10 @@
         "width": 1024,
         "height": 1024
       },
+      "match": {
+        "architecture": "Flux.2 klein",
+        "nameRegex": "^(?!.*base).*4b"
+      },
       "downloads": [
         {
           "id": "diffusion-q8",
@@ -883,6 +891,10 @@
         "width": 1024,
         "height": 1024
       },
+      "match": {
+        "architecture": "Flux.2 klein",
+        "nameRegex": "base.*4b|4b.*base"
+      },
       "downloads": [
         {
           "id": "diffusion-q8",
@@ -955,6 +967,9 @@
         "scheduler": "simple",
         "width": 1024,
         "height": 1024
+      },
+      "match": {
+        "architecture": "Flux.2 klein"
       },
       "downloads": [
         {
@@ -1038,6 +1053,10 @@
         "scheduler": "simple",
         "width": 1024,
         "height": 1024
+      },
+      "match": {
+        "architecture": "Flux.2 klein",
+        "nameRegex": "base"
       },
       "downloads": [
         {
