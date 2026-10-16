@@ -3,7 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { api, type LoadModelParams, type ModelInfo, type ArchitecturePreset, type OptionDescription } from '../api/client'
-import { useArchitectures, extractWeightType, suggestComponents, findPresetForArchitecture, type ComponentSuggestion } from '../composables/useArchitectures'
+import { useArchitectures, extractWeightType, suggestComponents, suggestVisionComponents, findPresetForArchitecture, type ComponentSuggestion } from '../composables/useArchitectures'
 import RecHint from '../components/RecHint.vue'
 import BackendAssignmentEditor from '../components/BackendAssignmentEditor.vue'
 
@@ -150,6 +150,9 @@ const t5Suggestions = computed(() =>
 )
 const llmSuggestions = computed(() =>
   suggestComponents('llm', currentArchitecture.value, modelWeightType.value, llmModels.value)
+)
+const llmVisionSuggestions = computed(() =>
+  suggestVisionComponents(currentArchitecture.value, loadParams.value.llm || null, llmModels.value)
 )
 
 // Computed: Required components based on architecture
@@ -408,6 +411,12 @@ watch(selectedArchitecture, () => {
     if (requiredComponents.value.llm) {
       autoSelectComponent('llm', llmSuggestions.value)
     }
+    // Image editing needs the vision projector; without it sd.cpp loads the
+    // LLM text-only and edits fail at encode time.
+    if (optionalComponents.value.llm_vision && !loadParams.value.llm_vision) {
+      const suggested = llmVisionSuggestions.value.find(s => s.isSuggested)
+      if (suggested) loadParams.value.llm_vision = suggested.name
+    }
     // Tokenizer: nothing to score against, so only auto-pick when the
     // choice is unambiguous (exactly one tokenizer.json installed).
     if (requiredComponents.value.tokenizer && !loadParams.value.tokenizer &&
@@ -658,7 +667,9 @@ function onKeepAllInRam(e: Event) {
             </label>
             <select v-model="loadParams.llm_vision" class="form-select">
               <option value="">None</option>
-              <option v-for="m in llmModels" :key="m.name" :value="m.name">{{ m.name }}</option>
+              <option v-for="s in llmVisionSuggestions" :key="s.name" :value="s.name">
+                {{ s.name }}{{ s.isSuggested ? ' ★' : '' }}
+              </option>
             </select>
             <small class="form-hint">{{ optionalComponents.llm_vision }}</small>
           </div>

@@ -938,6 +938,16 @@ const supportsImageEdit = computed<boolean>(() => {
   return Boolean(preset.imageEditMode)
 })
 
+// Editing with a GGUF LLM needs the vision projector (llm_vision); without
+// it sd.cpp loads the LLM text-only and the edit fails at encode time.
+// Text-to-image works either way, so this is only a hint on the edit tab.
+const missingVisionEncoder = computed<boolean>(() => {
+  const preset = currentArchPreset.value
+  const lc = store.loadedComponents
+  return Boolean(preset?.optionalComponents?.llm_vision && lc?.llm &&
+    /\.gguf$/i.test(lc.llm) && !lc.llm_vision)
+})
+
 // Tooltip displayed on hover of the disabled Image Edit tab. Kept as a
 // separate computed so the string can contain apostrophes without
 // escaping in the template attribute (Vue's SFC parser rejects
@@ -2770,6 +2780,10 @@ async function handleSubmit() {
           </div>
           <div class="info-hint">
             Upload a reference image and describe the changes in the prompt.
+          </div>
+          <div v-if="missingVisionEncoder" class="form-hint lora-warning-hint">
+            This model was loaded without an LLM Vision (mmproj) file, so editing will fail.
+            Reload it with one selected under LLM Vision on the model load page.
           </div>
           <ImageUploader v-model="refImage" label="Reference Image" />
         </div>

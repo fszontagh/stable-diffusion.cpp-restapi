@@ -212,6 +212,10 @@ std::string build_error_message(const std::string& base_message) {
     if (sd_error.empty()) {
         return base_message;
     }
+    // sd.cpp names its CLI flag; tell API users which load field that is.
+    if (sd_error.find("--llm_vision") != std::string::npos) {
+        sd_error += " (reload the model with the \"llm_vision\" component set to the LLM's mmproj file)";
+    }
     return base_message + ": " + sd_error;
 }
 

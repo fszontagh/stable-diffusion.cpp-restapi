@@ -2156,7 +2156,15 @@
           "filename": "Qwen2.5-VL-7B-Instruct.mmproj-Q8_0.gguf",
           "subfolder": "Qwen2.5-VL-7B-Instruct"
         }
-      ]
+      ],
+      "componentScoring": {
+        "llm": [
+          {
+            "regex": "qwen2[._\\-]?5[_.\\-]?vl[_.\\-]?7b",
+            "score": 110
+          }
+        ]
+      }
     },
     "Ovis": {
       "name": "Ovis-Image-7B",
@@ -2748,7 +2756,15 @@
           "filename": "split_files/text_encoders/qwen_2.5_vl_7b.safetensors",
           "notes": "Shared with other architectures; a second download of the same file is a no-op."
         }
-      ]
+      ],
+      "componentScoring": {
+        "llm": [
+          {
+            "regex": "qwen2[._\\-]?5[_.\\-]?vl[_.\\-]?7b",
+            "score": 110
+          }
+        ]
+      }
     },
     "LTXAV": {
       "name": "LTX 2.3 (LTXAV)",
@@ -3432,7 +3448,15 @@
           "subfolder": "Qwen3-VL-8B-Instruct",
           "notes": "Same file the Qwen-Image-2.1 mmproj entry uses; lands at Qwen3-VL-8B-Instruct/mmproj-F16.gguf. Downloading from either arch's card is a no-op if the other already fetched it."
         }
-      ]
+      ],
+      "componentScoring": {
+        "llm": [
+          {
+            "regex": "qwen3[_.\\-]?vl[_.\\-]?8b",
+            "score": 110
+          }
+        ]
+      }
     },
     "SeFi-Image-Turbo": {
       "name": "SeFi-Image (Turbo)",

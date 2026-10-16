@@ -137,6 +137,12 @@ function scoreComponent(
     }
   }
 
+  // A vision projector (mmproj) is never the text encoder itself, even when
+  // its name matches the LLM family rule below.
+  if (componentType === 'llm' && MMPROJ_RE.test(name)) {
+    score -= 1000
+  }
+
   // JSON-driven scoring: each rule is { regex, score } applied against the
   // raw (not stemmed) component filename. Rules accumulate, and bad regex
   // strings silently skip so a malformed JSON entry doesn't poison the
@@ -157,6 +163,8 @@ function scoreComponent(
 
   return score
 }
+
+const MMPROJ_RE = /mmproj/i
 
 export interface ComponentSuggestion {
   name: string
@@ -187,6 +195,40 @@ export function suggestComponents(
       ...item,
       isSuggested: index === 0 && item.score > 50  // Only suggest if score is significant
     }))
+}
+
+/**
+ * Suggest the llm_vision (mmproj) file: an mmproj that matches the preset's
+ * LLM family rules or sits next to the chosen LLM. Without either hint
+ * nothing is suggested, since a projector from another model family fails
+ * to load. Non-mmproj files stay in the list, sorted last.
+ */
+export function suggestVisionComponents(
+  preset: ArchitecturePreset | null,
+  selectedLlm: string | null,
+  availableModels: ModelInfo[]
+): ComponentSuggestion[] {
+  const rules = preset?.componentScoring?.llm ?? []
+  const llmDir = selectedLlm?.includes('/') ? selectedLlm.slice(0, selectedLlm.lastIndexOf('/') + 1) : null
+  return availableModels
+    .map(model => {
+      let score = 0
+      if (!MMPROJ_RE.test(model.name)) {
+        score = -1000
+      } else {
+        for (const rule of rules) {
+          try {
+            if (new RegExp(rule.regex, 'i').test(model.name)) score += rule.score
+          } catch {
+            // Malformed regex in JSON - skip
+          }
+        }
+        if (llmDir && model.name.startsWith(llmDir)) score += 80
+      }
+      return { name: model.name, score, isSuggested: false }
+    })
+    .sort((a, b) => b.score - a.score)
+    .map((item, index) => ({ ...item, isSuggested: index === 0 && item.score > 50 }))
 }
 
 /**
@@ -320,6 +362,7 @@ export function useArchitectures() {
     detectArchitecture,
     getArchitectureById,
     extractWeightType,
-    suggestComponents
+    suggestComponents,
+    suggestVisionComponents
   }
 }
