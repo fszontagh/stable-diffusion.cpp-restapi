@@ -68,7 +68,7 @@ cd webui && npm install && npm run build   # runs vue-tsc type check
 
 Other options: `SD_VULKAN`, `SD_METAL`, `SD_HIPBLAS`, `SD_OPENCL`, `SDCPP_WEBUI`, `SDCPP_WEBSOCKET`, `SDCPP_ASSISTANT`, `SDCPP_MCP` (all ON except the backends).
 
-The old experimental VRAM-offload fork build (`SD_EXPERIMENTAL_OFFLOAD`, `SD_UNIFIED_STREAMING`) is dormant: its `option()` lines are commented out in CMakeLists.txt because upstream now covers this with `max_vram`, segmented compute and prefetch. The `#ifdef SDCPP_EXPERIMENTAL_OFFLOAD` code paths are kept only so it can be restored.
+There is no fork build: the old experimental VRAM-offload variant (`SD_EXPERIMENTAL_OFFLOAD`) was removed because upstream covers it with `max_vram`, segmented compute and prefetch. Its load option names (`offload_mode`, `streaming_*`, ...) stay in `KNOWN_OPTIONS` as accepted-and-ignored so old saved configs still load.
 
 ## stable-diffusion.cpp dependency
 

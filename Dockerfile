@@ -93,16 +93,13 @@ ARG CMAKE_CUDA_ARCHITECTURES="80;86;89;90"
 # Use --build-arg BUILD_PARALLELISM=6 to limit (e.g. 4 archs × 6 jobs ≈ 18 GB peak).
 ARG BUILD_PARALLELISM=""
 
-# SD_EXPERIMENTAL_OFFLOAD=ON enables the forked sd.cpp's layer-streaming and
-# dynamic offload modes — useful for fitting larger models (e.g. Z-Image bf16
-# at ~12 GB) onto smaller GPUs (16-20 GB cards). Pinned in CMakeLists.txt to
-# the May 4 streaming speedup commit. Runtime offload is opt-in: the binary
-# defaults to offload_mode=none.
+# Low-VRAM GPUs are covered by upstream sd.cpp: prefetch-streamed segmented
+# execution is on by default, and the max_vram / params_backend load options
+# keep weights in RAM.
 RUN --mount=type=cache,target=/root/.ccache,sharing=locked,id=sdcpp-ccache \
     cmake -S /src -B /src/build \
         -DCMAKE_BUILD_TYPE=Release \
         -DSD_CUDA=ON \
-        -DSD_EXPERIMENTAL_OFFLOAD=ON \
         -DSDCPP_WEBUI=ON \
         -DSDCPP_WEBSOCKET=ON \
         -DSDCPP_MCP=ON \

@@ -135,16 +135,6 @@ export interface HealthResponse {
   ws_enabled?: boolean
   memory?: MemoryResponse
   features?: {
-    experimental_offload: boolean
-    /**
-     * True when the binary was built with -DSD_UNIFIED_STREAMING=ON against
-     * the fork's `feature/unified-streaming` branch. Only meaningful when
-     * `experimental_offload` is also true. Streaming is the default runtime
-     * behavior now (no toggle) - the legacy multi-mode vocabulary
-     * (offload_mode, streaming_*) no longer exists upstream and has been
-     * dropped from the WebUI.
-     */
-    unified_streaming?: boolean
     mcp?: boolean
     /**
      * True when the binary was built with -DSD_SEFI_IMAGE=ON against the

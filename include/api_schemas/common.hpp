@@ -58,15 +58,6 @@ inline const std::vector<std::string> PREVIEW_MODE_VALUES = {
     "none", "proj", "tae", "vae"
 };
 
-#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
-inline const std::vector<std::string> OFFLOAD_MODE_VALUES = {
-    "none", "cond_only", "cond_diffusion", "aggressive", "layer_streaming"
-};
-
-inline const std::vector<std::string> VRAM_ESTIMATION_VALUES = {
-    "dryrun", "formula"
-};
-#endif
 
 // Shared response schemas
 

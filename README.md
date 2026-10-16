@@ -13,7 +13,7 @@ C++20 REST API server for [stable-diffusion.cpp](https://github.com/leejet/stabl
 - **LLM Assistant**: Ollama-compatible prompt enhancement and chat
 - **GPU Backends**: CUDA, Vulkan, Metal, ROCm, OpenCL
 - **Memory Monitoring**: Real-time GPU/system memory usage in status bar
-- **Experimental Features**: Dynamic tensor offloading for low-VRAM GPUs
+- **Low-VRAM GPUs**: Prefetch streaming and a `max_vram` cap for models larger than VRAM
 
 ## Quick Start
 
@@ -47,7 +47,6 @@ cmake --build build
 - `-DSDCPP_WEBSOCKET=OFF` - Disable WebSocket server (default: ON)
 - `-DSDCPP_ASSISTANT=OFF` - Disable LLM Assistant (default: ON)
 - `-DSDCPP_MCP=OFF` - Disable MCP server (default: ON)
-- `-DSD_EXPERIMENTAL_OFFLOAD=ON` - Enable experimental dynamic tensor offloading (default: OFF)
 
 ### Configure
 
@@ -215,25 +214,17 @@ Access the integrated web interface at `http://localhost:8080/ui`
  - Assistant (ollama)
 <img width="1904" height="941" alt="Képernyőkép_20260104_111611" src="https://github.com/user-attachments/assets/0aabacdf-1483-491e-970a-1b00d8cb7052" />
 
-## Experimental Features
+## Low-VRAM GPUs
 
-### Dynamic Tensor Offloading
+Models larger than VRAM run on the normal build. sd.cpp streams weights in by
+default (prefetch-streamed segmented execution), and two load options control
+it:
 
-For GPUs with limited VRAM, the experimental dynamic tensor offloading feature allows running large models by temporarily moving model components to CPU memory during generation.
+- `max_vram`: cap on the VRAM sd.cpp may use
+- `params_backend: "*=cpu"`: keep all weights in RAM and stream them to the GPU
 
-**Enable at build time:**
-```bash
-cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON
-```
-
-This enables:
-- **Offload Modes**: `cond_only`, `cond_diffusion`, `aggressive`
-- **VRAM Estimation**: Automatic calculation of required GPU memory
-- **Component Management**: Offload/reload LLM, CLIP, and diffusion models as needed
-
-When enabled, the Web UI shows a "VRAM Offloading" section in model load settings.
-
-**Note:** This feature requires a fork of stable-diffusion.cpp with dynamic-offloading support. The fork branch is pinned in `CMakeLists.txt` and automatically fetched when `SD_EXPERIMENTAL_OFFLOAD=ON`. Leejet master already ships prefetch-streamed segmented execution as the default (with `disable_prefetch` / `disable_segmented_compute` opt-outs and a `max_vram` cap), so the fork build is only needed for the legacy multi-mode offload vocabulary.
+`disable_prefetch` and `disable_segmented_compute` turn the streaming off for
+A/B tests.
 
 ## Documentation
 

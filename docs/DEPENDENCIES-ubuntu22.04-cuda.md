@@ -5,7 +5,6 @@ This document lists the runtime dependencies required to run sdcpp-restapi CUDA 
 ## Variants Covered
 
 - `cuda` - Standard NVIDIA CUDA support
-- `cuda-experimental` - CUDA with experimental dynamic tensor offloading (for low-VRAM GPUs)
 
 ## System Requirements
 
@@ -61,5 +60,5 @@ Built with stable-diffusion.cpp
 ## Tested On
 
 - Docker container `nvidia/cuda:12.4.0-runtime-ubuntu22.04`
-- Both CUDA variants (cuda, cuda-experimental) verified working
+- CUDA variant verified working
 - Tested with NVIDIA GeForce RTX 3060

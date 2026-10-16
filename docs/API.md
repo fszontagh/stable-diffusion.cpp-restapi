@@ -361,7 +361,7 @@ Check server status, loaded model, and all loaded components.
         }
     },
     "features": {
-        "experimental_offload": false
+        "mcp": true
     }
 }
 ```
@@ -389,7 +389,7 @@ Check server status, loaded model, and all loaded components.
     "load_options": {},
     "memory": { "..." : "..." },
     "features": {
-        "experimental_offload": false
+        "mcp": true
     }
 }
 ```
@@ -423,7 +423,7 @@ Check server status, loaded model, and all loaded components.
 | `load_options` | object | The full set of load options the currently-loaded model was loaded with - the same field set as `LoadOptions` in `/openapi.json` (e.g. `n_threads`, `flash_attn`, `diffusion_flash_attn`, `enable_mmap`, `vae_conv_direct`, `diffusion_conv_direct`, `weight_type`, `vae_format`, `rng_type`, `sampler_rng_type`, `prediction`, `lora_apply_mode`, `tae_preview_only`, `force_sdxl_vae_conv_scale`, `eager_load`, `rpc_servers`, `backend`, `params_backend`, `model_args`, `disable_prefetch`, `disable_segmented_compute`, `max_vram`, `tensor_type_rules`). Empty object `{}` when no model is loaded. Useful for the WebUI to restore "Edit" form state from the actual server side. |
 | `memory` | object | System, process, and GPU memory information (see [Memory](#memory)) |
 | `features` | object | Feature flags |
-| `features.experimental_offload` | boolean | Whether experimental VRAM offloading is compiled in |
+| `features.mcp` | boolean | Whether the MCP server is compiled in |
 
 ---
 

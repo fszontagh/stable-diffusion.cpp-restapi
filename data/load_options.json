@@ -142,10 +142,10 @@
     },
     "max_vram": {
       "label": "Max VRAM (GiB)",
-      "description": "Optional per-device GiB budget for managed weights and runner buffers on `sd_ctx_params_t`. 0 = no explicit budget (sd.cpp uses live free VRAM). Positive N caps managed residency at N GiB. The old `-1 = auto` sentinel is gone upstream. Independent of `offload_mode`; the two can be combined on the fork build.",
+      "description": "Optional per-device GiB budget for managed weights and runner buffers on `sd_ctx_params_t`. 0 = no explicit budget (sd.cpp uses live free VRAM). Positive N caps managed residency at N GiB. The old `-1 = auto` sentinel is gone upstream.",
       "type": "number",
       "default": 0.0,
-      "recommended": "0 by default. Set to slightly less than your total VRAM (e.g. 10 on a 12 GiB card) when the model still OOMs. Combines well with `offload_mode = layer_streaming` on the fork build."
+      "recommended": "0 by default. Set to slightly less than your total VRAM (e.g. 10 on a 12 GiB card) when the model still OOMs. Combines well with `params_backend = *=cpu`."
     },
     "disable_prefetch": {
       "label": "Disable prefetch (advanced)",
@@ -283,28 +283,6 @@
         "vae_tile_overlap",
         "tae_preview_only",
         "force_sdxl_vae_conv_scale"
-      ]
-    },
-    "offloading": {
-      "label": "Dynamic VRAM Offloading",
-      "options": [
-        "offload_mode",
-        "vram_estimation",
-        "offload_cond_stage",
-        "offload_diffusion",
-        "reload_cond_stage",
-        "reload_diffusion",
-        "log_offload_events",
-        "min_offload_size_mb",
-        "target_free_vram_mb"
-      ]
-    },
-    "layer_streaming": {
-      "label": "Layer Streaming Tuning",
-      "options": [
-        "streaming_prefetch_layers",
-        "streaming_keep_layers_behind",
-        "streaming_min_free_vram_mb"
       ]
     },
     "rng_and_prediction": {

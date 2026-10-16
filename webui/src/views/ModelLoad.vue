@@ -1096,8 +1096,7 @@ function onKeepAllInRam(e: Event) {
 
       <!-- Streaming execution. Prefetch-streamed segmented compute is the
            DEFAULT upstream now (stream_layers was removed). These two
-           switches opt out. The legacy multi-mode offload_mode + streaming_*
-           tuning was dropped upstream and has been removed from the UI. -->
+           switches opt out. -->
       <details class="card section-card accordion">
         <summary class="accordion-header">Streaming Execution (advanced)</summary>
         <div class="accordion-content">

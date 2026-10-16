@@ -285,21 +285,6 @@ json McpServer::handle_list_tools() {
         {"disable_prefetch", {{"type", "boolean"}, {"description", "Disable asynchronous next-segment weight prefetch (leejet PR #1905). Prefetching is on by default. Set true only if the extra copy-engine traffic hurts throughput."}}},
         {"disable_segmented_compute", {{"type", "boolean"}, {"description", "Force monolithic graph execution even when the automatic graph cutter would fit better (leejet PR #1942). Set true to bypass the planner - typically only useful for A/B testing."}}},
         {"eager_load", {{"type", "boolean"}, {"description", "Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs with prefetch streaming on a CPU params backend."}}}
-#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
-        ,
-        // Experimental VRAM offloading (only when built with SD_EXPERIMENTAL_OFFLOAD=ON)
-        {"offload_mode", {{"type", "string"}, {"enum", {"none", "cond_only", "cond_diffusion", "aggressive", "layer_streaming"}}, {"description", "VRAM offload strategy. Use 'layer_streaming' for models larger than VRAM."}}},
-        {"vram_estimation", {{"type", "string"}, {"enum", {"dryrun", "formula"}}, {"description", "VRAM estimation method (default dryrun)"}}},
-        {"offload_cond_stage", {{"type", "boolean"}, {"description", "Offload LLM/CLIP after conditioning"}}},
-        {"offload_diffusion", {{"type", "boolean"}, {"description", "Offload diffusion after sampling"}}},
-        {"reload_cond_stage", {{"type", "boolean"}, {"description", "Reload LLM/CLIP for next generation"}}},
-        {"reload_diffusion", {{"type", "boolean"}, {"description", "Reload diffusion for next generation"}}},
-        {"target_free_vram_mb", {{"type", "integer"}, {"description", "Target free VRAM before VAE decode in MB, 0 = always offload"}}},
-        {"min_offload_size_mb", {{"type", "integer"}, {"description", "Skip offloading components smaller than this (MB)"}}},
-        {"streaming_prefetch_layers", {{"type", "integer"}, {"description", "Layers to prefetch ahead during streaming"}}},
-        {"streaming_keep_layers_behind", {{"type", "integer"}, {"description", "Layers to keep after execution (skip connections)"}}},
-        {"streaming_min_free_vram_mb", {{"type", "integer"}, {"description", "Minimum free VRAM to maintain during streaming (MB)"}}}
-#endif
     };
     tools.push_back({
         {"name", "model"},
@@ -892,17 +877,6 @@ json McpServer::resource_health() {
         {"upscaler_name", upscaler_name},
         {"memory", memory_info.to_json()},
         {"features", {
-#ifdef SDCPP_EXPERIMENTAL_OFFLOAD
-            {"experimental_offload", true},
-#else
-            {"experimental_offload", false},
-#endif
-            // Distinguishes the experimental fork variant — see /health for the full doc.
-#ifdef SDCPP_UNIFIED_STREAMING
-            {"unified_streaming", true},
-#else
-            {"unified_streaming", false},
-#endif
 #ifdef SDCPP_WEBSOCKET_ENABLED
             {"websocket", true},
 #else

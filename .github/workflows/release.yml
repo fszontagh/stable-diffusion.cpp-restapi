@@ -51,11 +51,6 @@ jobs:
             cmake_flags: "-DSD_CUDA=ON"
             container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
             deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git"
-          - os: ubuntu-22.04
-            variant: cuda-experimental
-            cmake_flags: "-DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON"
-            container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
-            deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git"
           # Vulkan build - requires Vulkan SDK for glslc
           - os: ubuntu-22.04
             variant: vulkan
@@ -106,11 +101,6 @@ jobs:
           - os: ubuntu-24.04
             variant: cuda
             cmake_flags: "-DSD_CUDA=ON"
-            container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
-            deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git"
-          - os: ubuntu-24.04
-            variant: cuda-experimental
-            cmake_flags: "-DSD_CUDA=ON -DSD_EXPERIMENTAL_OFFLOAD=ON"
             container: "nvidia/cuda:12.4.0-devel-ubuntu22.04"
             deps: "cmake ninja-build libssl-dev libcurl4-openssl-dev zlib1g-dev nodejs npm git"
           # Vulkan build - requires Vulkan SDK for glslc
@@ -361,7 +351,6 @@ jobs:
 
             **GPU Variants:**
             - `cuda` - NVIDIA GPU support (requires CUDA drivers)
-            - `cuda-experimental` - NVIDIA GPU with experimental dynamic tensor offloading (for low-VRAM GPUs)
             - `vulkan` - Cross-platform GPU support via Vulkan
             - `rocm` - AMD GPU support (requires ROCm drivers)
 

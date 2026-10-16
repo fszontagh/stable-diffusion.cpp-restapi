@@ -75,7 +75,7 @@ Process-wide mutual exclusion:
 Feature flags exposed by `GET /health`:
 
 ```json
-{"features": {"experimental_offload": true, "mcp": true}}
+{"features": {"mcp": true, "mcp_image_tool": false, "auth_required": true}}
 ```
 
 ## Lifecycle flows
@@ -428,6 +428,6 @@ Previews are broadcast over WebSocket as `job_preview` events and are also avail
 
 8. **Model scan is on startup only.** If the user drops a new file into a model directory, they need to `POST /models/refresh` — don't promise auto-detection of filesystem changes.
 
-9. **Experimental offloading features** are gated by the `SD_EXPERIMENTAL_OFFLOAD` CMake flag. Before recommending offload modes, check `features.experimental_offload` — don't assume it's compiled in.
+9. **There are no offload modes.** For a model larger than VRAM, suggest the `max_vram` load option and `params_backend: "*=cpu"` (weights stay in RAM and stream in). Old option names like `offload_mode` are accepted but ignored.
 
 10. **MCP queue responses are always capped at 10.** For bigger listings, direct the user to REST `/queue`. Don't try to work around the cap via `limit` — it's clamped server-side.

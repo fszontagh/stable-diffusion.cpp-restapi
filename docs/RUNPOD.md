@@ -27,9 +27,8 @@ verified on an RTX A4500 pod with a network volume for the models.
 | Container config | `/etc/sdcpp-restapi/config.json` |
 | Entrypoint | `/usr/local/bin/entrypoint.sh` |
 
-The image is built with `SD_CUDA=ON` and `SD_EXPERIMENTAL_OFFLOAD=ON`. The
-experimental flag is required for fresh CMake builds — without it,
-upstream sd.cpp's pinned short SHA fails shallow-clone.
+The image is built with `SD_CUDA=ON` against the sd.cpp commit pinned in
+`CMakeLists.txt`.
 
 ## Build and push the image
 

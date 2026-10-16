@@ -65,27 +65,6 @@ static lora_apply_mode_t string_to_lora_apply_mode(const std::string& str) {
     return LORA_APPLY_AUTO;  // default
 }
 
-// The legacy offload helpers (string_to_offload_mode, string_to_vram_estimation)
-// only exist on the feature/vram-offloading-v2 fork branch. The unified-streaming
-// branch dropped the sd_offload_mode_t / sd_vram_estimation_t enums entirely
-// in favor of default-on prefetch-streamed segmented execution with
-// disable_prefetch / disable_segmented_compute opt-outs. Gate both helpers
-// with the negation of SDCPP_UNIFIED_STREAMING to skip them on the new variant.
-#if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
-static sd_offload_mode_t string_to_offload_mode(const std::string& str) {
-    if (str == "cond_only") return SD_OFFLOAD_COND_ONLY;
-    if (str == "cond_diffusion") return SD_OFFLOAD_COND_DIFFUSION;
-    if (str == "aggressive") return SD_OFFLOAD_AGGRESSIVE;
-    if (str == "layer_streaming") return SD_OFFLOAD_LAYER_STREAMING;
-    return SD_OFFLOAD_NONE;  // default
-}
-
-static sd_vram_estimation_t string_to_vram_estimation(const std::string& str) {
-    if (str == "formula") return SD_VRAM_EST_FORMULA;
-    return SD_VRAM_EST_DRYRUN;  // default - accurate graph-based estimation
-}
-#endif
-
 std::string model_type_to_string(ModelType type) {
     switch (type) {
         case ModelType::Checkpoint: return "checkpoint";
@@ -376,21 +355,15 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
             // leejet PR #1748 — see the /txt2img /img2img /txt2vid schemas.
             // Backend routing (sd.cpp post-2026-05-16; rpc_servers added in leejet PR #1629)
             "backend", "params_backend", "rpc_servers",
-            // Experimental offload (only honored when SDCPP_EXPERIMENTAL_OFFLOAD is on,
-            // but accepted in the schema regardless so OFFLOAD=OFF builds don't 400
-            // on configs authored against an OFFLOAD=ON build). Both fork variants'
-            // options live in the same allowlist — the irrelevant ones get parsed
-            // into params fields that nobody reads, which is harmless.
-            //
-            // feature/vram-offloading-v2 fields:
+            // Options of the removed experimental offload fork build. Accepted and
+            // ignored so saved load configs and old queue jobs still load.
             "offload_mode", "vram_estimation",
             "offload_cond_stage", "offload_diffusion",
             "reload_cond_stage", "reload_diffusion",
             "log_offload_events", "min_offload_size_mb", "target_free_vram_mb",
             "streaming_prefetch_layers",
             "streaming_keep_layers_behind", "streaming_min_free_vram_mb",
-            // feature/unified-streaming fields (post-rename): prefetch
-            // streaming is on by default; opt out via these two switches.
+            // Prefetch streaming is on by default; opt out via these two switches.
             "disable_prefetch", "disable_segmented_compute",
             // leejet PR #1687 — eager-load params at model-load time
             "eager_load",
@@ -436,7 +409,7 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         // current load. Previously hard-defaulted to `runtime` to dodge a
         // historical caching issue where sd.cpp held incompatible LoRA state
         // across generations; that's no longer load-bearing, and `runtime`
-        // actively hurts the unified-streaming path because it forces a
+        // actively hurts prefetch streaming because it forces a
         // per-step LoRA application against streamed chunks (the base tensor
         // gets pulled in fresh every chunk, then the runtime LoRA delta is
         // re-applied each time). `auto` lets sd.cpp pick `immediately` when
@@ -465,42 +438,11 @@ ModelLoadParams ModelLoadParams::from_json(const nlohmann::json& j) {
         params.params_backend = opts.value("params_backend", "");
         params.rpc_servers = opts.value("rpc_servers", "");
 
-#if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
-        // ── feature/vram-offloading-v2 path ──────────────────────────────
-        // Dynamic tensor offloading options (legacy multi-mode API).
-        params.offload_mode = opts.value("offload_mode", "none");
-        params.vram_estimation = opts.value("vram_estimation", "dryrun");
-        // offload_cond_stage default is mode-aware: in layer_streaming the
-        // diffusion is already paying for VRAM via per-layer dispatch — adding
-        // a per-gen kick of the LLM/CLIP back to CPU then trying to reload it
-        // produces seconds-to-minutes of disk thrashing on each generation
-        // (mmap fault-in of multi-GB encoder weights). Default `false` for
-        // layer_streaming so cond_stage stays resident across gens. Other
-        // offload modes keep the original `true` default — those modes are
-        // explicitly opt-in for aggressive VRAM recycling.
-        const bool offload_cond_stage_default =
-            params.offload_mode != "layer_streaming";
-        params.offload_cond_stage =
-            opts.value("offload_cond_stage", offload_cond_stage_default);
-        params.offload_diffusion = opts.value("offload_diffusion", false);
-        params.reload_cond_stage = opts.value("reload_cond_stage", true);
-        params.reload_diffusion = opts.value("reload_diffusion", true);
-        params.log_offload_events = opts.value("log_offload_events", true);
-        params.min_offload_size_mb = opts.value("min_offload_size_mb", 0);
-        params.target_free_vram_mb = opts.value("target_free_vram_mb", 0);
-
-        // Layer streaming options
-        params.streaming_prefetch_layers = opts.value("streaming_prefetch_layers", 1);
-        params.streaming_keep_layers_behind = opts.value("streaming_keep_layers_behind", 0);
-        params.streaming_min_free_vram_mb = opts.value("streaming_min_free_vram_mb", 0);
-#else
-        // ── feature/unified-streaming path ───────────────────────────────
-        // sd_offload_config_t is gone. Prefetch-streamed segmented execution
+        // Prefetch-streamed segmented execution
         // is the default now; these two switches opt out.
         params.disable_prefetch = opts.value("disable_prefetch", false);
         params.disable_segmented_compute =
             opts.value("disable_segmented_compute", false);
-#endif
         // Default true — see ModelLoadParams.eager_load comment for why
         // the restapi flips the upstream default.
         params.eager_load = opts.value("eager_load", true);
@@ -1346,13 +1288,6 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     
     // Unload current model if any
     if (context_ != nullptr) {
-#if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
-        // Free all GPU resources before unloading to prevent memory leaks.
-        // Only the legacy fork branch (feature/vram-offloading-v2) exposed this
-        // helper; the unified-streaming branch removed it because free_sd_ctx
-        // handles the equivalent teardown internally.
-        sd_free_gpu_resources(context_);
-#endif
         free_sd_ctx(context_);
         context_ = nullptr;
         loaded_model_name_.clear();
@@ -1618,30 +1553,10 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
         ctx_params.max_vram = nullptr;
     }
 
-#if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
-    // ── feature/vram-offloading-v2 path ──────────────────────────────────
-    // Dynamic tensor offloading options (legacy multi-mode API).
-    ctx_params.offload_config.mode = string_to_offload_mode(params.offload_mode);
-    ctx_params.offload_config.vram_estimation = string_to_vram_estimation(params.vram_estimation);
-    ctx_params.offload_config.offload_cond_stage = params.offload_cond_stage;
-    ctx_params.offload_config.offload_diffusion = params.offload_diffusion;
-    ctx_params.offload_config.reload_cond_stage = params.reload_cond_stage;
-    ctx_params.offload_config.reload_diffusion = params.reload_diffusion;
-    ctx_params.offload_config.log_offload_events = params.log_offload_events;
-    ctx_params.offload_config.min_offload_size = params.min_offload_size_mb * 1024 * 1024;  // Convert MB to bytes
-    ctx_params.offload_config.target_free_vram = params.target_free_vram_mb * 1024 * 1024;  // Convert MB to bytes
-
-    // Layer streaming options
-    ctx_params.offload_config.streaming_prefetch_layers = params.streaming_prefetch_layers;
-    ctx_params.offload_config.streaming_keep_layers_behind = params.streaming_keep_layers_behind;
-    ctx_params.offload_config.streaming_min_free_vram = params.streaming_min_free_vram_mb * 1024 * 1024;  // Convert MB to bytes
-#else
-    // ── feature/unified-streaming path ───────────────────────────────────
     // Prefetch-streamed segmented execution is the DEFAULT upstream now.
     // These two switches opt out of it.
     ctx_params.disable_prefetch = params.disable_prefetch;
     ctx_params.disable_segmented_compute = params.disable_segmented_compute;
-#endif
     ctx_params.eager_load = params.eager_load;
 
     std::cout << "[ModelManager] Loading model: " << params.model_name << std::endl;
@@ -1653,12 +1568,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
               << ", tae_preview_only=" << ctx_params.tae_preview_only
               << ", rng=" << params.rng_type
               << ", lora_mode=" << params.lora_apply_mode
-#if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
-              << ", offload_mode=" << params.offload_mode
-#else
               << ", disable_prefetch=" << (params.disable_prefetch ? "true" : "false")
               << ", disable_segmented_compute=" << (params.disable_segmented_compute ? "true" : "false")
-#endif
               << std::endl;
 
     // Pre-flight: verify GPU runtime is usable before we hand control to
@@ -1857,27 +1768,8 @@ bool ModelManager::load_model(const ModelLoadParams& params) {
     // circular_x / circular_y are per-gen now (leejet PR #1748); they no
     // longer live on load params so no echo-back here.
 
-#if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
-    // ── feature/vram-offloading-v2 echoes back the full legacy offload set ──
-    loaded_options_["offload_mode"] = params.offload_mode;
-    loaded_options_["vram_estimation"] = params.vram_estimation;
-    loaded_options_["offload_cond_stage"] = params.offload_cond_stage;
-    loaded_options_["offload_diffusion"] = params.offload_diffusion;
-    loaded_options_["reload_cond_stage"] = params.reload_cond_stage;
-    loaded_options_["reload_diffusion"] = params.reload_diffusion;
-    loaded_options_["log_offload_events"] = params.log_offload_events;
-    loaded_options_["min_offload_size_mb"] = params.min_offload_size_mb;
-    loaded_options_["target_free_vram_mb"] = params.target_free_vram_mb;
-
-    // Layer streaming options
-    loaded_options_["streaming_prefetch_layers"] = params.streaming_prefetch_layers;
-    loaded_options_["streaming_keep_layers_behind"] = params.streaming_keep_layers_behind;
-    loaded_options_["streaming_min_free_vram_mb"] = params.streaming_min_free_vram_mb;
-#else
-    // ── feature/unified-streaming echoes back the two opt-out switches ──────
     loaded_options_["disable_prefetch"] = params.disable_prefetch;
     loaded_options_["disable_segmented_compute"] = params.disable_segmented_compute;
-#endif
     loaded_options_["eager_load"] = params.eager_load;
 
     // Set atomic flag for lock-free checks
@@ -2021,13 +1913,6 @@ void ModelManager::unload_model() {
         // Clear atomic flag first
         model_loaded_ = false;
 
-#if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
-        // Free all GPU resources before unloading to prevent memory leaks
-        // (matches the cleanup pattern in load_model when replacing a model).
-        // Unified-streaming branch doesn't expose this helper — free_sd_ctx
-        // handles the cleanup itself there.
-        sd_free_gpu_resources(context_);
-#endif
         free_sd_ctx(context_);
         context_ = nullptr;
         loaded_model_name_.clear();

@@ -72,27 +72,10 @@ struct LoadOptions {
             .optional_field("backend", schema::FieldType::String, "Main compute backend override (empty = sd.cpp picks). Use per-component placement here too - e.g. \"diffusion=cuda0,vae=cpu\" - that's how per-component CPU keeping is expressed now (formerly keep_clip_on_cpu / keep_vae_on_cpu / keep_controlnet_on_cpu).")
             .optional_field("params_backend", schema::FieldType::String, "Parameter storage backend override (empty = same as backend). Set to \"*=cpu\" for the global \"keep all weights in RAM\" mode that was previously offload_to_cpu.")
             .optional_field("rpc_servers", schema::FieldType::String, "RPC distributed-backend node list, comma-separated host:port pairs (leejet PR #1629). Empty = no RPC.")
-#if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
-            // ── feature/vram-offloading-v2 fields (legacy multi-mode API) ──
-            .enum_field("offload_mode", "VRAM offload strategy", OFFLOAD_MODE_VALUES, "none")
-            .enum_field("vram_estimation", "VRAM estimation method", VRAM_ESTIMATION_VALUES, "dryrun")
-            .optional_field("offload_cond_stage", schema::FieldType::Boolean, "Offload conditioning (LLM/CLIP/T5) to CPU after the prompt is encoded. Default is true for most offload modes; the restapi flips it to false when offload_mode=layer_streaming to avoid per-gen mmap fault-in of the encoder weights.", false)
-            .optional_field("offload_diffusion", schema::FieldType::Boolean, "Offload diffusion after sampling", false)
-            .optional_field("reload_cond_stage", schema::FieldType::Boolean, "Reload conditioning for next gen", true)
-            .optional_field("reload_diffusion", schema::FieldType::Boolean, "Reload diffusion for next gen", true)
-            .optional_field("log_offload_events", schema::FieldType::Boolean, "Log offload events", false)
-            .optional_field("min_offload_size_mb", schema::FieldType::Integer, "Minimum component size to offload (MB)", 0)
-            .optional_field("target_free_vram_mb", schema::FieldType::Integer, "Target free VRAM before VAE (MB)", 0)
-            .optional_field("streaming_prefetch_layers", schema::FieldType::Integer, "Layers to prefetch ahead", 1)
-            .optional_field("streaming_keep_layers_behind", schema::FieldType::Integer, "Layers to keep after execution", 0)
-            .optional_field("streaming_min_free_vram_mb", schema::FieldType::Integer, "Min free VRAM during streaming (MB)", 0)
-#else
-            // ── feature/unified-streaming fields (new minimal API) ─────────
             // Prefetch-streamed segmented execution is on by default upstream;
             // these two switches opt out.
             .optional_field("disable_prefetch", schema::FieldType::Boolean, "Disable asynchronous next-segment weight prefetch. Prefetching is on by default (leejet PR #1905 made it native). Set true if the extra copy-engine traffic hurts throughput on your setup.", false)
             .optional_field("disable_segmented_compute", schema::FieldType::Boolean, "Force monolithic graph execution even when the automatic graph cutter would fit better (leejet PR #1942). Set true to bypass the planner - typically only useful for A/B testing.", false)
-#endif
             .optional_field("eager_load", schema::FieldType::Boolean, "Pre-load all params into the params backend at model-load time instead of lazily on first use (leejet PR #1687). Pairs naturally with prefetch streaming on a CPU params backend - the first generation no longer pays for lazy fault-in. Restapi defaults to true (long-lived server: first request after load should be fast); upstream sd-cli defaults to false (one-shot tool).", true)
             ;
         return builder.build();

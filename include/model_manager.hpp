@@ -153,24 +153,6 @@ struct ModelLoadParams {
     std::string weight_type;                    // Weight type (f32, f16, q8_0, q4_0, etc.)
     std::string tensor_type_rules;              // Per-tensor weight rules (e.g., "^vae\.=f16")
 
-#if defined(SDCPP_EXPERIMENTAL_OFFLOAD) && !defined(SDCPP_UNIFIED_STREAMING)
-    // ── feature/vram-offloading-v2 fields (legacy multi-mode offload API) ──
-    std::string offload_mode = "none";          // none, cond_only, cond_diffusion, aggressive, layer_streaming
-    std::string vram_estimation = "dryrun";     // dryrun (accurate), formula (fast)
-    bool offload_cond_stage = true;             // Offload LLM/CLIP after conditioning
-    bool offload_diffusion = false;             // Offload diffusion after sampling
-    bool reload_cond_stage = true;              // Reload LLM/CLIP after generation
-    bool reload_diffusion = true;               // Reload diffusion after generation
-    bool log_offload_events = true;             // Log offload/reload events
-    size_t min_offload_size_mb = 0;             // Minimum component size to offload (MB)
-    size_t target_free_vram_mb = 0;             // Target free VRAM before VAE decode (MB), 0 = always offload
-
-    // Layer streaming options (for layer_streaming mode - enables models larger than VRAM)
-    int streaming_prefetch_layers = 1;          // Number of layers to prefetch ahead
-    int streaming_keep_layers_behind = 0;       // Layers to keep after execution (for skip connections)
-    size_t streaming_min_free_vram_mb = 0;      // Minimum VRAM to keep free during streaming (MB)
-#else
-    // ── feature/unified-streaming path (new minimal API) ───────────────────
     // Prefetch-streamed execution is now the DEFAULT upstream (stream_layers
     // was removed). The planner picks a residency split based on max_vram
     // and overlaps next-segment H2D copy with current-segment compute; use
@@ -184,7 +166,6 @@ struct ModelLoadParams {
     // the automatic graph cutter would fit memory better. Bypasses the
     // planner - useful only for A/B testing.
     bool disable_segmented_compute = false;
-#endif
 
     // Eager-load params into the params backend at model-load time instead of
     // lazily on first use (leejet PR #1687). Pairs naturally with prefetch

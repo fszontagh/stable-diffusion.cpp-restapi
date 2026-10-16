@@ -56,29 +56,6 @@ option(SDCPP_WEBUI "Build and include Web UI (requires Node.js/npm)" ON)
 option(SDCPP_WEBSOCKET "Build WebSocket server for real-time updates" ON)
 option(FORCE_WEBSOCKET "Force WebSocket even if WebUI is disabled" OFF)
 option(SDCPP_ASSISTANT "Build LLM Assistant feature" ON)
-# ── Fork variant options (DISABLED — leejet has merged the unified-streaming
-#    API natively as of ~276025e, so the fork branches are no longer needed
-#    for the default workflow). The option declarations below are commented
-#    out so cmake-gui doesn't surface them, but the surrounding CMakeLists
-#    logic (FetchContent branch selection, patch step, compile defs) is
-#    intentionally LEFT INTACT — restoring fork builds is just uncommenting
-#    these two lines. Source-side #if defined(SDCPP_EXPERIMENTAL_OFFLOAD) /
-#    #if defined(SDCPP_UNIFIED_STREAMING) gates are also intact for the
-#    same restoration story.
-#
-# option(SD_EXPERIMENTAL_OFFLOAD "Enable experimental dynamic tensor offloading (requires forked sd.cpp)" OFF)
-#   Selects which fork branch the experimental build pulls. Only meaningful when
-#   SD_EXPERIMENTAL_OFFLOAD=ON. Two fork variants exist with incompatible offload
-#   APIs — see CMakeLists.txt FetchContent block + #ifdef SDCPP_UNIFIED_STREAMING
-#   in model_manager.cpp for which code paths are gated by this.
-#     OFF (default): feature/vram-offloading-v2 — legacy sd_offload_config_t API,
-#                    per-component offload modes (none/cond_only/aggressive/
-#                    layer_streaming), full streaming knobs.
-#     ON:            feature/unified-streaming — new minimal API with a single
-#                    stream_layers bool on top of max_vram. Removes the entire
-#                    sd_offload_config_t struct and the sd_offload_to_cpu/
-#                    sd_reload_to_gpu helpers.
-# option(SD_UNIFIED_STREAMING "Use the unified-streaming fork branch instead of vram-offloading-v2 (requires SD_EXPERIMENTAL_OFFLOAD=ON)" OFF)
 # Local-build optimization: when ON, ask nvcc to compile only for the GPU
 # physically present in this machine (uses CMAKE_CUDA_ARCHITECTURES=native).
 # Cuts a clean CUDA build by ~40-60% because nvcc skips the ~6 other arches
@@ -226,84 +203,55 @@ else()
     # examples/server/frontend submodule sometimes points at deleted commits and
     # we don't link the example server, so we skip it.
     set(SDCPP_SUBMODULES "ggml" "thirdparty/libwebm" "thirdparty/libwebp")
-    if(SD_EXPERIMENTAL_OFFLOAD)
-        # Pick which fork branch supplies the experimental offload code. Both
-        # branches are on the same fork repo; only the public offload API and
-        # streaming implementation differ. See SD_UNIFIED_STREAMING option doc
-        # for the full distinction.
-        if(SD_UNIFIED_STREAMING)
-            set(SDCPP_FORK_BRANCH "perf/stable-streaming-budget")
-            message(STATUS "Experimental offload: ENABLED (unified-streaming) - Using forked sd.cpp perf/stable-streaming-budget branch")
-        else()
-            set(SDCPP_FORK_BRANCH "feature/vram-offloading-v2")
-            message(STATUS "Experimental offload: ENABLED (vram-offloading-v2) - Using forked sd.cpp feature/vram-offloading-v2 branch")
-        endif()
-        # Track the branch tip so user-pushed improvements (e.g. the May 4
-        # streaming speedup wave) are pulled automatically on rebuild.
-        # GIT_SHALLOW works with branch names — and would NOT work if we pinned
-        # to a SHA here (CMake's `git clone --depth 1 --branch <ref>` only
-        # accepts branch/tag names, not commit hashes).
-        FetchContent_Declare(
-            stable-diffusion
-            GIT_REPOSITORY https://github.com/fszontagh/stable-diffusion.cpp.git
-            GIT_TAG        ${SDCPP_FORK_BRANCH}
-            GIT_SHALLOW    TRUE
-            GIT_SUBMODULES ${SDCPP_SUBMODULES}
-            GIT_SUBMODULES_RECURSE TRUE
-        )
-    else()
-        # Pinned to leejet/master HEAD (c179075 — bumped from 854bebf).
-        # New surface in this bump:
-        #   - PR #1707 (03e9a22): SeFi-Image support merged upstream. The
-        #     previous SD_SEFI_IMAGE fork-branch option is gone — every
-        #     leejet build now detects/serves SeFi-Image natively. WebUI
-        #     presets (SeFi-Image-Turbo / -Base / -RL) continue to work.
-        #   - PR #1705 (8caa3f9): Krea2 architecture (transformer + Wan2.1
-        #     VAE + Qwen3-VL 4B). New preset added in
-        #     data/model_architectures.json.
-        #   - PR #1669 (2938272): logit-normal scheduler enum value added.
-        #     Surfaced in include/api_schemas/common.hpp SCHEDULER_VALUES.
-        #   - PR #1684 (41f7acb): guidance_schedule (internal — affects how
-        #     guidance is computed during sampling). No public-API change.
-        #   - PR #1713 (d77b8f5): Qwen-Image/Wan VAE diffusers naming
-        #     support. Fixes load failures for converted VAE files.
-        #   - PR #1714 (7b5f34d): Qwen2D VAE support.
-        #   - PR #1698 (f440ad9): mmap read-only fix.
-        #   - PR #1711 (ec4cb81): TAEHV encoding fix for image models.
-        # Earlier notable changes (from the 854bebf bump still apply):
-        #   - PR #1687 (perf): adds bool `eager_load` to sd_ctx_params_t.
-        #     Pre-loads all params into the params backend at model-load time
-        #     instead of lazily on first use. Pairs naturally with
-        #     stream_layers on a CPU backend — the first generation no longer
-        #     pays for lazy fault-in. Wired in ModelLoadParams + LoadOptions
-        #     schema + WebUI.
-        #   - PR #1693 (CLI only): --prompt-file / --negative-prompt-file
-        #     flags. The restapi doesn't shell out to sd-cli, so no surface
-        #     change here — noted for completeness.
-        # Earlier notable changes (from the b12098f bump still apply):
-        #   - PR #1654 routes CPU placement through backend specs, deleting
-        #     the per-component bool flags. Restapi exposes the new
-        #     `backend` / `params_backend` strings directly — see the
-        #     BackendAssignmentEditor in the WebUI.
-        #   - PR #1660 changes ctx_params.max_vram from float to const char*.
-        #   - PR #1595 adds PuLID-Flux identity injection.
-        #   - PR #1629 adds RPC distributed-backend support.
-        #   - PR #1124 adds sd_cancel_generation().
-        #   - PR #1688 adds Boogu Image architecture.
-        # Fork variants remain restorable; restapi source still gates legacy
-        # fork code behind SDCPP_EXPERIMENTAL_OFFLOAD / SDCPP_UNIFIED_STREAMING.
-        # GIT_SHALLOW must be FALSE because GIT_TAG is a commit SHA — shallow
-        # clone with a SHA fails (`fatal: reference is not a tree`). Full clone
-        # adds ~25 MB to the build context but is reliable.
-        FetchContent_Declare(
-            stable-diffusion
-            GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-            GIT_TAG        8cd731e7b4667eb8f40a153315b9a7125d09a58d
-            GIT_SHALLOW    FALSE
-            GIT_SUBMODULES ${SDCPP_SUBMODULES}
-            GIT_SUBMODULES_RECURSE TRUE
-        )
-    endif()
+    # Pinned to leejet/master HEAD (c179075 — bumped from 854bebf).
+    # New surface in this bump:
+    #   - PR #1707 (03e9a22): SeFi-Image support merged upstream. The
+    #     previous SD_SEFI_IMAGE fork-branch option is gone — every
+    #     leejet build now detects/serves SeFi-Image natively. WebUI
+    #     presets (SeFi-Image-Turbo / -Base / -RL) continue to work.
+    #   - PR #1705 (8caa3f9): Krea2 architecture (transformer + Wan2.1
+    #     VAE + Qwen3-VL 4B). New preset added in
+    #     data/model_architectures.json.
+    #   - PR #1669 (2938272): logit-normal scheduler enum value added.
+    #     Surfaced in include/api_schemas/common.hpp SCHEDULER_VALUES.
+    #   - PR #1684 (41f7acb): guidance_schedule (internal — affects how
+    #     guidance is computed during sampling). No public-API change.
+    #   - PR #1713 (d77b8f5): Qwen-Image/Wan VAE diffusers naming
+    #     support. Fixes load failures for converted VAE files.
+    #   - PR #1714 (7b5f34d): Qwen2D VAE support.
+    #   - PR #1698 (f440ad9): mmap read-only fix.
+    #   - PR #1711 (ec4cb81): TAEHV encoding fix for image models.
+    # Earlier notable changes (from the 854bebf bump still apply):
+    #   - PR #1687 (perf): adds bool `eager_load` to sd_ctx_params_t.
+    #     Pre-loads all params into the params backend at model-load time
+    #     instead of lazily on first use. Pairs naturally with
+    #     stream_layers on a CPU backend — the first generation no longer
+    #     pays for lazy fault-in. Wired in ModelLoadParams + LoadOptions
+    #     schema + WebUI.
+    #   - PR #1693 (CLI only): --prompt-file / --negative-prompt-file
+    #     flags. The restapi doesn't shell out to sd-cli, so no surface
+    #     change here — noted for completeness.
+    # Earlier notable changes (from the b12098f bump still apply):
+    #   - PR #1654 routes CPU placement through backend specs, deleting
+    #     the per-component bool flags. Restapi exposes the new
+    #     `backend` / `params_backend` strings directly — see the
+    #     BackendAssignmentEditor in the WebUI.
+    #   - PR #1660 changes ctx_params.max_vram from float to const char*.
+    #   - PR #1595 adds PuLID-Flux identity injection.
+    #   - PR #1629 adds RPC distributed-backend support.
+    #   - PR #1124 adds sd_cancel_generation().
+    #   - PR #1688 adds Boogu Image architecture.
+    # GIT_SHALLOW must be FALSE because GIT_TAG is a commit SHA — shallow
+    # clone with a SHA fails (`fatal: reference is not a tree`). Full clone
+    # adds ~25 MB to the build context but is reliable.
+    FetchContent_Declare(
+        stable-diffusion
+        GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
+        GIT_TAG        8cd731e7b4667eb8f40a153315b9a7125d09a58d
+        GIT_SHALLOW    FALSE
+        GIT_SUBMODULES ${SDCPP_SUBMODULES}
+        GIT_SUBMODULES_RECURSE TRUE
+    )
     # First populate to get source directory
     FetchContent_GetProperties(stable-diffusion)
 endif()
@@ -396,7 +344,7 @@ const char* sd_get_model_version_name(const sd_ctx_t* sd_ctx) {
 endif()
 
 # Add CUDA include directories to stable-diffusion target if CUDA is enabled
-# This is needed for the forked sd.cpp with experimental offload which includes <cuda_runtime.h>
+# (sd.cpp sources that include <cuda_runtime.h> need them)
 if(SD_CUDA AND TARGET stable-diffusion)
     target_include_directories(stable-diffusion PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
     message(STATUS "Added CUDA include directories to stable-diffusion target")
@@ -592,19 +540,6 @@ if(SDCPP_ASSISTANT)
     target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_ASSISTANT_ENABLED=1)
 endif()
 
-# Experimental offload compile definitions. Two flags travel together — code
-# that gates on SDCPP_UNIFIED_STREAMING always also gates on
-# SDCPP_EXPERIMENTAL_OFFLOAD (the unified-streaming branch can't be active
-# without the experimental fork being selected).
-if(SD_EXPERIMENTAL_OFFLOAD)
-    target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_EXPERIMENTAL_OFFLOAD=1)
-    if(SD_UNIFIED_STREAMING)
-        target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_UNIFIED_STREAMING=1)
-    endif()
-elseif(SD_UNIFIED_STREAMING)
-    message(WARNING "SD_UNIFIED_STREAMING=ON has no effect without SD_EXPERIMENTAL_OFFLOAD=ON")
-endif()
-
 # MCP compile definition
 if(SDCPP_MCP)
     target_compile_definitions(sdcpp-restapi PRIVATE SDCPP_MCP_ENABLED=1)
@@ -678,20 +613,6 @@ message(STATUS "OpenCL backend:  ${SD_OPENCL}")
 message(STATUS "Web UI:          ${SDCPP_WEBUI}")
 message(STATUS "WebSocket:       ${SDCPP_WEBSOCKET}")
 message(STATUS "LLM Assistant:   ${SDCPP_ASSISTANT}")
-# SD_EXPERIMENTAL_OFFLOAD's `option(...)` declaration is intentionally commented
-# out at the top of this file — leejet master now ships the unified-streaming
-# API natively, so the fork variants are unneeded for the default workflow.
-# When undefined the variable evaluates to empty, so we show OFF explicitly.
-if(SD_EXPERIMENTAL_OFFLOAD)
-    message(STATUS "Exp. Offload:    ON")
-    if(SD_UNIFIED_STREAMING)
-        message(STATUS "  └─ variant:    unified-streaming (fork branch: feature/unified-streaming)")
-    else()
-        message(STATUS "  └─ variant:    vram-offloading-v2 (fork branch: feature/vram-offloading-v2)")
-    endif()
-else()
-    message(STATUS "Exp. Offload:    OFF (using leejet master — stream_layers + max_vram are native)")
-endif()
 message(STATUS "MCP Server:      ${SDCPP_MCP}")
 message(STATUS "===================================")
 message(STATUS "")

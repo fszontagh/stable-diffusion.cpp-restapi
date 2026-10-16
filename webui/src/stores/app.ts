@@ -270,13 +270,6 @@ export const useAppStore = defineStore('app', () => {
   const upscalerName = computed(() => health.value?.upscaler_name ?? null)
 
   // Feature flags
-  const experimentalOffloadEnabled = computed(() => health.value?.features?.experimental_offload ?? false)
-  // True when the experimental build uses the fork's `feature/unified-streaming`
-  // branch (prefetch-streamed segmented execution is on by default; opt-outs
-  // are `disable_prefetch` / `disable_segmented_compute`). False = legacy
-  // `feature/vram-offloading-v2` (multi-mode offload_mode + streaming_* tuning).
-  // Only meaningful when experimentalOffloadEnabled is true.
-  const unifiedStreamingEnabled = computed(() => health.value?.features?.unified_streaming ?? false)
   // True when the linked sd.cpp has SeFi-Image support compiled in
   // (leejet PR #1707 fork branch). Used to ungrey the SeFi-Image
   // architecture preset and surface an "experimental build" badge.
@@ -1133,8 +1126,6 @@ export const useAppStore = defineStore('app', () => {
     serverGitCommit,
     upscalerLoaded,
     upscalerName,
-    experimentalOffloadEnabled,
-    unifiedStreamingEnabled,
     sefiImageEnabled,
     queueStats,
     samplers,
