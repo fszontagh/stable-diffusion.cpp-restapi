@@ -42,6 +42,7 @@ struct JobStatusResponse {
             .optional_field("started_at", schema::FieldType::String, "Start timestamp (ISO8601)")
             .optional_field("completed_at", schema::FieldType::String, "Completion timestamp (ISO8601)")
             .array_field("outputs", schema::FieldType::String, "Output file paths (relative to /output/)")
+            .optional_field("output_dir", schema::FieldType::String, "Job folder relative to /output/ (holds source.png, mask.png, control.png); set once the job has run")
             .array_field("output_urls", schema::FieldType::String, "Absolute URLs to each output file (built from the request's Host header, or X-Forwarded-* when the peer is in server.trusted_proxies)")
             .object_field("params", "Generation parameters used")
             .object_field("model_settings", "Model settings at time of generation")

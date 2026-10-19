@@ -30,6 +30,7 @@ struct QueueItemFields {
     static constexpr const char* MODEL_SETTINGS = "model_settings";
     static constexpr const char* LINKED_JOB_ID = "linked_job_id";
     static constexpr const char* TITLE = "title";
+    static constexpr const char* OUTPUT_DIR = "output_dir";
 
     // Params field names (used inside params object)
     static constexpr const char* PARAM_PROMPT = "prompt";

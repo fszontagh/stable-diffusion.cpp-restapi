@@ -102,6 +102,9 @@ nlohmann::json QueueItem::to_json() const {
     if (!title.empty()) {
         j[F::TITLE] = title;
     }
+    if (!output_dir.empty()) {
+        j[F::OUTPUT_DIR] = output_dir;
+    }
 
     // Recycle bin fields
     if (status == QueueStatus::Deleted) {
@@ -144,6 +147,9 @@ QueueItem QueueItem::from_json(const nlohmann::json& j) {
     }
     if (j.contains(F::TITLE) && j[F::TITLE].is_string()) {
         item.title = j[F::TITLE].get<std::string>();
+    }
+    if (j.contains(F::OUTPUT_DIR) && j[F::OUTPUT_DIR].is_string()) {
+        item.output_dir = j[F::OUTPUT_DIR].get<std::string>();
     }
 
     // Recycle bin fields
@@ -1948,7 +1954,7 @@ std::string QueueManager::render_output_path(const std::string& tpl,
 }
 
 std::string QueueManager::resolve_job_subpath(const std::string& job_id,
-                                                const nlohmann::json& params) const {
+                                                const nlohmann::json& params) {
     std::string tpl = get_output_path_template();
     std::chrono::system_clock::time_point created_at;
     std::string type;
@@ -1957,6 +1963,7 @@ std::string QueueManager::resolve_job_subpath(const std::string& job_id,
         std::lock_guard<std::mutex> lock(queue_mutex_);
         auto it = jobs_.find(job_id);
         if (it != jobs_.end()) {
+            if (!it->second.output_dir.empty()) return it->second.output_dir;
             created_at = it->second.created_at;
             type = generation_type_to_string(it->second.type);
             if (it->second.model_settings.contains("model_name") &&
@@ -1967,8 +1974,14 @@ std::string QueueManager::resolve_job_subpath(const std::string& job_id,
             created_at = std::chrono::system_clock::now();
         }
     }
-    return render_output_path(tpl, job_id, params, created_at, type, model,
-                              group_folders_enabled_.load(std::memory_order_relaxed));
+    std::string subpath = render_output_path(tpl, job_id, params, created_at, type, model,
+                                             group_folders_enabled_.load(std::memory_order_relaxed));
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        auto it = jobs_.find(job_id);
+        if (it != jobs_.end()) it->second.output_dir = subpath;
+    }
+    return subpath;
 }
 
 void QueueManager::save_job_config(const std::string& job_id, GenerationType type, const nlohmann::json& params) {

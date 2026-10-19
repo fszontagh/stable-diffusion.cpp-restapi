@@ -444,6 +444,17 @@ export interface Job {
   error?: string
   linked_job_id?: string
   title?: string
+  output_dir?: string          // Job folder relative to /output/ (source.png, mask.png, ...)
+}
+
+// Folder of a job under /output/. The output path template can put it
+// anywhere (e.g. {date}/{job_id}), so never assume it is just the job id.
+// Jobs from before output_dir existed fall back to their first output's folder.
+export function jobDir(job: Pick<Job, 'job_id' | 'outputs' | 'output_dir'>): string {
+  if (job.output_dir) return job.output_dir
+  const first = job.outputs?.[0]
+  if (first && first.includes('/')) return first.slice(0, first.lastIndexOf('/'))
+  return job.job_id
 }
 
 export interface RecycleBinResponse {

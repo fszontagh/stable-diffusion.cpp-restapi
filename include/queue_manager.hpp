@@ -91,6 +91,11 @@ struct QueueItem {
     std::string error_message;
     std::vector<std::string> outputs;   // Output file paths (relative to output dir)
 
+    // Job folder relative to the output dir, fixed when the job first runs.
+    // Stored because the output path template can change later, and the
+    // WebUI needs it to find source.png / mask.png / control.png.
+    std::string output_dir;
+
     // Linked job ID (e.g., hash job linked to download job)
     std::string linked_job_id;
 
@@ -493,9 +498,12 @@ private:
      * know about (variation_group_id is one), so a post-roundtrip lookup
      * would miss the group. Callers pass the raw JSON they received from the
      * worker thread, which still carries variation_group_id.
+     *
+     * The first call renders the template and stores the result on the job
+     * (QueueItem::output_dir); later calls return the stored value.
      */
     std::string resolve_job_subpath(const std::string& job_id,
-                                    const nlohmann::json& params) const;
+                                    const nlohmann::json& params);
 
     // Queue storage
     mutable std::mutex queue_mutex_;

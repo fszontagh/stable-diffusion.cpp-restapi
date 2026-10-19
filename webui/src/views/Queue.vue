@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
-import { api, type Job, type LoadModelParams, type QueueFilters, type QueueDateGroup } from '../api/client'
+import { api, jobDir, type Job, type LoadModelParams, type QueueFilters, type QueueDateGroup } from '../api/client'
 import Modal from '../components/Modal.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import Lightbox from '../components/Lightbox.vue'
@@ -1108,6 +1108,7 @@ function navigateWithSettings(job: Job, sections?: string[]) {
     type: job.type,
     params: job.params,
     job_id: job.job_id,
+    job_dir: jobDir(job),
   }
   if (sections && sections.length > 0) {
     payload.sections = sections
@@ -1653,10 +1654,10 @@ async function sendImageToUpscale(outputPath: string) {
                     <span class="source-label">Source</span>
                     <button
                       class="output-thumb source-thumb"
-                      @click="openLightbox([job.job_id + '/source.png'], 0)"
+                      @click="openLightbox([jobDir(job) + '/source.png'], 0)"
                       title="View source image"
                     >
-                      <img :src="getThumbUrl(job.job_id + '/source.png')" alt="Source" />
+                      <img :src="getThumbUrl(jobDir(job) + '/source.png')" alt="Source" />
                     </button>
                   </div>
                 </template>
@@ -1665,10 +1666,10 @@ async function sendImageToUpscale(outputPath: string) {
                     <span class="source-label">Mask</span>
                     <button
                       class="output-thumb source-thumb"
-                      @click="openLightbox([job.job_id + '/mask.png'], 0)"
+                      @click="openLightbox([jobDir(job) + '/mask.png'], 0)"
                       title="View inpaint mask"
                     >
-                      <img :src="getThumbUrl(job.job_id + '/mask.png')" alt="Mask" />
+                      <img :src="getThumbUrl(jobDir(job) + '/mask.png')" alt="Mask" />
                     </button>
                   </div>
                 </template>
@@ -1677,10 +1678,10 @@ async function sendImageToUpscale(outputPath: string) {
                     <span class="source-label">Control</span>
                     <button
                       class="output-thumb source-thumb"
-                      @click="openLightbox([job.job_id + '/control.png'], 0)"
+                      @click="openLightbox([jobDir(job) + '/control.png'], 0)"
                       title="View ControlNet input image"
                     >
-                      <img :src="getThumbUrl(job.job_id + '/control.png')" alt="Control" />
+                      <img :src="getThumbUrl(jobDir(job) + '/control.png')" alt="Control" />
                     </button>
                   </div>
                 </template>
@@ -1922,10 +1923,10 @@ async function sendImageToUpscale(outputPath: string) {
                         <span class="source-label">Source</span>
                         <button
                           class="output-thumb source-thumb"
-                          @click="openLightbox([job.job_id + '/source.png'], 0)"
+                          @click="openLightbox([jobDir(job) + '/source.png'], 0)"
                           title="View source image"
                         >
-                          <img :src="getThumbUrl(job.job_id + '/source.png')" alt="Source" />
+                          <img :src="getThumbUrl(jobDir(job) + '/source.png')" alt="Source" />
                         </button>
                       </div>
                       <span class="arrow-separator">→</span>

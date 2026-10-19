@@ -1376,9 +1376,11 @@ onMounted(async () => {
       // ImageUploader convention (raw base64). Historically the submit
       // path for img_edit had a defensive strip that hid this mismatch,
       // but keeping the value clean is cheaper than relying on that.
+      // Older reload payloads have no job_dir; the job id was the folder then.
+      const jobFolder: string = data.job_dir || data.job_id
       if (mode.value === 'img_edit' && data.job_id) {
         try {
-          const sourceUrl = `/output/${data.job_id}/source.png`
+          const sourceUrl = `/output/${jobFolder}/source.png`
           const response = await fetch(sourceUrl)
           if (response.ok) {
             const blob = await response.blob()
@@ -1436,28 +1438,28 @@ onMounted(async () => {
         const p = data.params as Record<string, unknown>
         if (p.control_image_base64 !== undefined) {
           await restoreImageFromDisk(
-            `/output/${data.job_id}/control.png`,
+            `/output/${jobFolder}/control.png`,
             (v) => { controlImage.value = v },
             () => { controlImage.value = undefined }
           )
         }
         if (p.ip_adapter_image_base64 !== undefined) {
           await restoreImageFromDisk(
-            `/output/${data.job_id}/ip_adapter.png`,
+            `/output/${jobFolder}/ip_adapter.png`,
             (v) => { ipAdapterImage.value = v },
             () => { ipAdapterImage.value = undefined }
           )
         }
         if (p.mask_image_base64 !== undefined) {
           await restoreImageFromDisk(
-            `/output/${data.job_id}/mask.png`,
+            `/output/${jobFolder}/mask.png`,
             (v) => { maskImage.value = v },
             () => { maskImage.value = undefined }
           )
         }
         if (mode.value === 'img2img' && p.init_image_base64 !== undefined) {
           await restoreImageFromDisk(
-            `/output/${data.job_id}/source.png`,
+            `/output/${jobFolder}/source.png`,
             (v) => { initImage.value = v },
             () => { initImage.value = undefined }
           )
