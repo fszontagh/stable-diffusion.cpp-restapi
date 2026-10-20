@@ -49,6 +49,10 @@ SERVICE_MEMORY_MAX=""
 SERVICE_MEMORY_HIGH=""
 SERVICE_MEMORY_SWAP_MAX=""
 
+# --non-interactive: no prompts, defaults everywhere, and an existing config
+# is kept as it is (only values passed as options are changed).
+NON_INTERACTIVE=false
+
 # Configuration values (will be set from existing config or prompts)
 SERVER_HOST=""
 SERVER_PORT=""
@@ -106,6 +110,11 @@ Options:
     --models-dir DIR    Directory for model files
     --no-service        Don't install systemd service
     --no-permissions    Skip setting file ownership (chown operations)
+    --non-interactive, --yes, -y
+                        Don't ask anything. An existing config is kept as it
+                        is; only values given as options (--host, --port,
+                        --output-dir, --models-dir) are changed in it. Without
+                        a config, one is created with the defaults.
     --memory-max VAL    Hard cap on RAM (systemd MemoryMax, OOM-kills above);
                         accepts "16G", "70%", "infinity". Omit for no cap.
     --memory-high VAL   Soft cap on RAM (systemd MemoryHigh, throttles above)
@@ -121,6 +130,7 @@ Examples:
     sudo $0 --port 9000                        # Use port 9000
     sudo $0 --update-webui                     # Update only Web UI files
     sudo $0 --no-permissions                   # Skip permission changes
+    sudo $0 --no-permissions --non-interactive # Update, keep config, no questions
     sudo $0 --memory-max 24G                   # Cap RSS at 24 GiB
     sudo $0 --memory-high 20G --memory-max 24G # Soft 20 GiB / hard 24 GiB
     sudo $0 --uninstall                        # Remove installation
@@ -151,6 +161,11 @@ prompt_value() {
     local var_name="$3"
     local result=""
 
+    if [[ "$NON_INTERACTIVE" == true ]]; then
+        printf -v "$var_name" '%s' "$default_val"
+        return 0
+    fi
+
     echo -en "${CYAN}[INPUT]${NC} ${prompt_msg} [${default_val}]: "
     read -r result
 
@@ -168,6 +183,11 @@ prompt_directory() {
     local default_val="$2"
     local var_name="$3"
     local result=""
+
+    if [[ "$NON_INTERACTIVE" == true ]]; then
+        printf -v "$var_name" '%s' "$default_val"
+        return 0
+    fi
 
     while true; do
         echo -en "${CYAN}[INPUT]${NC} ${prompt_msg} [${default_val}]: "
@@ -198,6 +218,11 @@ prompt_yes_no() {
     local default_val="$2"  # "yes" or "no"
     local var_name="$3"
     local result=""
+
+    if [[ "$NON_INTERACTIVE" == true ]]; then
+        if [[ "$default_val" == "yes" ]]; then printf -v "$var_name" true; else printf -v "$var_name" false; fi
+        return 0
+    fi
 
     local hint
     if [[ "$default_val" == "yes" ]]; then
@@ -240,6 +265,11 @@ prompt_optional() {
     local default_val="$2"
     local var_name="$3"
     local result=""
+
+    if [[ "$NON_INTERACTIVE" == true ]]; then
+        printf -v "$var_name" '%s' "$default_val"
+        return 0
+    fi
 
     if [[ -n "$default_val" ]]; then
         echo -en "${CYAN}[INPUT]${NC} ${prompt_msg} [${default_val}]: "
@@ -308,6 +338,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-permissions)
             SET_PERMISSIONS=false
+            shift
+            ;;
+        --non-interactive|--yes|-y)
+            NON_INTERACTIVE=true
             shift
             ;;
         --help|-h)
@@ -511,6 +545,11 @@ do_install() {
         DEFAULT_ASSISTANT_PROACTIVE="true"
     fi
 
+    # Values given as options; with --non-interactive these are the only
+    # changes made to an existing config.
+    local CLI_HOST="${SERVER_HOST}" CLI_PORT="${SERVER_PORT}"
+    local CLI_MODELS="${MODELS_DIR}" CLI_OUTPUT="${OUTPUT_DIR}"
+
     # Prompt for configuration values if not provided via command line
     echo
     print_info "Server Configuration"
@@ -697,9 +736,35 @@ do_install() {
         ASSISTANT_API_KEY_JSON="\"${ASSISTANT_API_KEY}\""
     fi
 
+    if [[ "$NON_INTERACTIVE" == true && -f "${CONFIG_FILE}" ]]; then
+        # Keep the existing config. Apply only the options given on the
+        # command line and drop deprecated keys.
+        if command -v jq &>/dev/null; then
+            print_info "Keeping existing configuration (--non-interactive)..."
+            jq --arg host "$CLI_HOST" --arg port "$CLI_PORT" \
+               --arg models "$CLI_MODELS" --arg output "$CLI_OUTPUT" '
+                del(.ollama) | del(.server.ws_port) |
+                (if $host != "" then .server.host = $host else . end) |
+                (if $port != "" then .server.port = ($port | tonumber) else . end) |
+                (if $output != "" then .paths.output = $output else . end) |
+                (if $models != "" then
+                    .paths.checkpoints = ($models + "/checkpoints") |
+                    .paths.diffusion_models = ($models + "/diffusion_models") |
+                    .paths.vae = ($models + "/vae") |
+                    .paths.lora = ($models + "/loras") |
+                    .paths.clip = ($models + "/clip") |
+                    .paths.t5 = ($models + "/t5xxl") |
+                    .paths.embeddings = ($models + "/embeddings") |
+                    .paths.controlnet = ($models + "/controlnet") |
+                    .paths.llm = ($models + "/Text-encoder")
+                 else . end)
+            ' "${CONFIG_FILE}" > "${CONFIG_FILE}.new" && mv "${CONFIG_FILE}.new" "${CONFIG_FILE}"
+        else
+            print_warn "jq not found: keeping ${CONFIG_FILE} unchanged, command line config options are ignored"
+        fi
     # If an existing config exists and jq is available, merge settings to preserve
     # user's custom settings (taesd, preview, sd_defaults, etc.)
-    if [[ -f "${CONFIG_FILE}" ]] && command -v jq &>/dev/null; then
+    elif [[ -f "${CONFIG_FILE}" ]] && command -v jq &>/dev/null; then
         print_info "Merging with existing configuration to preserve custom settings..."
 
         # Create a temporary file with the new settings
