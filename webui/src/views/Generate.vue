@@ -1000,6 +1000,18 @@ const recommended = computed((): RecommendedSettings | null => {
 })
 
 // Check if a setting differs from recommended
+// Named sigma schedules the backend expands. Left set on a model whose
+// preset does not recommend it (e.g. Turbo's schedule after switching to the
+// base model) it silently replaces that model's scheduler.
+const SIGMA_PRESET_NAMES = ['qwen-image-2.1-turbo']
+const sigmasMismatch = computed<boolean>(() => {
+  const rec = recommended.value
+  if (!rec) return false
+  const cur = customSigmas.value.trim()
+  if (rec.customSigmas) return cur !== rec.customSigmas
+  return SIGMA_PRESET_NAMES.includes(cur)
+})
+
 function isDifferentFromRecommended(field: keyof RecommendedSettings, value: unknown): boolean {
   if (!recommended.value) return false
   const rec = recommended.value[field]
@@ -1047,6 +1059,7 @@ function applyRecommendedSetting(field: keyof RecommendedSettings) {
     clipSkip: () => { clipSkip.value = val as number },
     slgScale: () => { slgScale.value = val as number },
     cacheMode: () => { cacheMode.value = val as string },
+    customSigmas: () => { customSigmas.value = val as string },
   }
   setters[field]?.()
 }
@@ -2187,7 +2200,7 @@ async function handleSubmit() {
           <div v-if="recommended" class="recommended-panel">
             <div class="recommended-header">
               <span class="recommended-icon">&#128161;</span>
-              <span class="recommended-title">Recommended for {{ store.modelArchitecture }}</span>
+              <span class="recommended-title">Recommended for {{ currentArchPreset?.name || store.modelArchitecture }}</span>
             </div>
             <div class="recommended-items">
               <span class="rec-item rec-clickable" @click="applyRecommendedSetting('sampler')" title="Click to apply">
@@ -2209,6 +2222,10 @@ async function handleSubmit() {
               <span class="rec-item rec-clickable" @click="applyRecommendedSize()" title="Click to apply">
                 <span class="rec-label">Size:</span>
                 <span class="rec-value" :class="{ 'rec-different': width !== recommended.width || height !== recommended.height }">{{ recommended.width }}x{{ recommended.height }}</span>
+              </span>
+              <span v-if="recommended.customSigmas" class="rec-item rec-clickable" @click="applyRecommendedSetting('customSigmas')" title="Click to apply">
+                <span class="rec-label">Sigmas:</span>
+                <span class="rec-value" :class="{ 'rec-different': sigmasMismatch }">{{ recommended.customSigmas }}</span>
               </span>
               <span v-if="recommended.distilledGuidance > 0" class="rec-item rec-clickable" @click="applyRecommendedSetting('distilledGuidance')" title="Click to apply">
                 <span class="rec-label">Dist. Guidance:</span>
@@ -2481,7 +2498,12 @@ async function handleSubmit() {
               <div class="form-hint">Pass-through key=value list for sd.cpp's sample arg parser (model-specific knobs).</div>
             </div>
             <div class="form-group" :title="genOpt('custom_sigmas')">
-              <label class="form-label">Custom Sigmas</label>
+              <label class="form-label">
+                Custom Sigmas
+                <span v-if="recommended && sigmasMismatch" class="rec-hint rec-clickable" @click.prevent="recommended.customSigmas ? applyRecommendedSetting('customSigmas') : (customSigmas = '')" title="Click to apply">
+                  {{ recommended.customSigmas ? `(rec: ${recommended.customSigmas})` : '(rec: empty, this model does not use it)' }}
+                </span>
+              </label>
               <input v-model="customSigmas" type="text" class="form-input" list="sigma-presets" placeholder="empty = scheduler; e.g. 1.0,0.6,0.3,0.0" />
               <datalist id="sigma-presets">
                 <option value="qwen-image-2.1-turbo" />
