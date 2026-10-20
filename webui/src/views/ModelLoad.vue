@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { api, type LoadModelParams, type ModelInfo, type ArchitecturePreset, type OptionDescription } from '../api/client'
 import { useArchitectures, extractWeightType, suggestComponents, suggestVisionComponents, findPresetForArchitecture, type ComponentSuggestion } from '../composables/useArchitectures'
+import { takeLoadPrefill } from '../composables/loadPrefill'
 import RecHint from '../components/RecHint.vue'
 import BackendAssignmentEditor from '../components/BackendAssignmentEditor.vue'
 
@@ -119,6 +120,7 @@ const motionModuleModels = computed(() => store.models?.motion_modules || [])
 const llmModels = computed(() => store.models?.llm || [])
 const taesdModels = computed(() => store.models?.taesd || [])
 const tokenizerModels = computed(() => store.models?.tokenizers || [])
+const diffusionModels = computed(() => store.models?.diffusion_models || [])
 
 // Computed: Current architecture preset. Uses the JSON-driven resolver so
 // `selectedArchitecture` values that aren't exact preset keys (e.g. the
@@ -249,6 +251,7 @@ async function handleLoadModel() {
     if (loadParams.value.tokenizer) params.tokenizer = loadParams.value.tokenizer
     if (loadParams.value.embeddings_connectors) params.embeddings_connectors = loadParams.value.embeddings_connectors
     if (loadParams.value.audio_vae) params.audio_vae = loadParams.value.audio_vae
+    if (loadParams.value.uncond_diffusion_model) params.uncond_diffusion_model = loadParams.value.uncond_diffusion_model
     if (loadParams.value.clip_vision) params.clip_vision = loadParams.value.clip_vision
     if (loadParams.value.taesd) params.taesd = loadParams.value.taesd
     params.options = loadParams.value.options
@@ -277,7 +280,7 @@ async function handleLoadModel() {
 const COMPONENT_KEYS = [
   'vae', 'clip_l', 'clip_g', 't5xxl', 'controlnet', 'ip_adapter', 'motion_module',
   'llm', 'llm_vision', 'tokenizer', 'embeddings_connectors', 'audio_vae',
-  'clip_vision', 'taesd',
+  'clip_vision', 'taesd', 'uncond_diffusion_model',
 ] as const
 
 function restoreComponents(src: Record<string, string | null | undefined>) {
@@ -340,6 +343,18 @@ onMounted(async () => {
     const thisModelLoaded =
       (selectedModel.value.is_loaded === true) ||
       (store.modelLoaded && store.health?.model_name === selectedModel.value.name)
+
+    // Opened from "Load" on the Downloads / Models architecture view: that
+    // choice wins over every restore path and over name detection.
+    const prefill = takeLoadPrefill(selectedModel.value.name)
+
+    if (prefill) {
+      restoreComponents(prefill.components)
+      loadParams.value.options = { ...loadParams.value.options, ...prefill.options }
+      selectedArchitecture.value = prefill.architecture
+      isAutoDetected.value = false
+      return
+    }
 
     // If model is already loaded, pre-populate with current components and options
     if (thisModelLoaded && store.loadedComponents) {
@@ -714,6 +729,19 @@ function onKeepAllInRam(e: Event) {
               <option v-for="m in vaeModels" :key="m.name" :value="m.name">{{ m.name }}</option>
             </select>
             <small class="form-hint">{{ requiredComponents.audio_vae || optionalComponents.audio_vae }}</small>
+          </div>
+
+          <div v-if="requiredComponents.uncond_diffusion_model || optionalComponents.uncond_diffusion_model" class="form-group">
+            <label class="form-label">
+              Unconditional Model
+              <span v-if="requiredComponents.uncond_diffusion_model" class="required-badge">Required</span>
+              <span v-else class="optional-badge">Optional</span>
+            </label>
+            <select v-model="loadParams.uncond_diffusion_model" class="form-select">
+              <option value="">Select unconditional model...</option>
+              <option v-for="m in diffusionModels" :key="m.name" :value="m.name">{{ m.name }}</option>
+            </select>
+            <small class="form-hint">{{ requiredComponents.uncond_diffusion_model || optionalComponents.uncond_diffusion_model }}</small>
           </div>
         </div>
       </section>

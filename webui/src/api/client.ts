@@ -157,6 +157,7 @@ export interface ModelInfo {
   size_bytes: number
   hash: string | null
   is_loaded?: boolean
+  is_directory?: boolean     // sharded HF folder (name ends with '/')
 }
 
 export interface ModelsResponse {
@@ -209,6 +210,7 @@ export interface LoadModelParams {
   tokenizer?: string                  // external tokenizer.json (LLaDA-Image, Ming-Image, PiD, Lens)
   embeddings_connectors?: string      // LTXAV / LLaDA connectors file (resolved from the T5 dir)
   audio_vae?: string                  // LTXAV audio VAE (resolved from the VAE dir)
+  uncond_diffusion_model?: string     // Ideogram-4 unconditional model (diffusion dir)
   taesd?: string
   high_noise_diffusion_model?: string
   photo_maker?: string
@@ -1667,6 +1669,7 @@ export interface ArchitecturePreset {
   optionalComponents: Record<string, string>
   loadOptions: Record<string, unknown>
   imageEditMode?: 'ref_images' | 'init_image'
+  videoModel?: boolean
   generationDefaults: Record<string, unknown>
   match?: ArchitectureMatchRule
   componentScoring?: Partial<Record<'vae' | 'clip' | 't5' | 'llm' | 'controlnet' | 'taesd', ComponentScoringRule[]>>

@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { api, type DownloadParams, type CivitAIModelInfo, type HuggingFaceModelInfo, type ArchitecturePreset, type ArchitectureDownload } from '../api/client'
 import { useAppStore } from '../stores/app'
+import Modal from '../components/Modal.vue'
+import { findLocalFile } from '../composables/archReadiness'
+import ArchLoadBar from '../components/ArchLoadBar.vue'
 
 const appStore = useAppStore()
 
 // Top-level mode. Manual keeps the existing URL/CivitAI/HF form.
 // "architecture" reads the download catalog from data/model_architectures.json
 // (via /architectures) and offers one card per canonical file.
-const mode = ref<'manual' | 'architecture'>('manual')
+const mode = ref<'manual' | 'architecture'>('architecture')
 
 // Source type selection
 const sourceType = ref<'url' | 'civitai' | 'huggingface'>('url')
@@ -226,10 +230,21 @@ watch(downloadJobs, (jobs) => {
   }
 }, { deep: true })
 
+// /downloads?arch=<id> (from the Models page) opens that architecture.
+const route = useRoute()
+function openArchFromRoute() {
+  const id = route.query.arch
+  if (typeof id !== 'string' || !appStore.architectures?.architectures[id]) return
+  mode.value = 'architecture'
+  openArch(id)
+}
+watch(() => route.query.arch, openArchFromRoute)
+
 onMounted(async () => {
   if (!appStore.architectures) {
     try { await appStore.fetchArchitectures() } catch { /* handled elsewhere */ }
   }
+  openArchFromRoute()
   // Populate the scanned models list so we can render "Already downloaded"
   // badges. Kept best-effort: if the fetch fails the panel just falls back
   // to always showing the Download button, which is safe (backend still
@@ -266,69 +281,8 @@ function groupByComponent(entries: ArchitectureDownload[]): Array<{ component: s
     .sort((a, b) => a.component.localeCompare(b.component))
 }
 
-// Map target_type -> the ModelsResponse array key. Kept explicit because the
-// JSON's target_type values (diffusion / t5 / lora / esrgan) don't always
-// match the pluralised store keys (diffusion_models / t5 / loras / esrgan).
-const TARGET_TYPE_TO_STORE_KEY: Record<string, keyof NonNullable<typeof appStore.models> | ''> = {
-  checkpoint: 'checkpoints',
-  diffusion: 'diffusion_models',
-  vae: 'vae',
-  lora: 'loras',
-  clip: 'clip',
-  t5: 't5',
-  embedding: 'embeddings',
-  controlnet: 'controlnets',
-  llm: 'llm',
-  esrgan: 'esrgan',
-  taesd: 'taesd',
-  motion_module: 'motion_modules',
-  adetailer: 'adetailers',
-  ip_adapter: 'ip_adapters'
-}
-
-/**
- * Cross-references the scanned models list with a download entry. For
- * single-file HF/URL downloads, matches by basename (case-insensitive) so
- * a user who put a file in a subfolder still gets credit. For HF directory
- * bundles, matches by the repo basename directory name.
- * Purely advisory: even a false positive here is safe because the backend
- * itself short-circuits an existing target file with already_exists=true.
- */
 function isAlreadyDownloaded(entry: ArchitectureDownload): boolean {
-  // tokenizer.json lands in the LLM dir but is listed separately
-  // (GET /models -> tokenizers[]), so look it up there.
-  const storeKey = entry.component === 'tokenizer'
-    ? 'tokenizers'
-    : TARGET_TYPE_TO_STORE_KEY[entry.target_type]
-  if (!storeKey) return false
-  const models = appStore.models
-  if (!models) return false
-  const list = (models[storeKey] ?? []) as Array<{ name: string; is_directory?: boolean }>
-
-  if (entry.bundle === 'directory' && entry.repo_id) {
-    const repoBase = entry.repo_id.split('/').pop()?.toLowerCase() ?? ''
-    return list.some(m => {
-      if (!m.is_directory) return false
-      const bn = m.name.replace(/\/$/, '').split('/').pop()?.toLowerCase() ?? ''
-      return bn === repoBase
-    })
-  }
-
-  const target = entry.filename ? entry.filename.split('/').pop()?.toLowerCase() : ''
-  if (!target) return false
-  // When the entry pins a subfolder, prefer a match rooted at that
-  // subfolder - otherwise two arches that both call their file
-  // model.safetensors would each look "already downloaded" after the first.
-  // Fallback still accepts a bare basename at the root, because users who
-  // installed a file manually (or from a pre-subfolder version of the JSON)
-  // shouldn't be prompted to re-fetch a multi-GB file - only ambiguous
-  // filenames like model.safetensors risk being wrongly deduped, and the
-  // backend's own basename check will catch it anyway.
-  if (entry.subfolder) {
-    const expected = (entry.subfolder + '/' + target).toLowerCase()
-    if (list.some(m => m.name.toLowerCase() === expected)) return true
-  }
-  return list.some(m => (m.name.split('/').pop() ?? '').toLowerCase() === target)
+  return findLocalFile(entry, appStore.models) !== null
 }
 
 /**
@@ -373,27 +327,112 @@ function archTally(preset: ArchitecturePreset): { done: number; queued: number; 
   return { done, queued, total: items.length }
 }
 
-// Which archs are expanded. Default = all collapsed; user opens what they
-// need. Persisted for the session in a Set so navigating away and back
-// keeps the same shape.
-const expandedArchs = ref<Set<string>>(new Set())
-function toggleArch(id: string) {
-  const next = new Set(expandedArchs.value)
-  if (next.has(id)) next.delete(id)
-  else {
-    next.add(id)
-    // Fetch remote sizes for this arch's entries on first expand so
-    // users see file size before they click Download. We resolve HF
-    // entries via HEAD (Content-Length after the CDN redirect); bundles
-    // and non-HF sources fall through.
-    const preset = appStore.architectures?.architectures[id]
-    if (preset?.downloads) {
-      for (const entry of preset.downloads) {
-        void fetchEntrySize(entry)
-      }
+// Architecture whose details modal is open. Opening it fetches the remote
+// sizes of its entries so users see file sizes before they click Download.
+// HF entries resolve via HEAD (Content-Length after the CDN redirect);
+// bundles and non-HF sources fall through.
+const openArchId = ref<string | null>(null)
+const openPreset = computed<ArchitecturePreset | null>(() =>
+  openArchId.value ? appStore.architectures?.architectures[openArchId.value] ?? null : null
+)
+function openArch(id: string) {
+  openArchId.value = id
+  const preset = appStore.architectures?.architectures[id]
+  for (const entry of preset?.downloads ?? []) void fetchEntrySize(entry)
+  void loadOptionLabels()
+}
+
+// Human labels for generation defaults and load options, from
+// data/generation_options.json and data/load_options.json. Raw keys are
+// shown until (or if) they fail to load.
+const genLabels = ref<Record<string, string>>({})
+const loadLabels = ref<Record<string, string>>({})
+let labelsRequested = false
+async function loadOptionLabels() {
+  if (labelsRequested) return
+  labelsRequested = true
+  const toLabels = (opts: Record<string, { label?: string }> | undefined) =>
+    Object.fromEntries(Object.entries(opts ?? {}).map(([k, v]) => [k, v.label ?? k]))
+  try { genLabels.value = toLabels((await api.getGenerationOptionDescriptions()).options) } catch { /* raw keys */ }
+  try {
+    const desc = appStore.optionDescriptions ?? await appStore.fetchOptionDescriptions()
+    loadLabels.value = toLabels(desc?.options)
+  } catch { /* raw keys */ }
+}
+
+function formatSettingValue(v: unknown): string {
+  if (typeof v === 'boolean') return v ? 'on' : 'off'
+  if (Array.isArray(v)) return v.join(', ')
+  if (v !== null && typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
+
+// Width and height are shown as one "1024 x 1024" row.
+function settingRows(values: Record<string, unknown> | undefined, labels: Record<string, string>) {
+  const rows: Array<{ key: string; label: string; value: string; full: string }> = []
+  const v = values ?? {}
+  for (const [key, raw] of Object.entries(v)) {
+    if (key === 'height' && 'width' in v) continue
+    let full = formatSettingValue(raw)
+    let label = labels[key] ?? key
+    if (key === 'width' && 'height' in v) {
+      full = `${raw} x ${v.height}`
+      label = 'Size'
     }
+    const value = full.length > 60 ? full.slice(0, 57) + '...' : full
+    rows.push({ key, label, value, full })
   }
-  expandedArchs.value = next
+  return rows
+}
+
+function componentSummary(preset: ArchitecturePreset): string {
+  const keys = Object.keys(preset.requiredComponents ?? {})
+  return keys.length ? keys.join(' · ') : 'checkpoint'
+}
+
+function defaultsSummary(preset: ArchitecturePreset): string {
+  const g = preset.generationDefaults ?? {}
+  const parts: string[] = []
+  if (g.steps !== undefined) parts.push(`${g.steps} steps`)
+  if (g.cfg_scale !== undefined) parts.push(`cfg ${g.cfg_scale}`)
+  if (g.width && g.height) parts.push(`${g.width}x${g.height}`)
+  return parts.join(' · ')
+}
+
+// Quant / precision tag read from the file name, e.g. "Q4_K", "bf16".
+const QUANT_RE = /(?:^|[-_.])((?:i?q\d(?:_[a-z0-9]+)*)|bf16|fp16|f16|fp32|f32|fp8(?:_[a-z0-9]+)*|nf4)(?=[-_.]|$)/i
+function isQuantized(entry: ArchitectureDownload): boolean {
+  const f = (entry.filename ?? '').toLowerCase()
+  return f.endsWith('.gguf') || /fp8|nf4/.test(f)
+}
+function isGated(entry: ArchitectureDownload): boolean {
+  return /\bgated\b/i.test(entry.notes ?? '')
+}
+function formatBadge(entry: ArchitectureDownload): string {
+  if (entry.bundle === 'directory') return 'full repo'
+  const f = entry.filename?.split('/').pop() ?? ''
+  const tag = QUANT_RE.exec(f.replace(/\.[a-z]+$/i, ''))?.[1]
+  const gguf = f.toLowerCase().endsWith('.gguf')
+  if (gguf) return tag ? `GGUF ${tag.toUpperCase()}` : 'GGUF'
+  return tag ? tag.toLowerCase() : 'original'
+}
+
+// Page on the source site for the entry, so users can see the model card
+// and license or fetch the file by hand.
+function entryPageUrl(entry: ArchitectureDownload): string {
+  if (entry.source === 'huggingface' && entry.repo_id) {
+    const base = `https://huggingface.co/${entry.repo_id}`
+    if (entry.bundle === 'directory' || !entry.filename) return base
+    return `${base}/blob/${entry.revision ?? 'main'}/${entry.filename}`
+  }
+  if (entry.source === 'civitai' && entry.model_id) return `https://civitai.com/models/${entry.model_id}`
+  return entry.url ?? ''
+}
+function entryPathLabel(entry: ArchitectureDownload): string {
+  if (entry.source === 'huggingface' && entry.repo_id) {
+    return entry.bundle === 'directory' || !entry.filename ? entry.repo_id : `${entry.repo_id}/${entry.filename}`
+  }
+  return entryPageUrl(entry)
 }
 
 // Per-entry remote size cache. Value shape: bytes = number (resolved),
@@ -454,12 +493,6 @@ function entrySize(entry: ArchitectureDownload): number | null {
 
 function entrySizeLoading(entry: ArchitectureDownload): boolean {
   return sizeLoading.value.has(entryKey(entry))
-}
-function expandAll() {
-  expandedArchs.value = new Set(archsWithDownloads.value.map(p => p.id))
-}
-function collapseAll() {
-  expandedArchs.value = new Set()
 }
 
 function sourceBadgeLabel(entry: ArchitectureDownload): string {
@@ -548,104 +581,151 @@ async function downloadArchEntry(preset: ArchitecturePreset, entry: Architecture
       </div>
 
       <div v-if="archsWithDownloads.length > 0" class="arch-toolbar">
-        <button type="button" class="btn-link" @click="expandAll">Expand all</button>
-        <span class="toolbar-sep">·</span>
-        <button type="button" class="btn-link" @click="collapseAll">Collapse all</button>
         <span class="toolbar-count">{{ archsWithDownloads.length }} architectures</span>
       </div>
 
-      <div
-        v-for="preset in archsWithDownloads"
-        :key="preset.id"
-        :class="['arch-row', { open: expandedArchs.has(preset.id) }]"
-      >
+      <div v-if="archsWithDownloads.length > 0" class="arch-list">
         <button
+          v-for="preset in archsWithDownloads"
+          :key="preset.id"
           type="button"
-          class="arch-summary"
-          :aria-expanded="expandedArchs.has(preset.id)"
-          @click="toggleArch(preset.id)"
+          class="arch-item"
+          @click="openArch(preset.id)"
         >
-          <span class="arch-chevron">{{ expandedArchs.has(preset.id) ? '▾' : '▸' }}</span>
-          <span class="arch-summary-name">{{ preset.name }}</span>
-          <code class="arch-id">{{ preset.id }}</code>
-          <span
-            v-if="archTally(preset).done === archTally(preset).total"
-            class="arch-summary-tally all-done"
-            title="Every listed file is already on disk"
-          >
-            &#10003; complete ({{ archTally(preset).total }})
+          <span class="arch-item-name">{{ preset.name }}</span>
+          <span class="arch-item-tags">
+            <span v-if="preset.videoModel" class="tag">video</span>
+            <span v-if="preset.imageEditMode" class="tag">edit</span>
           </span>
+          <span class="arch-item-comps">{{ componentSummary(preset) }}</span>
+          <span class="arch-item-defaults">{{ defaultsSummary(preset) }}</span>
           <span
-            v-else
-            class="arch-summary-tally"
+            :class="['arch-summary-tally', { 'all-done': archTally(preset).done === archTally(preset).total }]"
+            :title="archTally(preset).done === archTally(preset).total ? 'Every listed file is already on disk' : ''"
           >
-            {{ archTally(preset).done }}/{{ archTally(preset).total }} downloaded<span v-if="archTally(preset).queued"> · {{ archTally(preset).queued }} in queue</span>
+            <template v-if="archTally(preset).done === archTally(preset).total">&#10003; {{ archTally(preset).total }}/{{ archTally(preset).total }}</template>
+            <template v-else>{{ archTally(preset).done }}/{{ archTally(preset).total }}<span v-if="archTally(preset).queued"> · {{ archTally(preset).queued }} queued</span></template>
           </span>
         </button>
+      </div>
 
-        <div v-if="expandedArchs.has(preset.id)" class="arch-body">
-        <p v-if="preset.description" class="arch-description">{{ preset.description }}</p>
+      <Modal
+        :show="!!openPreset"
+        :title="openPreset?.name ?? ''"
+        wide
+        @close="openArchId = null"
+      >
+        <div v-if="openPreset" class="arch-details">
+          <p class="arch-id-line">
+            <code class="arch-id">{{ openPreset.id }}</code>
+            <span v-if="openPreset.videoModel" class="tag">video</span>
+            <span v-if="openPreset.imageEditMode" class="tag" :title="'Image edit via ' + openPreset.imageEditMode">edit: {{ openPreset.imageEditMode === 'ref_images' ? 'reference image' : 'init image' }}</span>
+          </p>
+          <p v-if="openPreset.description" class="arch-description">{{ openPreset.description }}</p>
 
-        <div
-          v-for="group in groupByComponent(preset.downloads ?? [])"
-          :key="group.component"
-          class="component-group"
-        >
-          <h3 class="component-heading">{{ group.component }}</h3>
-          <div class="download-cards">
-            <div
-              v-for="entry in group.items"
-              :key="entry.id"
-              class="download-card"
+          <ArchLoadBar :preset="openPreset" class="arch-load-bar" target="models" @navigate="openArchId = null" />
+
+          <div class="details-grid">
+            <section v-if="settingRows(openPreset.generationDefaults, genLabels).length" class="details-section">
+              <h4>Recommended settings</h4>
+              <dl class="kv">
+                <template v-for="row in settingRows(openPreset.generationDefaults, genLabels)" :key="row.key">
+                  <dt :title="row.key">{{ row.label }}</dt>
+                  <dd :title="row.full">{{ row.value }}</dd>
+                </template>
+              </dl>
+            </section>
+
+            <section v-if="settingRows(openPreset.loadOptions, loadLabels).length" class="details-section">
+              <h4>Load options</h4>
+              <dl class="kv">
+                <template v-for="row in settingRows(openPreset.loadOptions, loadLabels)" :key="row.key">
+                  <dt :title="row.key">{{ row.label }}</dt>
+                  <dd :title="row.full">{{ row.value }}</dd>
+                </template>
+              </dl>
+            </section>
+
+            <section class="details-section">
+              <h4>Components</h4>
+              <dl class="kv">
+                <template v-for="(desc, key) in openPreset.requiredComponents" :key="'r-' + key">
+                  <dt>{{ key }} <span class="req">required</span></dt>
+                  <dd>{{ desc }}</dd>
+                </template>
+                <template v-for="(desc, key) in openPreset.optionalComponents" :key="'o-' + key">
+                  <dt>{{ key }} <span class="opt">optional</span></dt>
+                  <dd>{{ desc }}</dd>
+                </template>
+                <template v-if="!Object.keys(openPreset.requiredComponents ?? {}).length && !Object.keys(openPreset.optionalComponents ?? {}).length">
+                  <dt>-</dt>
+                  <dd>Single checkpoint file, no extra components</dd>
+                </template>
+              </dl>
+            </section>
+          </div>
+
+          <h4 class="downloads-heading">Downloads</h4>
+          <table class="dl-table">
+            <tbody
+              v-for="group in groupByComponent(openPreset.downloads ?? [])"
+              :key="group.component"
             >
-              <div class="download-card-head">
-                <span class="download-label">
-                  <span v-if="entry.recommended" class="recommended-star" title="Recommended">&#9733;</span>
-                  {{ entry.label }}
-                </span>
-                <span class="source-badge">{{ sourceBadgeLabel(entry) }}</span>
-              </div>
-              <div class="download-meta">
-                <span v-if="entry.repo_id"><code>{{ entry.repo_id }}</code></span>
-                <span v-if="entry.filename && entry.bundle !== 'directory'">/ {{ entry.filename }}</span>
-                <span v-if="entry.bundle === 'directory'" class="dir-note">(whole repo)</span>
-                <span v-if="entrySize(entry)" class="download-size" :title="entry.size_bytes ? 'From catalog' : 'Fetched from HuggingFace'">{{ formatFileSize(entrySize(entry)!) }}</span>
-                <span v-else-if="entrySizeLoading(entry)" class="download-size text-muted">…</span>
-              </div>
-              <p v-if="entry.notes" class="download-notes">{{ entry.notes }}</p>
-              <div class="download-actions">
-                <span v-if="isAlreadyDownloaded(entry)" class="chip chip-success">
-                  &#10003; Already downloaded
-                </span>
-                <template v-else>
+              <tr class="dl-group">
+                <th colspan="4">{{ group.component }}</th>
+              </tr>
+              <tr v-for="entry in group.items" :key="entry.id" class="dl-row">
+                <td class="dl-name">
+                  <div class="dl-label">
+                    <span v-if="entry.recommended" class="recommended-star" title="Recommended">&#9733;</span>
+                    {{ entry.label }}
+                    <span :class="['format-badge', isQuantized(entry) ? 'quant' : 'original']">{{ formatBadge(entry) }}</span>
+                    <span v-if="isGated(entry)" class="format-badge gated" title="Accept the license on the model page and set an HF token in Settings">gated</span>
+                  </div>
+                  <a
+                    v-if="entryPageUrl(entry)"
+                    :href="entryPageUrl(entry)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="dl-link"
+                    :title="entryPageUrl(entry)"
+                  >{{ entryPathLabel(entry) }}</a>
+                  <p v-if="entry.notes" class="download-notes">{{ entry.notes }}</p>
+                </td>
+                <td class="dl-source"><span class="source-badge">{{ sourceBadgeLabel(entry) }}</span></td>
+                <td class="dl-size">
+                  <span v-if="entrySize(entry)" :title="entry.size_bytes ? 'From catalog' : 'Fetched from HuggingFace'">{{ formatFileSize(entrySize(entry)!) }}</span>
+                  <span v-else-if="entrySizeLoading(entry)" class="text-muted">…</span>
+                </td>
+                <td class="dl-action">
+                  <span v-if="isAlreadyDownloaded(entry)" class="chip chip-success">&#10003; On disk</span>
                   <button
-                    v-if="entryQueuedJob(entry)"
+                    v-else-if="entryQueuedJob(entry)"
                     type="button"
-                    class="btn-secondary"
+                    class="btn-secondary btn-sm"
                     disabled
                     :title="'Job ' + (entryQueuedJob(entry)?.job_id.slice(0, 8) ?? '')"
                   >
                     <span v-if="entryQueuedJob(entry)?.status === 'processing'">
-                      Downloading{{ entryQueuedJob(entry)?.progress?.step ? ' ' + entryQueuedJob(entry)?.progress?.step + '%' : '...' }}
+                      {{ entryQueuedJob(entry)?.progress?.step ? entryQueuedJob(entry)?.progress?.step + '%' : 'Downloading' }}
                     </span>
                     <span v-else>Queued</span>
                   </button>
                   <button
                     v-else
                     type="button"
-                    class="btn-primary"
-                    :disabled="!!inFlight[preset.id + '::' + entry.id]"
-                    @click="downloadArchEntry(preset, entry)"
+                    class="btn-primary btn-sm"
+                    :disabled="!!inFlight[openPreset.id + '::' + entry.id]"
+                    @click="downloadArchEntry(openPreset, entry)"
                   >
-                    {{ inFlight[preset.id + '::' + entry.id] ? 'Starting...' : 'Download' }}
+                    {{ inFlight[openPreset.id + '::' + entry.id] ? 'Starting...' : 'Download' }}
                   </button>
-                </template>
-              </div>
-            </div>
-          </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        </div>
-      </div>
+      </Modal>
     </div>
 
     <!-- Source Tabs (Manual mode) -->
@@ -966,88 +1046,101 @@ h1 {
   color: var(--text-secondary);
 }
 
-.toolbar-sep {
-  color: var(--text-muted, var(--text-secondary));
-  opacity: 0.5;
-}
 
 .toolbar-count {
   margin-left: auto;
 }
 
-/* .btn-link + .chip.chip-success now come from src/styles/utilities.css */
-
-.arch-row {
-  background: var(--bg-secondary);
+.arch-list {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
-  margin-bottom: 8px;
+  background: var(--bg-secondary);
   overflow: hidden;
 }
 
-.arch-row.open {
-  margin-bottom: 12px;
-}
-
-.arch-summary {
-  width: 100%;
-  display: flex;
+.arch-item {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.3fr) 90px minmax(0, 1fr) minmax(0, 1.2fr) 90px;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 12px;
+  padding: 8px 14px;
   border: none;
+  border-bottom: 1px solid var(--border-color);
   background: transparent;
-  cursor: pointer;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   text-align: left;
+  cursor: pointer;
 }
 
-.arch-summary:hover {
+.arch-item:last-child {
+  border-bottom: none;
+}
+
+.arch-item:hover {
   background: var(--bg-hover);
 }
 
-.arch-row.open .arch-summary {
-  border-bottom: 1px solid var(--border-color);
-}
-
-.arch-chevron {
-  color: var(--text-secondary);
-  font-size: 11px;
-  width: 12px;
-  display: inline-block;
-}
-
-.arch-summary-name {
+.arch-item-name {
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arch-item-tags {
+  display: flex;
+  gap: 4px;
+}
+
+.arch-item-comps,
+.arch-item-defaults {
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .arch-summary-tally {
-  margin-left: auto;
   font-size: 12px;
   color: var(--text-secondary);
   font-weight: 500;
+  white-space: nowrap;
+  text-align: right;
 }
 
 .arch-summary-tally.all-done {
-  color: var(--success);
+  color: var(--accent-success);
 }
 
-.arch-body {
-  padding: 12px 16px 16px;
+@media (max-width: 720px) {
+  .arch-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .arch-item-tags,
+  .arch-item-comps,
+  .arch-item-defaults {
+    display: none;
+  }
 }
 
-.arch-header {
+.arch-id-line {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.arch-header h2 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 18px;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
 }
 
 .arch-id {
@@ -1064,11 +1157,26 @@ h1 {
   margin: 0 0 16px;
 }
 
-.component-group {
-  margin-top: 14px;
+.arch-load-bar {
+  margin-bottom: 14px;
 }
 
-.component-heading {
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.details-section {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 10px 12px;
+}
+
+.details-section h4,
+.downloads-heading {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1076,36 +1184,122 @@ h1 {
   margin: 0 0 8px;
 }
 
-.download-cards {
+.kv {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
 }
 
-.download-card {
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  padding: 12px;
-  background: var(--bg-primary);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.kv dt {
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
-.download-card-head {
+.kv dd {
+  margin: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.kv .req,
+.kv .opt {
+  font-size: 10px;
+  text-transform: uppercase;
+  margin-left: 4px;
+}
+
+.kv .req {
+  color: var(--accent-primary);
+}
+
+.kv .opt {
+  color: var(--text-secondary);
+}
+
+.dl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dl-group th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  padding: 12px 8px 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dl-row td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: top;
+}
+
+.dl-label {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-}
-
-.download-label {
+  flex-wrap: wrap;
+  gap: 6px;
   font-weight: 600;
   color: var(--text-primary);
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+}
+
+.dl-link {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+  margin-top: 2px;
+}
+
+.dl-link:hover {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
+.dl-source,
+.dl-size,
+.dl-action {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.dl-size {
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.dl-action {
+  text-align: right;
+}
+
+.format-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.format-badge.original {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--accent-success);
+}
+
+.format-badge.gated {
+  background: rgba(234, 179, 8, 0.18);
+  color: #b45309;
+}
+
+.format-badge.quant {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
 .recommended-star {
@@ -1121,36 +1315,17 @@ h1 {
   font-weight: 500;
 }
 
-.download-meta {
-  color: var(--text-secondary);
-  font-size: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.download-meta code {
-  background: var(--bg-hover);
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-.dir-note {
-  font-style: italic;
-}
-
-.download-size {
-  margin-left: auto;
-}
-
 .download-notes {
   color: var(--text-secondary);
   font-size: 12px;
+  font-weight: 400;
   margin: 4px 0 0;
 }
 
-.download-actions {
-  margin-top: 6px;
+@media (max-width: 720px) {
+  .dl-source {
+    display: none;
+  }
 }
 
 /* Was .already-downloaded; now uses .chip.chip-success from utilities.css. */
@@ -1380,7 +1555,7 @@ h1 {
 }
 
 .job-item.completed {
-  border-color: var(--success);
+  border-color: var(--accent-success);
 }
 
 .job-icon {
@@ -1452,7 +1627,7 @@ h1 {
 
 .status-badge.completed {
   background: rgba(0, 200, 83, 0.15);
-  color: var(--success);
+  color: var(--accent-success);
 }
 
 .status-badge.failed {

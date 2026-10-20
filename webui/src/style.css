@@ -817,6 +817,10 @@ a:focus-visible {
   box-shadow: var(--shadow-lg);
 }
 
+.modal-content.modal-wide {
+  max-width: 1100px;
+}
+
 .modal-header {
   display: flex;
   align-items: center;

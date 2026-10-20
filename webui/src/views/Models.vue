@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { api, ApiError, type ModelInfo, type ConvertParams } from '../api/client'
 import Modal from '../components/Modal.vue'
 import SkeletonCard from '../components/SkeletonCard.vue'
+import ArchLoadBar from '../components/ArchLoadBar.vue'
+import type { ArchitecturePreset } from '../api/client'
+import { archReadiness, convertCandidates, isConvertible, type ConvertCandidate } from '../composables/archReadiness'
 
 const store = useAppStore()
 const router = useRouter()
+const route = useRoute()
 
 // Conversion modal
 const showConvertModal = ref(false)
@@ -19,6 +23,104 @@ const convertParams = ref<ConvertParams>({
   output_type: 'q8_0',
   output_path: ''
 })
+
+// Files grid or architecture list. The architecture list shows every
+// preset that has at least one main model on disk, with Load (pre-filled
+// load page) and Convert (pick which of its files to quantize).
+const viewMode = ref<'files' | 'architectures'>('architectures')
+
+// /models?arch=<id> (from the Downloads page) scrolls to that architecture
+// and highlights it, so the user can pick its model variant.
+const focusedArch = ref<string | null>(null)
+async function focusArchFromRoute() {
+  const id = route.query.arch
+  if (typeof id !== 'string') return
+  viewMode.value = 'architectures'
+  focusedArch.value = id
+  await nextTick()
+  const el = document.querySelector(`[data-arch="${CSS.escape(id)}"]`)
+  el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+watch(() => route.query.arch, focusArchFromRoute)
+// The row only exists once models and presets are loaded.
+watch(() => [store.models, store.architectures], () => { if (focusedArch.value) void focusArchFromRoute() })
+
+function openDownloads(preset: ArchitecturePreset) {
+  router.push({ path: '/downloads', query: { arch: preset.id } })
+}
+
+const localArchitectures = computed(() => {
+  const presets = Object.values(store.architectures?.architectures ?? {})
+  const needle = searchQuery.value.trim().toLowerCase()
+  return presets
+    .filter(p => archReadiness(p, store.models).mains.length > 0)
+    .filter(p => !needle || (p.name + ' ' + p.id).toLowerCase().includes(needle))
+    .sort((a, b) => a.name.localeCompare(b.name))
+})
+
+const allModelsByKey = computed(() => {
+  const map = new Map<string, ModelInfo>()
+  const m = store.models
+  if (!m) return map
+  for (const list of [m.checkpoints, m.diffusion_models, m.vae, m.loras, m.clip, m.t5, m.controlnets, m.llm, m.esrgan, m.taesd ?? []]) {
+    for (const model of list ?? []) map.set(model.type + '::' + model.name, model)
+  }
+  return map
+})
+
+function candidateSize(c: ConvertCandidate): number | null {
+  return allModelsByKey.value.get(c.modelType + '::' + c.name)?.size_bytes ?? null
+}
+
+const archConvertPreset = ref<ArchitecturePreset | null>(null)
+const archConvertList = ref<ConvertCandidate[]>([])
+const archConvertSelected = ref<Set<string>>(new Set())
+const archConvertType = ref('q8_0')
+const archConverting = ref(false)
+
+function candidateKey(c: ConvertCandidate): string {
+  return c.modelType + '::' + c.name
+}
+
+function openArchConvert(preset: ArchitecturePreset) {
+  archConvertPreset.value = preset
+  archConvertList.value = convertCandidates(preset, store.models)
+  archConvertSelected.value = new Set()
+  archConvertType.value = 'q8_0'
+}
+
+function toggleCandidate(c: ConvertCandidate) {
+  const next = new Set(archConvertSelected.value)
+  const k = candidateKey(c)
+  if (next.has(k)) next.delete(k)
+  else next.add(k)
+  archConvertSelected.value = next
+}
+
+// One convert job per selected file; the backend names each output
+// <model>.<type>.gguf next to its source.
+async function startArchConvert() {
+  const picked = archConvertList.value.filter(c => archConvertSelected.value.has(candidateKey(c)))
+  if (picked.length === 0) return
+  archConverting.value = true
+  let queued = 0
+  try {
+    for (const c of picked) {
+      try {
+        await api.convert({ input_path: c.name, model_type: c.modelType, output_type: archConvertType.value })
+        queued++
+      } catch (e) {
+        store.showToast(`${c.name}: ${e instanceof Error ? e.message : 'convert failed'}`, 'error')
+      }
+    }
+    if (queued > 0) {
+      store.showToast(`Queued ${queued} conversion${queued > 1 ? 's' : ''}`, 'success')
+      archConvertPreset.value = null
+    }
+  } finally {
+    archConverting.value = false
+  }
+}
 
 // Filters
 const searchQuery = ref('')
@@ -96,12 +198,14 @@ const quantizationTypes = computed(() => store.quantizationTypes)
 
 // Generate default output path for conversion
 function generateOutputPath(inputPath: string, quantType: string): string {
-  // Extract model name from path
-  const parts = inputPath.split('/')
+  // Extract model name from path. A sharded folder ("Name/") is named
+  // after the folder and the output lands next to it.
+  const isFolder = inputPath.endsWith('/')
+  const parts = inputPath.replace(/\/+$/, '').split('/')
   const filename = parts[parts.length - 1]
   // Remove existing extension
   const dotIndex = filename.lastIndexOf('.')
-  const stem = dotIndex > 0 ? filename.substring(0, dotIndex) : filename
+  const stem = dotIndex > 0 && !isFolder ? filename.substring(0, dotIndex) : filename
   // Remove existing quant suffix if present (e.g., .f16, .q8_0)
   const lastDot = stem.lastIndexOf('.')
   let baseName = stem
@@ -287,8 +391,10 @@ async function startUpload() {
 }
 
 onMounted(() => {
+  void focusArchFromRoute()
   store.fetchModels()
   store.fetchOptions()  // Fetch options to get quantization types
+  if (!store.architectures) store.fetchArchitectures().catch(() => { /* list stays empty */ })
 })
 </script>
 
@@ -311,7 +417,11 @@ onMounted(() => {
           class="form-input filter-search"
           placeholder="Search models..."
         />
-        <select v-model="selectedType" class="form-select filter-type">
+        <div class="view-toggle" role="group" aria-label="View">
+          <button :class="['view-btn', { active: viewMode === 'files' }]" @click="viewMode = 'files'">Files</button>
+          <button :class="['view-btn', { active: viewMode === 'architectures' }]" @click="viewMode = 'architectures'">By architecture</button>
+        </div>
+        <select v-if="viewMode === 'files'" v-model="selectedType" class="form-select filter-type">
           <option v-for="type in modelTypes" :key="type.value" :value="type.value">
             {{ type.label }}
           </option>
@@ -328,6 +438,39 @@ onMounted(() => {
     <!-- Loading skeleton -->
     <div v-if="!store.models" class="models-grid">
       <SkeletonCard v-for="i in 6" :key="i" />
+    </div>
+
+    <!-- Architecture view -->
+    <div v-else-if="viewMode === 'architectures'" class="arch-view">
+      <p v-if="!store.architectures" class="empty-state">Loading architectures...</p>
+      <p v-else-if="localArchitectures.length === 0" class="empty-state">
+        No architecture has a downloaded main model yet. Get one from Downloads, By Architecture.
+      </p>
+      <div
+        v-for="preset in localArchitectures"
+        :key="preset.id"
+        :data-arch="preset.id"
+        :class="['arch-view-row', 'card', { focused: focusedArch === preset.id }]"
+      >
+        <div class="arch-view-head">
+          <span class="arch-view-name">{{ preset.name }}</span>
+          <span
+            :class="['arch-view-state', archReadiness(preset, store.models).ready ? 'ok' : 'warn']"
+          >{{ archReadiness(preset, store.models).ready ? 'ready' : 'missing: ' + archReadiness(preset, store.models).missing.join(', ') }}</span>
+          <button
+            class="btn btn-secondary btn-sm"
+            title="Downloads for this architecture: other variants, originals, missing components"
+            @click="openDownloads(preset)"
+          >Downloads</button>
+          <button
+            class="btn btn-secondary btn-sm"
+            :disabled="convertCandidates(preset, store.models).length === 0"
+            :title="convertCandidates(preset, store.models).length ? 'Quantize some of this architecture\'s files' : 'Nothing left to convert: every file is already quantized'"
+            @click="openArchConvert(preset)"
+          >Convert...</button>
+        </div>
+        <ArchLoadBar :preset="preset" compact />
+      </div>
     </div>
 
     <!-- Models List -->
@@ -355,7 +498,7 @@ onMounted(() => {
             {{ model.is_loaded ? 'Edit' : 'Load' }}
           </button>
           <button
-            v-if="model.type === 'checkpoint' || model.type === 'diffusion' || model.type === 'vae' || model.type === 'lora' || model.type === 'clip' || model.type === 't5' || model.type === 'llm'"
+            v-if="['checkpoint', 'diffusion', 'vae', 'lora', 'clip', 't5', 'llm'].includes(model.type) && isConvertible(model.name)"
             class="btn btn-secondary btn-sm"
             @click="openConvertModal(model)"
             title="Convert to GGUF with quantization"
@@ -366,7 +509,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="filteredModels.length === 0" class="empty-state">
+    <div v-if="viewMode === 'files' && filteredModels.length === 0" class="empty-state">
       <div class="empty-state-icon">&#128269;</div>
       <div class="empty-state-title">No models found</div>
       <p>Try adjusting your search or filters</p>
@@ -437,6 +580,49 @@ onMounted(() => {
         <button class="btn btn-primary" @click="handleConvert" :disabled="converting">
           <span v-if="converting" class="spinner"></span>
           {{ converting ? 'Converting...' : 'Start Conversion' }}
+        </button>
+      </template>
+    </Modal>
+
+    <!-- Convert by architecture -->
+    <Modal
+      :show="!!archConvertPreset"
+      :title="'Convert ' + (archConvertPreset?.name ?? '')"
+      @close="archConvertPreset = null"
+    >
+      <p class="convert-info">
+        Pick the files to quantize. Each one is converted on its own and saved as
+        &lt;name&gt;.&lt;type&gt;.gguf next to the source. Already quantized files are not listed.
+      </p>
+      <ul class="arch-convert-list">
+        <li v-for="c in archConvertList" :key="candidateKey(c)">
+          <label>
+            <input
+              type="checkbox"
+              :checked="archConvertSelected.has(candidateKey(c))"
+              @change="toggleCandidate(c)"
+            />
+            <span class="arch-convert-comp">{{ c.component }}</span>
+            <span class="arch-convert-name" :title="c.name">{{ c.name }}</span>
+            <span v-if="candidateSize(c)" class="arch-convert-size">{{ formatSize(candidateSize(c)!) }}</span>
+          </label>
+        </li>
+      </ul>
+      <div class="form-group">
+        <label class="form-label">Quantization Type</label>
+        <select v-model="archConvertType" class="form-select">
+          <option v-for="qtype in quantizationTypes" :key="qtype.id" :value="qtype.id">{{ qtype.name }}</option>
+        </select>
+      </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="archConvertPreset = null">Cancel</button>
+        <button
+          class="btn btn-primary"
+          :disabled="archConverting || archConvertSelected.size === 0"
+          @click="startArchConvert"
+        >
+          <span v-if="archConverting" class="spinner"></span>
+          {{ archConverting ? 'Queuing...' : `Convert ${archConvertSelected.size || ''}` }}
         </button>
       </template>
     </Modal>
@@ -545,6 +731,96 @@ onMounted(() => {
 /* Toolbar row: search grows, type select stays modest, refresh + upload
    take only their natural width. align-items:stretch makes buttons match
    input height exactly so the row reads as one bar. */
+.view-toggle {
+  display: flex;
+  background: var(--bg-tertiary, var(--bg-hover));
+  border-radius: var(--border-radius-sm);
+  padding: 3px;
+  gap: 2px;
+  flex: none;
+}
+.view-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: var(--border-radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.view-btn.active {
+  background: var(--accent-primary);
+  color: #fff;
+}
+.arch-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.arch-view-row {
+  padding: 10px 14px;
+}
+.arch-view-row.focused {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -1px;
+}
+.arch-view-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.arch-view-name {
+  font-weight: 600;
+}
+.arch-view-state {
+  font-size: 12px;
+  margin-right: auto;
+}
+.arch-view-state.ok {
+  color: var(--accent-success);
+}
+.arch-view-state.warn {
+  color: var(--accent-warning);
+}
+.arch-convert-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.arch-convert-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.arch-convert-comp {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  min-width: 72px;
+}
+.arch-convert-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arch-convert-size {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .models-filter-row {
+    flex-wrap: wrap;
+  }
+}
 .models-filter-row {
   display: flex;
   gap: 12px;

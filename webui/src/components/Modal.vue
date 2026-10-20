@@ -4,6 +4,7 @@ import { ref, watch, onBeforeUnmount, nextTick } from 'vue'
 const props = defineProps<{
   title: string
   show: boolean
+  wide?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -91,7 +92,7 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <div v-if="show" class="modal-overlay" @click.self="emit('close')" role="dialog" aria-modal="true" :aria-labelledby="`modal-title-${title}`">
-      <div ref="modalContent" class="modal-content" tabindex="-1">
+      <div ref="modalContent" :class="['modal-content', { 'modal-wide': wide }]" tabindex="-1">
         <div class="modal-header">
           <h3 :id="`modal-title-${title}`" class="modal-title">{{ title }}</h3>
           <button class="modal-close" @click="emit('close')" aria-label="Close modal">&times;</button>
