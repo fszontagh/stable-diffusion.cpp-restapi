@@ -243,7 +243,7 @@ export function suggestVisionComponents(
  *      prefer those whose nameRegex matches the modelName.
  *   2. Exact key match (preserves existing behavior for non-match presets).
  *   3. Among the same set as (1), fall back to the preset without nameRegex.
- *   4. Case-insensitive key match.
+ *   4. Case-insensitive key match, then case-insensitive alias match.
  *   5. Partial match (longest key wins).
  */
 export function findPresetForArchitecture(
@@ -286,6 +286,15 @@ export function findPresetForArchitecture(
   // 4. Case-insensitive key match
   for (const [key, value] of Object.entries(allPresets)) {
     if (key.toLowerCase() === archLower) return value
+  }
+
+  // 4b. Alias match, like the server's ArchitectureManager. sd.cpp reports
+  // names such as "Boogu Image" or "Ernie Image" while the preset keys are
+  // hyphenated ("Boogu-Image"); the presets list the reported names as
+  // aliases. Without this the Generate page found no preset for them and
+  // showed no recommended settings.
+  for (const preset of Object.values(allPresets)) {
+    if (preset.aliases?.some(a => a.toLowerCase() === archLower)) return preset
   }
 
   // 5. Partial match — prefer longest key

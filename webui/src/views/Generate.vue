@@ -192,6 +192,13 @@ const vaeTileRelSizeY = ref(0.0)
 
 // Advanced Guidance (sd_guidance_params_t passthrough)
 const imgCfgScale = ref(-1)         // -1 = inherit cfg_scale
+// Image CFG of 0 gives the reference / init image zero weight, so an edit
+// model ignores its input and generates from the prompt alone. Older saved
+// preferences and queue jobs carry 0 for "unset"; read anything <= 0 (or not
+// a number) as "inherit".
+function normalizeImgCfg(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : -1
+}
 const extraSampleArgs = ref('')      // key=value pass-through
 // Custom sigma schedule: comma list or a preset name (qwen-image-2.1-turbo).
 // Sent as-is; the backend expands presets and parses the list.
@@ -594,7 +601,7 @@ function applySettings(settings: Record<string, unknown>) {
   if (settings.vaeTileOverlap !== undefined) vaeTileOverlap.value = settings.vaeTileOverlap as number
   if (settings.vaeTileRelSizeX !== undefined) vaeTileRelSizeX.value = settings.vaeTileRelSizeX as number
   if (settings.vaeTileRelSizeY !== undefined) vaeTileRelSizeY.value = settings.vaeTileRelSizeY as number
-  if (settings.imgCfgScale !== undefined) imgCfgScale.value = settings.imgCfgScale as number
+  if (settings.imgCfgScale !== undefined) imgCfgScale.value = normalizeImgCfg(settings.imgCfgScale)
   if (settings.extraSampleArgs !== undefined) extraSampleArgs.value = settings.extraSampleArgs as string
   if (settings.customSigmas !== undefined) customSigmas.value = settings.customSigmas as string
   if (settings.pulidIdEmbeddingPath !== undefined) pulidIdEmbeddingPath.value = settings.pulidIdEmbeddingPath as string
@@ -1658,7 +1665,7 @@ function loadJobParams(
     if (params.vae_tile_overlap !== undefined) vaeTileOverlap.value = params.vae_tile_overlap as number
     if (params.vae_tile_rel_size_x !== undefined) vaeTileRelSizeX.value = params.vae_tile_rel_size_x as number
     if (params.vae_tile_rel_size_y !== undefined) vaeTileRelSizeY.value = params.vae_tile_rel_size_y as number
-    if (params.img_cfg_scale !== undefined) imgCfgScale.value = params.img_cfg_scale as number
+    if (params.img_cfg_scale !== undefined) imgCfgScale.value = normalizeImgCfg(params.img_cfg_scale)
     if (params.extra_sample_args !== undefined) extraSampleArgs.value = params.extra_sample_args as string
     if (Array.isArray(params.custom_sigmas)) customSigmas.value = (params.custom_sigmas as number[]).join(', ')
     if (params.image_preprocess !== undefined) imagePreprocess.value = params.image_preprocess as string
@@ -1807,8 +1814,8 @@ async function handleSubmit() {
     }
 
     // Advanced guidance (sd_guidance_params_t passthrough)
-    // -1 = inherit cfg_scale, so only send when the user explicitly overrode.
-    if (imgCfgScale.value !== -1) {
+    // Inherit cfg_scale unless the user set a positive override.
+    if (normalizeImgCfg(imgCfgScale.value) > 0) {
       baseParams.img_cfg_scale = imgCfgScale.value
     }
     if (extraSampleArgs.value.trim()) {
@@ -2466,7 +2473,7 @@ async function handleSubmit() {
             <div class="form-group">
               <label class="form-label">Image CFG (-1 = inherit cfg_scale)</label>
               <input v-model.number="imgCfgScale" type="number" class="form-input" step="0.5" min="-1" max="20" />
-              <div class="form-hint">Maps to sd_guidance_params_t.img_cfg.</div>
+              <div class="form-hint">Maps to sd_guidance_params_t.img_cfg. Leave at -1 for editing: 0 or less is treated as -1, since an image CFG of 0 makes the model ignore the input image.</div>
             </div>
             <div class="form-group">
               <label class="form-label">Extra Sample Args</label>
