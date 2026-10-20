@@ -129,6 +129,7 @@ Generation bodies (`/txt2img`, `/img2img`, `/txt2vid`, `/upscale`) and model loa
 - `downloads[]`: the Downloads page catalog (`source` huggingface / url / civitai, `repo_id`, `filename`, `subfolder`, `bundle: "directory"`, `target_type`, `recommended`, `notes`)
 
 After changing downloads run `scripts/check_download_links.py` (`--anonymous` to see what users without an HF token get; gated links report 401/403).
+Also run `scripts/check_catalog_duplicates.py`: it flags a file listed under two destinations (same SHA-256) and the same file name from two sources (e.g. `Qwen3VL-8B` vs `Qwen3-VL-8B`), which would land twice on disk.
 
 ### Static file serving
 

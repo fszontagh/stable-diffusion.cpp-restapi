@@ -1336,8 +1336,9 @@
           "component": "llm",
           "target_type": "llm",
           "source": "huggingface",
-          "repo_id": "Comfy-Org/Krea-2",
-          "filename": "text_encoders/qwen3vl_4b_bf16.safetensors"
+          "repo_id": "Comfy-Org/Mage-Flow",
+          "filename": "text_encoders/qwen3vl_4b_bf16.safetensors",
+          "subfolder": "Qwen3-VL-4B-Instruct"
         }
       ]
     },
@@ -1434,8 +1435,9 @@
           "component": "llm",
           "target_type": "llm",
           "source": "huggingface",
-          "repo_id": "Comfy-Org/Krea-2",
-          "filename": "text_encoders/qwen3vl_4b_bf16.safetensors"
+          "repo_id": "Comfy-Org/Mage-Flow",
+          "filename": "text_encoders/qwen3vl_4b_bf16.safetensors",
+          "subfolder": "Qwen3-VL-4B-Instruct"
         }
       ]
     },
@@ -1659,8 +1661,9 @@
           "component": "llm",
           "target_type": "llm",
           "source": "huggingface",
-          "repo_id": "Comfy-Org/Krea-2",
-          "filename": "text_encoders/qwen3vl_4b_bf16.safetensors"
+          "repo_id": "Comfy-Org/Mage-Flow",
+          "filename": "text_encoders/qwen3vl_4b_bf16.safetensors",
+          "subfolder": "Qwen3-VL-4B-Instruct"
         }
       ]
     },
@@ -1772,7 +1775,7 @@
         "llm": "Qwen3-VL-8B-Instruct (safetensors or GGUF)"
       },
       "optionalComponents": {
-        "llm_vision": "Qwen3-VL-8B-Instruct/mmproj-F16.gguf - required for image editing when the LLM is a GGUF",
+        "llm_vision": "Qwen3-VL-8B-Instruct/mmproj-Qwen3VL-8B-Instruct-F16.gguf - required for image editing when the LLM is a GGUF",
         "taesd": "TAEQI2.1 (taeqi2_1.safetensors) - fast decode / previews"
       },
       "loadOptions": {
@@ -1877,14 +1880,14 @@
         },
         {
           "id": "llm-mmproj",
-          "label": "Qwen3-VL-8B-Instruct mmproj-F16.gguf (needed for editing with a GGUF LLM)",
+          "label": "Qwen3-VL-8B-Instruct mmproj-Qwen3VL-8B-Instruct-F16.gguf (needed for editing with a GGUF LLM)",
           "component": "llm_vision",
           "target_type": "llm",
           "source": "huggingface",
-          "repo_id": "unsloth/Qwen3-VL-8B-Instruct-GGUF",
-          "filename": "mmproj-F16.gguf",
+          "repo_id": "Qwen/Qwen3-VL-8B-Instruct-GGUF",
+          "filename": "mmproj-Qwen3VL-8B-Instruct-F16.gguf",
           "subfolder": "Qwen3-VL-8B-Instruct",
-          "notes": "Same file as the Boogu-Image mmproj entry - lands at Qwen3-VL-8B-Instruct/mmproj-F16.gguf on disk. Downloading it from either arch's card is a no-op if the other already fetched it."
+          "notes": "Official Qwen mmproj, the same file for every Qwen3-VL-8B architecture, so downloading it from any card is a no-op if another already fetched it."
         },
         {
           "id": "taesd-taeqi2-1",
@@ -1910,7 +1913,7 @@
         "llm": "Qwen3-VL-8B-Instruct (safetensors or GGUF)"
       },
       "optionalComponents": {
-        "llm_vision": "Qwen3-VL-8B-Instruct/mmproj-F16.gguf - required for image editing when the LLM is a GGUF",
+        "llm_vision": "Qwen3-VL-8B-Instruct/mmproj-Qwen3VL-8B-Instruct-F16.gguf - required for image editing when the LLM is a GGUF",
         "taesd": "TAEQI2.1 (taeqi2_1.safetensors) - fast decode / previews"
       },
       "loadOptions": {
@@ -1954,7 +1957,8 @@
           "repo_id": "unsloth/Qwen-Image-2.1-Turbo-GGUF",
           "filename": "qwen-image-2.1-turbo-Q4_K_M.gguf",
           "recommended": true,
-          "notes": "Community GGUF conversion (unsloth)."
+          "notes": "Community GGUF conversion (unsloth).",
+          "subfolder": "Qwen-Image-2.1"
         },
         {
           "id": "diffusion-q8",
@@ -1964,7 +1968,8 @@
           "source": "huggingface",
           "repo_id": "unsloth/Qwen-Image-2.1-Turbo-GGUF",
           "filename": "qwen-image-2.1-turbo-Q8_0.gguf",
-          "notes": "Community GGUF conversion (unsloth)."
+          "notes": "Community GGUF conversion (unsloth).",
+          "subfolder": "Qwen-Image-2.1"
         },
         {
           "id": "diffusion-bf16",
@@ -1975,7 +1980,20 @@
           "repo_id": "Comfy-Org/Qwen-Image-2.1",
           "filename": "diffusion_models/qwen_image_2.1_turbo_bf16.safetensors",
           "size_bytes": 14230280616,
-          "notes": "Original weights, full quality. Needs a lot of VRAM; use max_vram or a quant on smaller GPUs."
+          "notes": "Original weights, full quality. Needs a lot of VRAM; use max_vram or a quant on smaller GPUs.",
+          "subfolder": "Qwen-Image-2.1"
+        },
+        {
+          "id": "diffusion-int8",
+          "label": "Qwen-Image-2.1-Turbo (INT8 convrot safetensors, ~7.3 GB)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Qwen-Image-2.1",
+          "filename": "diffusion_models/qwen_image_2.1_turbo_int8_convrot.safetensors",
+          "subfolder": "Qwen-Image-2.1",
+          "size_bytes": 7256787829,
+          "notes": "Half the size of bf16 with close to bf16 quality; the format sd.cpp's own examples use. Needs the patched GGML build (the default here), not -DSD_USE_UPSTREAM_GGML=ON."
         },
         {
           "id": "vae",
@@ -2012,15 +2030,27 @@
           "notes": "Original weights, full quality. Needs a lot of VRAM; use max_vram or a quant on smaller GPUs. Shared with other architectures; a second download of the same file is a no-op."
         },
         {
+          "id": "llm-qwen3vl-8b-int8",
+          "label": "Qwen3-VL-8B-Instruct (INT8 convrot safetensors, ~9.4 GB)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "Comfy-Org/Qwen-Image-2.1",
+          "filename": "text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+          "subfolder": "Qwen3-VL-8B-Instruct",
+          "size_bytes": 9350798360,
+          "notes": "Half the size of the bf16 text encoder. Needs the patched GGML build (the default here). Image editing with a safetensors LLM does not need the mmproj file."
+        },
+        {
           "id": "llm-mmproj",
-          "label": "Qwen3-VL-8B-Instruct mmproj-F16.gguf (needed for editing with a GGUF LLM)",
+          "label": "Qwen3-VL-8B-Instruct mmproj-Qwen3VL-8B-Instruct-F16.gguf (needed for editing with a GGUF LLM)",
           "component": "llm_vision",
           "target_type": "llm",
           "source": "huggingface",
-          "repo_id": "unsloth/Qwen3-VL-8B-Instruct-GGUF",
-          "filename": "mmproj-F16.gguf",
+          "repo_id": "Qwen/Qwen3-VL-8B-Instruct-GGUF",
+          "filename": "mmproj-Qwen3VL-8B-Instruct-F16.gguf",
           "subfolder": "Qwen3-VL-8B-Instruct",
-          "notes": "Same file as the Boogu-Image mmproj entry - lands at Qwen3-VL-8B-Instruct/mmproj-F16.gguf on disk. Downloading it from either arch's card is a no-op if the other already fetched it."
+          "notes": "Official Qwen mmproj, the same file for every Qwen3-VL-8B architecture, so downloading it from any card is a no-op if another already fetched it."
         },
         {
           "id": "taesd-taeqi2-1",
@@ -3602,8 +3632,8 @@
           "component": "llm",
           "target_type": "llm",
           "source": "huggingface",
-          "repo_id": "unsloth/Qwen3-VL-8B-Instruct-GGUF",
-          "filename": "Qwen3-VL-8B-Instruct-Q4_K_M.gguf",
+          "repo_id": "Qwen/Qwen3-VL-8B-Instruct-GGUF",
+          "filename": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
           "subfolder": "Qwen3-VL-8B-Instruct",
           "recommended": true,
           "notes": "Shared with Boogu-Image."
@@ -3737,11 +3767,10 @@
           "component": "vae",
           "target_type": "vae",
           "source": "huggingface",
-          "repo_id": "nvidia/PiD",
-          "filename": "checkpoints/ae.safetensors",
-          "subfolder": "PiD",
+          "repo_id": "Comfy-Org/z_image_turbo",
+          "filename": "split_files/vae/ae.safetensors",
           "recommended": true,
-          "notes": "For Flux.1 / Z-Image PiD checkpoints."
+          "notes": "For Flux.1 / Z-Image PiD checkpoints. The same file as the Flux VAE of the other architectures."
         },
         {
           "id": "vae-flux2",
@@ -3782,7 +3811,7 @@
         "llm": "Qwen3-VL-8B-Instruct (GGUF)"
       },
       "optionalComponents": {
-        "llm_vision": "Qwen3-VL-8B-Instruct/mmproj-F16.gguf - only for Boogu Image Edit"
+        "llm_vision": "Qwen3-VL-8B-Instruct/mmproj-Qwen3VL-8B-Instruct-F16.gguf - only for Boogu Image Edit"
       },
       "loadOptions": {
         "flash_attn": true,
@@ -3847,8 +3876,8 @@
           "component": "llm",
           "target_type": "llm",
           "source": "huggingface",
-          "repo_id": "unsloth/Qwen3-VL-8B-Instruct-GGUF",
-          "filename": "Qwen3-VL-8B-Instruct-Q4_K_M.gguf",
+          "repo_id": "Qwen/Qwen3-VL-8B-Instruct-GGUF",
+          "filename": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
           "subfolder": "Qwen3-VL-8B-Instruct",
           "recommended": true
         },
@@ -3866,14 +3895,14 @@
         },
         {
           "id": "llm-vision-mmproj",
-          "label": "Qwen3-VL-8B-Instruct mmproj-F16.gguf (needed for the Edit variant)",
+          "label": "Qwen3-VL-8B-Instruct mmproj-Qwen3VL-8B-Instruct-F16.gguf (needed for the Edit variant)",
           "component": "llm_vision",
           "target_type": "llm",
           "source": "huggingface",
-          "repo_id": "unsloth/Qwen3-VL-8B-Instruct-GGUF",
-          "filename": "mmproj-F16.gguf",
+          "repo_id": "Qwen/Qwen3-VL-8B-Instruct-GGUF",
+          "filename": "mmproj-Qwen3VL-8B-Instruct-F16.gguf",
           "subfolder": "Qwen3-VL-8B-Instruct",
-          "notes": "Same file the Qwen-Image-2.1 mmproj entry uses; lands at Qwen3-VL-8B-Instruct/mmproj-F16.gguf. Downloading from either arch's card is a no-op if the other already fetched it."
+          "notes": "Official Qwen mmproj, the same file for every Qwen3-VL-8B architecture, so downloading it from any card is a no-op if another already fetched it."
         }
       ],
       "componentScoring": {
