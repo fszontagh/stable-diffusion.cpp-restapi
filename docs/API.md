@@ -2351,7 +2351,7 @@ Get detailed descriptions of all load options including labels, types, defaults,
 
 ### `POST /convert`
 
-Convert a model to GGUF format with specified quantization.
+Convert a model to GGUF format with specified quantization. Any tensor file sd.cpp can read works, including LLM text encoders (the result is for sd.cpp use, not llama.cpp).
 
 **Request:**
 
@@ -2367,10 +2367,11 @@ Convert a model to GGUF format with specified quantization.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `input_path` | string | Yes | Path to input model file |
+| `input_path` | string | Yes | Path to the input model: a file, or a sharded folder (`model.safetensors.index.json` or diffusers layout). With `model_type` it is a name from `/models`. |
+| `model_type` | string | No | `checkpoint`, `diffusion`, `vae`, `lora`, `clip`, `t5`, `llm`, ... Resolves `input_path` as a model name of that type. |
 | `output_type` | string | Yes | Quantization type (see `/options` for list) |
-| `output_path` | string | No | Output path (auto-generated if not provided) |
-| `vae_path` | string | No | VAE to bake into the model |
+| `output_path` | string | No | Output path. A relative path keeps only its file name and lands next to the input. Default: `<model>.<output_type>.gguf` next to the input (for a folder, named after the folder). |
+| `vae_path` | string | No | VAE to bake into the model: a name from the VAE list or an absolute path |
 | `tensor_type_rules` | string | No | Custom tensor quantization rules |
 | `title` | string | No | Optional display title attached to the queue job (same semantics as `/txt2img`). |
 

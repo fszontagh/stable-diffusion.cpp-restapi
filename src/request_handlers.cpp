@@ -1988,27 +1988,29 @@ void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Respo
             body["input_path"] = input_path;
         }
 
-        // Check if the model is an LLM - LLM conversion is not supported by sd.cpp
-        // LLM re-quantization requires llama.cpp's llama-quantize tool instead
-        auto paths_config = model_manager_.get_paths_config();
-        if (paths_config.contains("llm") && !paths_config["llm"].is_null()) {
-            std::string llm_base_path = paths_config["llm"].get<std::string>();
-            if (!llm_base_path.empty()) {
-                fs::path input_fs(input_path);
-                fs::path llm_fs(llm_base_path);
-                // Check if input path is under LLM directory
-                auto input_canonical = fs::weakly_canonical(input_fs);
-                auto llm_canonical = fs::weakly_canonical(llm_fs);
-                std::string input_str = input_canonical.string();
-                std::string llm_str = llm_canonical.string();
-                if (input_str.find(llm_str) == 0) {
-                    send_error(res, "LLM model conversion is not supported. The sd.cpp convert function only works with Stable Diffusion models. To re-quantize LLM models, use llama.cpp's llama-quantize tool instead.", 400);
+        // Directory models (HF bundles with model.safetensors.index.json, or
+        // diffusers folders) are read by sd.cpp as a whole. Drop a trailing
+        // separator so the folder name works as the output stem below.
+        while (input_path.size() > 1 && (input_path.back() == '/' || input_path.back() == '\\')) {
+            input_path.pop_back();
+        }
+        body["input_path"] = input_path;
+
+        // vae_path may be a name from the VAE list; sd.cpp needs the full path.
+        if (body.contains("vae_path") && body["vae_path"].is_string() &&
+            !body["vae_path"].get<std::string>().empty()) {
+            std::string vae = body["vae_path"].get<std::string>();
+            if (!fs::path(vae).is_absolute()) {
+                auto vae_info = model_manager_.get_model(vae, ModelType::VAE);
+                if (!vae_info) {
+                    send_error(res, "VAE not found: '" + vae + "'", 404);
                     return;
                 }
+                body["vae_path"] = vae_info->full_path;
             }
         }
 
-        // Generate output path if not provided. Default naming: modelname.quanttype.gguf
+        // Default output name: <model>.<quant type>.gguf next to the input.
         std::string output_path;
         if (body.contains("output_path") && !body["output_path"].get<std::string>().empty()) {
             output_path = body["output_path"].get<std::string>();
@@ -2023,10 +2025,16 @@ void RequestHandlers::handle_convert(const httplib::Request& req, httplib::Respo
             if (!output_p.is_absolute()) {
                 output_path = (fs::path(input_path).parent_path() / output_p.filename()).string();
             }
-        } else {
+        }
+        // A missing or nameless output (".q8_0.gguf", as produced for a
+        // folder model by older clients) gets the default name.
+        if (output_path.empty() || fs::path(output_path).stem().string().empty() ||
+            fs::path(output_path).filename().string().front() == '.') {
             // Generate default output path
             fs::path input_p(input_path);
-            std::string stem = input_p.stem().string();
+            std::error_code ec;
+            std::string stem = fs::is_directory(input_p, ec) ? input_p.filename().string()
+                                                             : input_p.stem().string();
             // Remove any existing quantization suffix from stem (e.g., .q8_0)
             size_t quant_pos = stem.rfind('.');
             if (quant_pos != std::string::npos) {
