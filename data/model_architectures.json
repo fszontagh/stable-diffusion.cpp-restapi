@@ -5944,7 +5944,6 @@
           "notes": "Gated repo: accept the license on huggingface.co and set an HF token in Settings > Integrations."
         }
       ]
-    }
     },
     "Moss-Image-Base": {
       "name": "MOSS Image Base",
