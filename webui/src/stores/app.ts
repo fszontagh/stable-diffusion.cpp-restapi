@@ -268,6 +268,8 @@ export const useAppStore = defineStore('app', () => {
   const serverGitCommit = computed(() => health.value?.git_commit ?? 'unknown')
   const upscalerLoaded = computed(() => health.value?.upscaler_loaded ?? false)
   const upscalerName = computed(() => health.value?.upscaler_name ?? null)
+  // Server-authoritative: model takes ref_images as conditioning (not init_image strength).
+  const supportsRefImageConditioning = computed(() => health.value?.supports_ref_image_conditioning ?? false)
 
   // Feature flags
   // True when the linked sd.cpp has SeFi-Image support compiled in
@@ -1126,6 +1128,7 @@ export const useAppStore = defineStore('app', () => {
     serverGitCommit,
     upscalerLoaded,
     upscalerName,
+    supportsRefImageConditioning,
     sefiImageEnabled,
     queueStats,
     samplers,

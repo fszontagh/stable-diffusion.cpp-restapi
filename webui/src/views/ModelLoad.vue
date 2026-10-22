@@ -150,6 +150,11 @@ const clipSuggestions = computed(() =>
 const t5Suggestions = computed(() =>
   suggestComponents('t5', currentArchitecture.value, modelWeightType.value, t5Models.value)
 )
+// Connectors files live in the T5 folder. Ranked by the preset's scoring
+// rules; presets without rules (LTX) get no suggestion and keep the manual pick.
+const connectorSuggestions = computed(() =>
+  suggestComponents('embeddings_connectors', currentArchitecture.value, modelWeightType.value, t5Models.value)
+)
 const llmSuggestions = computed(() =>
   suggestComponents('llm', currentArchitecture.value, modelWeightType.value, llmModels.value)
 )
@@ -210,7 +215,7 @@ function onArchitectureChange(archId: string) {
 
 // Auto-select suggested component
 function autoSelectComponent(
-  field: 'vae' | 'clip_l' | 'clip_g' | 't5xxl' | 'llm',
+  field: 'vae' | 'clip_l' | 'clip_g' | 't5xxl' | 'llm' | 'embeddings_connectors',
   suggestions: ComponentSuggestion[]
 ) {
   const suggested = suggestions.find(s => s.isSuggested)
@@ -425,6 +430,11 @@ watch(selectedArchitecture, () => {
     }
     if (requiredComponents.value.llm) {
       autoSelectComponent('llm', llmSuggestions.value)
+    }
+    // LLaDA: the -edit connectors work for text-to-image too, and editing
+    // fails without them, so they are the pick when installed.
+    if (requiredComponents.value.embeddings_connectors) {
+      autoSelectComponent('embeddings_connectors', connectorSuggestions.value)
     }
     // Image editing needs the vision projector; without it sd.cpp loads the
     // LLM text-only and edits fail at encode time.
@@ -713,7 +723,7 @@ function onKeepAllInRam(e: Event) {
             </label>
             <select v-model="loadParams.embeddings_connectors" class="form-select">
               <option value="">Select connectors file...</option>
-              <option v-for="m in t5Models" :key="m.name" :value="m.name">{{ m.name }}</option>
+              <option v-for="s in connectorSuggestions" :key="s.name" :value="s.name">{{ s.name }}{{ s.isSuggested ? ' \u2605' : '' }}</option>
             </select>
             <small class="form-hint">{{ requiredComponents.embeddings_connectors || optionalComponents.embeddings_connectors }} (listed from the T5 folder)</small>
           </div>

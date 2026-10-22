@@ -203,51 +203,46 @@ else()
     # examples/server/frontend submodule sometimes points at deleted commits and
     # we don't link the example server, so we skip it.
     set(SDCPP_SUBMODULES "ggml" "thirdparty/libwebm" "thirdparty/libwebp")
-    # Pinned to leejet/master HEAD (c179075 — bumped from 854bebf).
-    # New surface in this bump:
-    #   - PR #1707 (03e9a22): SeFi-Image support merged upstream. The
-    #     previous SD_SEFI_IMAGE fork-branch option is gone — every
-    #     leejet build now detects/serves SeFi-Image natively. WebUI
-    #     presets (SeFi-Image-Turbo / -Base / -RL) continue to work.
-    #   - PR #1705 (8caa3f9): Krea2 architecture (transformer + Wan2.1
-    #     VAE + Qwen3-VL 4B). New preset added in
-    #     data/model_architectures.json.
-    #   - PR #1669 (2938272): logit-normal scheduler enum value added.
-    #     Surfaced in include/api_schemas/common.hpp SCHEDULER_VALUES.
-    #   - PR #1684 (41f7acb): guidance_schedule (internal — affects how
-    #     guidance is computed during sampling). No public-API change.
-    #   - PR #1713 (d77b8f5): Qwen-Image/Wan VAE diffusers naming
-    #     support. Fixes load failures for converted VAE files.
-    #   - PR #1714 (7b5f34d): Qwen2D VAE support.
-    #   - PR #1698 (f440ad9): mmap read-only fix.
-    #   - PR #1711 (ec4cb81): TAEHV encoding fix for image models.
-    # Earlier notable changes (from the 854bebf bump still apply):
-    #   - PR #1687 (perf): adds bool `eager_load` to sd_ctx_params_t.
-    #     Pre-loads all params into the params backend at model-load time
-    #     instead of lazily on first use. Pairs naturally with
-    #     stream_layers on a CPU backend — the first generation no longer
-    #     pays for lazy fault-in. Wired in ModelLoadParams + LoadOptions
-    #     schema + WebUI.
-    #   - PR #1693 (CLI only): --prompt-file / --negative-prompt-file
-    #     flags. The restapi doesn't shell out to sd-cli, so no surface
-    #     change here — noted for completeness.
-    # Earlier notable changes (from the b12098f bump still apply):
-    #   - PR #1654 routes CPU placement through backend specs, deleting
-    #     the per-component bool flags. Restapi exposes the new
-    #     `backend` / `params_backend` strings directly — see the
-    #     BackendAssignmentEditor in the WebUI.
-    #   - PR #1660 changes ctx_params.max_vram from float to const char*.
-    #   - PR #1595 adds PuLID-Flux identity injection.
-    #   - PR #1629 adds RPC distributed-backend support.
-    #   - PR #1124 adds sd_cancel_generation().
-    #   - PR #1688 adds Boogu Image architecture.
+    # Pinned to leejet/master HEAD (a77d3623 — bumped from 8cd731e7, Oct 21 2026).
+    # New surface in this bump (19 commits, Oct 15–21):
+    #   - stable-diffusion.h: sd_ctx_supports_ref_image_conditioning() added.
+    #     Returns true for models that consume ref_images as conditioning inputs
+    #     (Flux Kontext, Krea2, Fibo 2.0 Edit Turbo, etc.). Wired into the
+    #     restapi's model capabilities JSON and health schema.
+    #   - stable-diffusion.h: sd_add_rpc_servers() added. Registers RPC
+    #     endpoints before sd_list_devices() so they appear in device listings.
+    #     Noted in LIBRARY_REFERENCE.md for completeness (restapi has no
+    #     /devices endpoint yet).
+    #   - stable-diffusion.h: sd_get_model_version_name() is now DECLARED
+    #     NATIVELY in the upstream header (was injected via CMake patch before
+    #     this commit). The patch block below has been removed; the function
+    #     compiles straight from the upstream source.
+    #   - PR #2180 (2e2ba3f): Fibo 2.0 Dev and Edit Turbo (VERSION_FIBO2).
+    #     New preset added in data/model_architectures.json.
+    #   - PR #2148 (68285df): MOSS Image Base and SFT (VERSION_MOSS_IMAGE).
+    #     New preset added in data/model_architectures.json.
+    #   - PR #2076 (939895f): progress bar now reports remaining time via the
+    #     existing `time` parameter of sd_progress_cb_t (no signature change).
+    #   - PR #2164 (845646b): ADetailer wired into the upstream example server.
+    #     Restapi has its own ADetailer integration; no surface change here.
+    #   - PR #2176 (0518b34): recipe-based model management in the upstream
+    #     example server. Restapi has its own model/arch management.
+    #   - PR #2183/2182/2175/2162/2160/2159/2147: internal fixes and ggml sync.
+    # Earlier notable changes (from the 8cd731e7 bump still apply):
+    #   - PR #1707 (03e9a22): SeFi-Image support merged upstream.
+    #   - PR #1705 (8caa3f9): Krea2 architecture.
+    #   - PR #1687: eager_load in sd_ctx_params_t.
+    #   - PR #1654: backend / params_backend routing.
+    #   - PR #1595: PuLID-Flux identity injection.
+    #   - PR #1629: RPC distributed-backend support.
+    #   - PR #1124: sd_cancel_generation().
     # GIT_SHALLOW must be FALSE because GIT_TAG is a commit SHA — shallow
     # clone with a SHA fails (`fatal: reference is not a tree`). Full clone
     # adds ~25 MB to the build context but is reliable.
     FetchContent_Declare(
         stable-diffusion
         GIT_REPOSITORY https://github.com/leejet/stable-diffusion.cpp.git
-        GIT_TAG        8cd731e7b4667eb8f40a153315b9a7125d09a58d
+        GIT_TAG        a77d3623180b2bc1886f3dd04c0aa04156a987ef
         GIT_SHALLOW    FALSE
         GIT_SUBMODULES ${SDCPP_SUBMODULES}
         GIT_SUBMODULES_RECURSE TRUE
@@ -259,85 +254,10 @@ endif()
 if(NOT SDCPP_USING_LOCAL_SOURCE AND NOT stable-diffusion_POPULATED)
     FetchContent_Populate(stable-diffusion)
 
-    # Apply sd_get_model_version_name patch directly. The guard inspects the
-    # actual source content rather than a marker file — a marker file is too
-    # easy to fool when developers switch fork branches via `git reset --hard`
-    # in the _deps tree (the marker is untracked, survives the reset, then
-    # CMake skips patching even though the function is no longer present).
-    # Locate header + impl up-front; both paths moved around sd.cpp 28ef93c.
-    if(EXISTS "${stable-diffusion_SOURCE_DIR}/include/stable-diffusion.h")
-        set(SD_HEADER_PATH "${stable-diffusion_SOURCE_DIR}/include/stable-diffusion.h")
-    else()
-        set(SD_HEADER_PATH "${stable-diffusion_SOURCE_DIR}/stable-diffusion.h")
-    endif()
-    if(EXISTS "${stable-diffusion_SOURCE_DIR}/src/stable-diffusion.cpp")
-        set(SD_CPP_PATH "${stable-diffusion_SOURCE_DIR}/src/stable-diffusion.cpp")
-    else()
-        set(SD_CPP_PATH "${stable-diffusion_SOURCE_DIR}/stable-diffusion.cpp")
-    endif()
-
-    # Patch header — add function declaration if not already present.
-    file(READ "${SD_HEADER_PATH}" SD_HEADER_CONTENT)
-    string(FIND "${SD_HEADER_CONTENT}" "sd_get_model_version_name" SD_HEADER_PATCHED)
-    if(SD_HEADER_PATCHED EQUAL -1)
-        message(STATUS "Patching ${SD_HEADER_PATH} — adding sd_get_model_version_name declaration")
-        string(REPLACE
-            "SD_API enum scheduler_t sd_get_default_scheduler(const sd_ctx_t* sd_ctx, enum sample_method_t sample_method);"
-            "SD_API enum scheduler_t sd_get_default_scheduler(const sd_ctx_t* sd_ctx, enum sample_method_t sample_method);\n\n// Get the model architecture/version name (e.g., \"SD 1.x\", \"SDXL\", \"Flux\", \"Z-Image\", etc.)\nSD_API const char* sd_get_model_version_name(const sd_ctx_t* sd_ctx);"
-            SD_HEADER_CONTENT "${SD_HEADER_CONTENT}")
-        file(WRITE "${SD_HEADER_PATH}" "${SD_HEADER_CONTENT}")
-    endif()
-
-    # Patch impl — add implementation if not already present. The primary
-    # attempt uses `return DISCRETE_SCHEDULER;\n}` as an anchor, which was
-    # the closing brace of str_to_scheduler in older sd.cpp checkouts. When
-    # the pipeline split (leejet PR #1957) reshaped stable-diffusion.cpp the
-    # anchor line stayed but its trailing brace moved, so the REPLACE ends
-    # up being a no-op. Detect that by re-scanning for the function name
-    # after the REPLACE - if it still isn't there, append the impl to the
-    # end of the file, which works regardless of internal restructuring
-    # because model_version_to_str + SDVersion are already in scope via
-    # the pipeline/diffusion_engine.h include stable-diffusion.cpp always
-    # keeps.
-    # CMake bracket-argument [==[...]==] preserves semicolons and \n literals
-    # verbatim; a normal double-quoted string here would list-collapse the
-    # concatenation on semicolons and eat every one of them in the C++ body.
-    set(SD_VERSION_NAME_IMPL [==[
-
-
-// sdcpp-restapi patch: expose loaded-model architecture name to the C API.
-// Injected by the restapi build script; see the accompanying header patch.
-const char* sd_get_model_version_name(const sd_ctx_t* sd_ctx) {
-    if (sd_ctx != nullptr && sd_ctx->sd != nullptr) {
-        if (sd_ctx->sd->version < VERSION_COUNT) {
-            return model_version_to_str[sd_ctx->sd->version];
-        }
-    }
-    return "Unknown";
-}
-]==])
-    file(READ "${SD_CPP_PATH}" SD_CPP_CONTENT)
-    string(FIND "${SD_CPP_CONTENT}" "sd_get_model_version_name" SD_CPP_PATCHED)
-    if(SD_CPP_PATCHED EQUAL -1)
-        message(STATUS "Patching ${SD_CPP_PATH} — adding sd_get_model_version_name impl (anchor pass)")
-        string(REPLACE
-            "    return DISCRETE_SCHEDULER;\n}"
-            "    return DISCRETE_SCHEDULER;\n}${SD_VERSION_NAME_IMPL}"
-            SD_CPP_CONTENT "${SD_CPP_CONTENT}")
-        file(WRITE "${SD_CPP_PATH}" "${SD_CPP_CONTENT}")
-        # Verify the anchor matched. If not, fall back to appending at EOF -
-        # after the pipeline split the `return DISCRETE_SCHEDULER;\n}` line
-        # is no longer immediately followed by a closing brace, so the
-        # REPLACE above misses. EOF append is safe because the function
-        # doesn't reference anything not already visible at the top level
-        # of stable-diffusion.cpp.
-        file(READ "${SD_CPP_PATH}" SD_CPP_CONTENT_RECHECK)
-        string(FIND "${SD_CPP_CONTENT_RECHECK}" "sd_get_model_version_name" SD_CPP_STILL_MISSING)
-        if(SD_CPP_STILL_MISSING EQUAL -1)
-            message(STATUS "Patching ${SD_CPP_PATH} — anchor moved, appending impl at EOF instead")
-            file(APPEND "${SD_CPP_PATH}" "${SD_VERSION_NAME_IMPL}")
-        endif()
-    endif()
+    # sd_get_model_version_name is declared and implemented natively in the
+    # upstream header/source since commit a77d3623 (Oct 21 2026). The CMake
+    # patch that used to inject the declaration + implementation was removed
+    # at that point. No patching needed here.
 
     # Now add the subdirectory
     add_subdirectory(${stable-diffusion_SOURCE_DIR} ${stable-diffusion_BINARY_DIR})

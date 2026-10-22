@@ -2104,6 +2104,9 @@ nlohmann::json ModelManager::get_loaded_models_info() const {
     // isn't fully wired yet.
     result["supports_image_generation"] = context_ != nullptr && sd_ctx_supports_image_generation(context_);
     result["supports_video_generation"] = context_ != nullptr && sd_ctx_supports_video_generation(context_);
+    // True for models that consume ref_images as conditioning inputs (e.g. Flux Kontext,
+    // Krea2, Fibo 2.0 Edit Turbo). Distinct from img2img init_image strength-based editing.
+    result["supports_ref_image_conditioning"] = context_ != nullptr && sd_ctx_supports_ref_image_conditioning(context_);
 
     // Include the load options used when loading the model
     if (!loaded_options_.empty()) {

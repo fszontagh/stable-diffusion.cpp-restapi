@@ -45,3 +45,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# CodeGraph index (local only, never commit)
+.codegraph/

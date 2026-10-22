@@ -123,7 +123,7 @@ Generation bodies (`/txt2img`, `/img2img`, `/txt2vid`, `/upscale`) and model loa
 ### Architecture presets and download catalog
 
 `data/model_architectures.json` (auto-reloaded on change) holds one preset per architecture key:
-- `requiredComponents` / `optionalComponents` (drive the ModelLoad pickers), `loadOptions`, `generationDefaults` (the Generate page's recommended settings; also `custom_sigmas`), `imageEditMode`, `componentScoring` (regex scores for auto-suggest)
+- `requiredComponents` / `optionalComponents` (drive the ModelLoad pickers), `loadOptions`, `generationDefaults` (the Generate page's recommended settings; also `custom_sigmas`), `imageEditMode`, `componentScoring` (regex scores for auto-suggest), `imageEditNeeds` (`[{component, nameRegex, message}]`: files editing needs beyond text-to-image, e.g. LLaDA's `-edit` connectors; the Generate page warns on the Image Edit tab when the loaded file does not match)
 - `aliases`: include the **exact name sd.cpp reports** (e.g. `"Flux.3 Image Klein"`); the server's `ArchitectureManager::get()` tries key, then aliases, then the longest substring match
 - `match: {architecture, nameRegex}`: lets several presets share one reported name (variants such as Turbo/Base); the WebUI matcher in `useArchitectures.ts` prefers a `nameRegex` hit over the plain key
 - `downloads[]`: the Downloads page catalog (`source` huggingface / url / civitai, `repo_id`, `filename`, `subfolder`, `bundle: "directory"`, `target_type`, `recommended`, `notes`)

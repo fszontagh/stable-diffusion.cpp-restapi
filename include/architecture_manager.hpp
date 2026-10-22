@@ -31,6 +31,7 @@ struct ArchitecturePreset {
     // hardcoded per-architecture branches.
     nlohmann::json match;                                // { architecture, nameRegex? }
     nlohmann::json componentScoring;                     // { llm: [{regex, score}, ...], vae: [...] }
+    nlohmann::json imageEditNeeds;                       // [{ component, nameRegex, message }]: files image editing needs
     // Canonical download sources for this architecture. Each entry describes
     // one downloadable file or (with bundle="directory") a whole HF repo tree.
     // Forwarded opaquely to /architectures; the WebUI Downloads page renders

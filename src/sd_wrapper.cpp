@@ -216,6 +216,9 @@ std::string build_error_message(const std::string& base_message) {
     if (sd_error.find("--llm_vision") != std::string::npos) {
         sd_error += " (reload the model with the \"llm_vision\" component set to the LLM's mmproj file)";
     }
+    if (sd_error.find("SigVQ") != std::string::npos) {
+        sd_error += " (reload the model with the \"embeddings_connectors\" component set to the -edit connectors file)";
+    }
     return base_message + ": " + sd_error;
 }
 

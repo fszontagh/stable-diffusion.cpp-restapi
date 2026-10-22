@@ -2066,7 +2066,7 @@
     },
     "LLaDA-Image": {
       "name": "LLaDA-Image",
-      "description": "LLaDA-Image 6B text-to-image and instruction-guided editing. Denoiser is a Lumina2/Z-Image-style NextDiT conditioned by a LLaDA2-MoE diffusion-LLM text encoder, reusing the Flux.2 VAE. Requires a transformer, text encoder, VAE, and an embeddings_connectors file (QueryFormer + text_projection, plus SigVQ image encoder for editing). Two checkpoints ship: base (50 steps) and Turbo (4 steps) - each with its own transformer + text encoder + connectors, only VAE and tokenizer are shared. Added upstream via leejet/stable-diffusion.cpp#1968.",
+      "description": "LLaDA-Image 6B text-to-image and instruction-guided editing. Denoiser is a Lumina2/Z-Image-style NextDiT conditioned by a LLaDA2-MoE diffusion-LLM text encoder, reusing the Flux.2 VAE. Requires a transformer, text encoder, VAE, and an embeddings_connectors file (QueryFormer + text_projection, plus SigVQ image encoder for editing). Two checkpoints ship: this base (50 steps) and Turbo (4 steps, its own card) - each with its own transformer + text encoder + connectors, only VAE and tokenizer are shared. Added upstream via leejet/stable-diffusion.cpp#1968.",
       "aliases": [
         "LLaDA-Image",
         "LLaDA Image",
@@ -2079,7 +2079,7 @@
         "vae": "llada_vae.safetensors (from inclusionAI/LLaDA-Image)",
         "llm": "LLaDA2-MoE text encoder GGUF (llada-image-text_encoder-q8_0.gguf)",
         "tokenizer": "LLaDA2 tokenizer.json (same file for base + Turbo)",
-        "embeddings_connectors": "llada-image-connectors.safetensors (add -edit for image editing; carries SigVQ)"
+        "embeddings_connectors": "llada-image-connectors-edit.safetensors (the -edit file also carries the SigVQ encoder that image editing needs; the plain file is text-to-image only)"
       },
       "optionalComponents": {},
       "loadOptions": {
@@ -2107,24 +2107,22 @@
         ],
         "llm": [
           {
-            "regex": "llada[_.\\-]?image[_.\\-]?(turbo[_.\\-]?)?text[_.\\-]?encoder",
+            "regex": "^(?!.*turbo).*llada[_.\\-]?image[_.\\-]?text[_.\\-]?encoder",
             "score": 110
+          }
+        ],
+        "embeddings_connectors": [
+          {
+            "regex": "^(?!.*turbo).*llada[_.\\-]?image[_.\\-]?connectors[_.\\-]?edit",
+            "score": 120
+          },
+          {
+            "regex": "^(?!.*turbo).*llada[_.\\-]?image[_.\\-]?connectors",
+            "score": 100
           }
         ]
       },
       "downloads": [
-        {
-          "id": "diffusion-turbo-f16",
-          "label": "LLaDA-Image-Turbo transformer (4 steps, F16 GGUF)",
-          "component": "diffusion",
-          "target_type": "diffusion",
-          "source": "huggingface",
-          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
-          "filename": "llada-image-turbo-f16.gguf",
-          "subfolder": "LLaDA-Image-Turbo",
-          "recommended": true,
-          "notes": "Distilled 4-step variant. Recommended for most users."
-        },
         {
           "id": "diffusion-base-f16",
           "label": "LLaDA-Image transformer (50 steps, F16 GGUF)",
@@ -2137,17 +2135,6 @@
           "notes": "Full 50-step base model."
         },
         {
-          "id": "text-encoder-turbo",
-          "label": "LLaDA2-MoE text encoder for Turbo (Q8_0 GGUF)",
-          "component": "llm",
-          "target_type": "llm",
-          "source": "huggingface",
-          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
-          "filename": "llada-image-turbo-text_encoder-q8_0.gguf",
-          "subfolder": "LLaDA-Image-Turbo",
-          "recommended": true
-        },
-        {
           "id": "text-encoder-base",
           "label": "LLaDA2-MoE text encoder for base 50-step (Q8_0 GGUF)",
           "component": "llm",
@@ -2158,28 +2145,6 @@
           "subfolder": "LLaDA-Image"
         },
         {
-          "id": "connectors-turbo-txt2img",
-          "label": "Turbo connectors (text-to-image)",
-          "component": "embeddings_connectors",
-          "target_type": "t5",
-          "source": "huggingface",
-          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
-          "filename": "llada-image-turbo-connectors.safetensors",
-          "subfolder": "LLaDA-Image-Turbo",
-          "recommended": true
-        },
-        {
-          "id": "connectors-turbo-edit",
-          "label": "Turbo connectors + SigVQ (for image editing)",
-          "component": "embeddings_connectors",
-          "target_type": "t5",
-          "source": "huggingface",
-          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
-          "filename": "llada-image-turbo-connectors-edit.safetensors",
-          "subfolder": "LLaDA-Image-Turbo",
-          "notes": "Choose the -edit variant if you want image editing; carries the 2.6 GB SigVQ encoder."
-        },
-        {
           "id": "connectors-base-txt2img",
           "label": "Base connectors (text-to-image)",
           "component": "embeddings_connectors",
@@ -2187,7 +2152,8 @@
           "source": "huggingface",
           "repo_id": "fszontagh/LLaDA-Image-GGUF",
           "filename": "llada-image-connectors.safetensors",
-          "subfolder": "LLaDA-Image"
+          "subfolder": "LLaDA-Image",
+          "notes": "Text-to-image only. Image editing fails with this file (it has no SigVQ encoder); use the -edit file for that."
         },
         {
           "id": "connectors-base-edit",
@@ -2197,7 +2163,9 @@
           "source": "huggingface",
           "repo_id": "fszontagh/LLaDA-Image-GGUF",
           "filename": "llada-image-connectors-edit.safetensors",
-          "subfolder": "LLaDA-Image"
+          "subfolder": "LLaDA-Image",
+          "recommended": true,
+          "notes": "Works for text-to-image and for image editing. Carries the 2.6 GB SigVQ encoder, so it loads a little more than the plain file."
         },
         {
           "id": "vae",
@@ -2223,11 +2191,18 @@
           "recommended": true,
           "notes": "Required. Not embedded in sd.cpp; identical for base and Turbo."
         }
+      ],
+      "imageEditNeeds": [
+        {
+          "component": "embeddings_connectors",
+          "nameRegex": "edit",
+          "message": "Image editing needs the connectors file with the SigVQ encoder (the -edit file). Text-to-image works without it. Reload the model with the -edit file as Embeddings connectors."
+        }
       ]
     },
     "LLaDA-Image-Turbo": {
       "name": "LLaDA-Image-Turbo",
-      "description": "LLaDA-Image Turbo (4-step distilled). Same component slots as LLaDA-Image but its own transformer, text encoder and connectors - do not mix with base files. Downloads live on the LLaDA-Image card.",
+      "description": "LLaDA-Image Turbo (4-step distilled). Same component slots as LLaDA-Image but its own transformer, text encoder and connectors - do not mix with base files.",
       "aliases": [
         "llada-image-turbo",
         "llada_image_turbo"
@@ -2236,7 +2211,7 @@
         "vae": "llada_vae.safetensors (from inclusionAI/LLaDA-Image)",
         "llm": "LLaDA2-MoE text encoder GGUF (llada-image-text_encoder-q8_0.gguf)",
         "tokenizer": "LLaDA2 tokenizer.json (same file for base + Turbo)",
-        "embeddings_connectors": "llada-image-connectors.safetensors (add -edit for image editing; carries SigVQ)"
+        "embeddings_connectors": "llada-image-connectors-edit.safetensors (the -edit file also carries the SigVQ encoder that image editing needs; the plain file is text-to-image only)"
       },
       "optionalComponents": {},
       "loadOptions": {
@@ -2265,12 +2240,100 @@
         ],
         "llm": [
           {
-            "regex": "llada[_.\\-]?image[_.\\-]?(turbo[_.\\-]?)?text[_.\\-]?encoder",
+            "regex": "llada[_.\\-]?image[_.\\-]?turbo[_.\\-]?text[_.\\-]?encoder",
             "score": 110
+          }
+        ],
+        "embeddings_connectors": [
+          {
+            "regex": "llada[_.\\-]?image[_.\\-]?turbo[_.\\-]?connectors[_.\\-]?edit",
+            "score": 120
+          },
+          {
+            "regex": "llada[_.\\-]?image[_.\\-]?turbo[_.\\-]?connectors",
+            "score": 100
           }
         ]
       },
-      "downloads": []
+      "downloads": [
+        {
+          "id": "diffusion-turbo-f16",
+          "label": "LLaDA-Image-Turbo transformer (4 steps, F16 GGUF)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
+          "filename": "llada-image-turbo-f16.gguf",
+          "subfolder": "LLaDA-Image-Turbo",
+          "recommended": true,
+          "notes": "Distilled 4-step variant. Recommended for most users."
+        },
+        {
+          "id": "text-encoder-turbo",
+          "label": "LLaDA2-MoE text encoder for Turbo (Q8_0 GGUF)",
+          "component": "llm",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
+          "filename": "llada-image-turbo-text_encoder-q8_0.gguf",
+          "subfolder": "LLaDA-Image-Turbo",
+          "recommended": true
+        },
+        {
+          "id": "connectors-turbo-txt2img",
+          "label": "Turbo connectors (text-to-image)",
+          "component": "embeddings_connectors",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
+          "filename": "llada-image-turbo-connectors.safetensors",
+          "subfolder": "LLaDA-Image-Turbo",
+          "notes": "Text-to-image only. Image editing fails with this file (it has no SigVQ encoder); use the -edit file for that."
+        },
+        {
+          "id": "connectors-turbo-edit",
+          "label": "Turbo connectors + SigVQ (for image editing)",
+          "component": "embeddings_connectors",
+          "target_type": "t5",
+          "source": "huggingface",
+          "repo_id": "fszontagh/LLaDA-Image-Turbo-GGUF",
+          "filename": "llada-image-turbo-connectors-edit.safetensors",
+          "subfolder": "LLaDA-Image-Turbo",
+          "notes": "Works for text-to-image and for image editing. Carries the 2.6 GB SigVQ encoder, so it loads a little more than the plain file.",
+          "recommended": true
+        },
+        {
+          "id": "vae",
+          "label": "llada_vae.safetensors (from inclusionAI)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "inclusionAI/LLaDA-Image",
+          "filename": "vae/diffusion_pytorch_model.safetensors",
+          "subfolder": "LLaDA-Image",
+          "recommended": true,
+          "notes": "Same file works for both Turbo and base variants."
+        },
+        {
+          "id": "tokenizer",
+          "label": "LLaDA2 tokenizer.json",
+          "component": "tokenizer",
+          "target_type": "llm",
+          "source": "huggingface",
+          "repo_id": "inclusionAI/LLaDA-Image",
+          "filename": "tokenizer/tokenizer.json",
+          "subfolder": "LLaDA-Image",
+          "recommended": true,
+          "notes": "Required. Not embedded in sd.cpp; identical for base and Turbo."
+        }
+      ],
+      "imageEditNeeds": [
+        {
+          "component": "embeddings_connectors",
+          "nameRegex": "edit",
+          "message": "Image editing needs the connectors file with the SigVQ encoder (the -edit file). Text-to-image works without it. Reload the model with the -edit file as Embeddings connectors."
+        }
+      ]
     },
     "Qwen Image Edit": {
       "name": "Qwen-Image-Edit",
@@ -5879,6 +5942,262 @@
           "subfolder": "LTX-2.5",
           "recommended": true,
           "notes": "Gated repo: accept the license on huggingface.co and set an HF token in Settings > Integrations."
+        }
+      ]
+    }
+    },
+    "Moss-Image-Base": {
+      "name": "MOSS Image Base",
+      "description": "OpenMOSS MOSS-Image-Base: DiT image model with a Qwen3.5 9B text encoder, FLUX.2 VAE (or TAE), and an external tokenizer.json. CFG 3, flow_shift 5, 20 steps, 1024×1024.",
+      "aliases": [
+        "MOSS Image",
+        "moss-image-base",
+        "MOSS-Image-Base"
+      ],
+      "requiredComponents": {
+        "llm": "Qwen 3.5 9B text encoder",
+        "tokenizer": "Qwen 3.5 tokenizer.json"
+      },
+      "optionalComponents": {
+        "vae": "FLUX.2 VAE (ae.safetensors or wan_vae equivalent)",
+        "taesd": "TAE preview encoder"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 3.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "flow_shift": 5.0,
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "MOSS Image",
+        "nameRegex": "moss[_\\-]?image[_\\-]?base"
+      },
+      "componentScoring": {
+        "llm": [
+          { "regex": "qwen.*3[._\\-]?5.*9b", "score": 120 },
+          { "regex": "qwen.*9b", "score": 100 },
+          { "regex": "qwen", "score": 70 }
+        ],
+        "vae": [
+          { "regex": "ae\\.safetensors", "score": 100 },
+          { "regex": "flux.*vae|vae.*flux", "score": 90 }
+        ]
+      },
+      "downloads": [
+        {
+          "id": "diffusion-bf16",
+          "label": "MOSS-Image-Base (BF16 safetensors)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "OpenMOSS-Team/MOSS-Image-Base",
+          "filename": "MOSS-Image-Base.safetensors",
+          "subfolder": "Moss-Image",
+          "recommended": true,
+          "notes": "Full BF16 checkpoint. Qwen3.5 9B text encoder + FLUX.2 VAE required separately."
+        },
+        {
+          "id": "vae-flux2",
+          "label": "FLUX.2 VAE (ae.safetensors)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "black-forest-labs/FLUX.1-dev",
+          "filename": "ae.safetensors",
+          "subfolder": "Moss-Image",
+          "notes": "FLUX.2-compatible VAE. Shared with FLUX.2, Fibo 2.0 and similar models."
+        }
+      ]
+    },
+    "Moss-Image-SFT": {
+      "name": "MOSS Image SFT",
+      "description": "OpenMOSS MOSS-Image-SFT: supervised fine-tuned variant of MOSS Image Base. Same components — Qwen3.5 9B text encoder, FLUX.2 VAE (or TAE), external tokenizer.json. Produces higher instruction-following quality.",
+      "aliases": [
+        "moss-image-sft",
+        "MOSS-Image-SFT"
+      ],
+      "requiredComponents": {
+        "llm": "Qwen 3.5 9B text encoder",
+        "tokenizer": "Qwen 3.5 tokenizer.json"
+      },
+      "optionalComponents": {
+        "vae": "FLUX.2 VAE (ae.safetensors or wan_vae equivalent)",
+        "taesd": "TAE preview encoder"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 3.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "flow_shift": 5.0,
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "MOSS Image",
+        "nameRegex": "moss[_\\-]?image[_\\-]?sft"
+      },
+      "componentScoring": {
+        "llm": [
+          { "regex": "qwen.*3[._\\-]?5.*9b", "score": 120 },
+          { "regex": "qwen.*9b", "score": 100 },
+          { "regex": "qwen", "score": 70 }
+        ],
+        "vae": [
+          { "regex": "ae\\.safetensors", "score": 100 },
+          { "regex": "flux.*vae|vae.*flux", "score": 90 }
+        ]
+      },
+      "downloads": [
+        {
+          "id": "diffusion-bf16",
+          "label": "MOSS-Image-SFT (BF16 safetensors)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "OpenMOSS-Team/MOSS-Image-SFT",
+          "filename": "MOSS-Image-SFT.safetensors",
+          "subfolder": "Moss-Image",
+          "recommended": true,
+          "notes": "SFT variant with improved instruction following. Same components as Base."
+        }
+      ]
+    },
+    "Fibo2-Dev": {
+      "name": "Fibo 2.0 Dev",
+      "description": "BRIA AI Fibo 2.0 Dev: text-to-image and native reference-image editing. Requires FLUX.2 VAE, Qwen3-VL 4B text encoder, and optionally a separate vision projector for GGUF LLM variants. 20 steps, CFG 5, flow_shift supported.",
+      "aliases": [
+        "Fibo 2.0",
+        "fibo2",
+        "fibo2-dev",
+        "Fibo2 Dev"
+      ],
+      "requiredComponents": {
+        "vae": "FLUX.2 VAE (ae.safetensors)",
+        "llm": "Qwen3-VL 4B text encoder"
+      },
+      "optionalComponents": {
+        "llm_vision": "Vision projector (required for separate GGUF text encoders)"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true
+      },
+      "generationDefaults": {
+        "cfg_scale": 5.0,
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "Fibo2",
+        "nameRegex": "fibo[_\\-]?2[_\\-]?dev|fibo2[_\\-]?dev"
+      },
+      "componentScoring": {
+        "llm": [
+          { "regex": "qwen3[._\\-]?vl[._\\-]?4b", "score": 120 },
+          { "regex": "qwen3[._\\-]?vl", "score": 100 },
+          { "regex": "qwen3", "score": 80 }
+        ],
+        "vae": [
+          { "regex": "ae\\.safetensors", "score": 100 },
+          { "regex": "flux.*vae|vae.*flux", "score": 90 }
+        ]
+      },
+      "downloads": [
+        {
+          "id": "diffusion-bf16",
+          "label": "Fibo 2.0 Dev (BF16)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "briaai/Fibo-2.0-dev",
+          "filename": "fibo-2.0-dev.safetensors",
+          "subfolder": "Fibo2",
+          "recommended": true,
+          "notes": "Official BF16 weights from BRIA AI. Requires FLUX.2 VAE + Qwen3-VL 4B."
+        },
+        {
+          "id": "vae-flux2",
+          "label": "FLUX.2 VAE (ae.safetensors)",
+          "component": "vae",
+          "target_type": "vae",
+          "source": "huggingface",
+          "repo_id": "black-forest-labs/FLUX.1-dev",
+          "filename": "ae.safetensors",
+          "subfolder": "Fibo2",
+          "notes": "FLUX.2-compatible VAE. Shared with FLUX.2, MOSS Image and similar models."
+        }
+      ]
+    },
+    "Fibo2-Edit-Turbo": {
+      "name": "Fibo 2.0 Edit Turbo",
+      "description": "BRIA AI Fibo 2.0 Edit Turbo: dedicated reference-image editing checkpoint. Supply a reference image — the model takes it as conditioning (not init_image strength). 4 steps, CFG 1, distilled. Same components as Fibo 2.0 Dev.",
+      "aliases": [
+        "fibo2-edit-turbo",
+        "Fibo2 Edit",
+        "Fibo 2.0 Edit"
+      ],
+      "requiredComponents": {
+        "vae": "FLUX.2 VAE (ae.safetensors)",
+        "llm": "Qwen3-VL 4B text encoder"
+      },
+      "optionalComponents": {
+        "llm_vision": "Vision projector (required for separate GGUF text encoders)"
+      },
+      "loadOptions": {
+        "flash_attn": true,
+        "diffusion_flash_attn": true
+      },
+      "imageEditMode": "ref_images",
+      "generationDefaults": {
+        "cfg_scale": 1.0,
+        "steps": 4,
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "width": 1024,
+        "height": 1024
+      },
+      "match": {
+        "architecture": "Fibo2",
+        "nameRegex": "fibo[_\\-]?2[_\\-]?edit|fibo2[_\\-]?edit"
+      },
+      "componentScoring": {
+        "llm": [
+          { "regex": "qwen3[._\\-]?vl[._\\-]?4b", "score": 120 },
+          { "regex": "qwen3[._\\-]?vl", "score": 100 },
+          { "regex": "qwen3", "score": 80 }
+        ],
+        "vae": [
+          { "regex": "ae\\.safetensors", "score": 100 },
+          { "regex": "flux.*vae|vae.*flux", "score": 90 }
+        ]
+      },
+      "downloads": [
+        {
+          "id": "diffusion-bf16",
+          "label": "Fibo 2.0 Edit Turbo (BF16)",
+          "component": "diffusion",
+          "target_type": "diffusion",
+          "source": "huggingface",
+          "repo_id": "briaai/Fibo-2.0-edit-turbo",
+          "filename": "fibo-2.0-edit-turbo.safetensors",
+          "subfolder": "Fibo2",
+          "recommended": true,
+          "notes": "Distilled edit checkpoint — 4 steps, CFG 1. Pass the source image as a reference image (not init_image)."
         }
       ]
     }

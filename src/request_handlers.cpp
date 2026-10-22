@@ -1120,6 +1120,7 @@ void RequestHandlers::handle_health(const httplib::Request& req, httplib::Respon
         {"loaded_components", loaded_info["loaded_components"]},
         {"supports_image_generation", loaded_info.value("supports_image_generation", false)},
         {"supports_video_generation", loaded_info.value("supports_video_generation", false)},
+        {"supports_ref_image_conditioning", loaded_info.value("supports_ref_image_conditioning", false)},
         {"load_options", loaded_info.contains("load_options") ? loaded_info["load_options"] : nlohmann::json(nullptr)},
         {"username", username},
         {"upscaler_loaded", loaded_info["upscaler_loaded"]},

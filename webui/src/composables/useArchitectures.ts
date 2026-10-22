@@ -38,7 +38,7 @@ export function extractWeightType(filename: string): string | null {
   return null
 }
 
-type ComponentType = 'vae' | 'clip' | 't5' | 'llm' | 'controlnet' | 'taesd'
+type ComponentType = 'vae' | 'clip' | 't5' | 'llm' | 'controlnet' | 'taesd' | 'embeddings_connectors'
 
 /**
  * Score a component for suggestion. Two scoring paths run in sequence and

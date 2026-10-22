@@ -125,11 +125,13 @@ export interface HealthResponse {
     tokenizer?: string | null
   }
   load_options?: LoadOptions
-  // Server-authoritative capability flags for the loaded model
-  // (sd_ctx_supports_image_generation / sd_ctx_supports_video_generation).
-  // Both false when no model is loaded or during the loading window.
+  // Server-authoritative capability flags for the loaded model.
+  // All three are false when no model is loaded or during the loading window.
   supports_image_generation?: boolean
   supports_video_generation?: boolean
+  // True when the model takes ref_images as conditioning (Flux Kontext, Krea2,
+  // Fibo 2.0 Edit Turbo…). Distinct from img2img init_image strength editing.
+  supports_ref_image_conditioning?: boolean
   upscaler_loaded: boolean
   upscaler_name: string | null
   ws_enabled?: boolean
@@ -1672,8 +1674,17 @@ export interface ArchitecturePreset {
   videoModel?: boolean
   generationDefaults: Record<string, unknown>
   match?: ArchitectureMatchRule
-  componentScoring?: Partial<Record<'vae' | 'clip' | 't5' | 'llm' | 'controlnet' | 'taesd', ComponentScoringRule[]>>
+  componentScoring?: Partial<Record<'vae' | 'clip' | 't5' | 'llm' | 'controlnet' | 'taesd' | 'embeddings_connectors', ComponentScoringRule[]>>
+  // Files image editing needs on top of text-to-image. The Generate page warns on the
+  // Image Edit tab when the loaded component's file name does not match nameRegex.
+  imageEditNeeds?: ImageEditNeed[]
   downloads?: ArchitectureDownload[]
+}
+
+export interface ImageEditNeed {
+  component: string      // loaded component slot, e.g. 'embeddings_connectors'
+  nameRegex: string      // the loaded file name must match this (case-insensitive)
+  message: string
 }
 
 export interface ArchitecturesResponse {

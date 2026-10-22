@@ -936,10 +936,14 @@ const currentArchPreset = computed(() =>
 // those the img2img flow with an init image is the "edit" primitive.
 //
 // Data-driven: check whether the current preset declares an imageEditMode
-// in model_architectures.json. Empty / absent = tab stays visible but
-// disabled with a hint, so the user can see it exists and understand why
-// it's off. If no model is loaded yet we don't know, so leave enabled.
+// in model_architectures.json, or from the server-authoritative
+// supports_ref_image_conditioning flag (sd_ctx_supports_ref_image_conditioning).
+// Empty / absent = tab stays visible but disabled with a hint, so the user
+// can see it exists and understand why it's off.
+// If no model is loaded yet we don't know, so leave enabled.
 const supportsImageEdit = computed<boolean>(() => {
+  // Server-authoritative flag takes precedence when a model is loaded.
+  if (store.modelLoaded && store.supportsRefImageConditioning) return true
   const preset = currentArchPreset.value
   if (!preset) return true  // no preset yet — don't preemptively disable
   return Boolean(preset.imageEditMode)
@@ -953,6 +957,25 @@ const missingVisionEncoder = computed<boolean>(() => {
   const lc = store.loadedComponents
   return Boolean(preset?.optionalComponents?.llm_vision && lc?.llm &&
     /\.gguf$/i.test(lc.llm) && !lc.llm_vision)
+})
+
+// Files the preset says editing needs (model_architectures.json
+// imageEditNeeds), e.g. LLaDA's -edit connectors with the SigVQ encoder.
+// Only warns when that component is loaded and its file name does not match.
+const unmetEditNeeds = computed<string[]>(() => {
+  const needs = currentArchPreset.value?.imageEditNeeds ?? []
+  const lc = store.loadedComponents as Record<string, string | null | undefined> | null
+  const out: string[] = []
+  for (const need of needs) {
+    const file = lc?.[need.component]
+    if (!file) continue
+    try {
+      if (!new RegExp(need.nameRegex, 'i').test(file)) out.push(need.message)
+    } catch {
+      // Malformed regex in JSON: no warning.
+    }
+  }
+  return out
 })
 
 // Tooltip displayed on hover of the disabled Image Edit tab. Kept as a
@@ -2816,6 +2839,7 @@ async function handleSubmit() {
             This model was loaded without an LLM Vision (mmproj) file, so editing will fail.
             Reload it with one selected under LLM Vision on the model load page.
           </div>
+          <div v-for="msg in unmetEditNeeds" :key="msg" class="form-hint lora-warning-hint">{{ msg }}</div>
           <ImageUploader v-model="refImage" label="Reference Image" />
         </div>
 

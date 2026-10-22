@@ -172,6 +172,23 @@ void free_sd_ctx(sd_ctx_t* ctx);
 // Get optimal defaults for loaded model
 enum sample_method_t sd_get_default_sample_method(const sd_ctx_t* ctx);
 enum scheduler_t sd_get_default_scheduler(const sd_ctx_t* ctx);
+
+// Query model capabilities (all return false when ctx is NULL or no model loaded)
+bool sd_ctx_supports_image_generation(const sd_ctx_t* ctx);  // can serve txt2img / img2img
+bool sd_ctx_supports_video_generation(const sd_ctx_t* ctx);  // can serve txt2vid
+// True when the model consumes ref_images as conditioning (Flux Kontext, Krea2, Fibo 2.0 Edit
+// Turbo, …). Distinct from img2img init_image: the image is a semantic reference, not a noised
+// starting latent. Surfaced in /health as supports_ref_image_conditioning. (since a77d3623)
+bool sd_ctx_supports_ref_image_conditioning(const sd_ctx_t* ctx);
+
+// Get the loaded model's architecture name (e.g. "SD 1.x", "SDXL", "Flux", "Fibo2", …).
+// Returns a static string owned by the library, or "Unknown".
+const char* sd_get_model_version_name(const sd_ctx_t* ctx);
+
+// Register comma-separated RPC endpoints (host:port) before calling sd_list_devices()
+// so they appear in the device listing. Repeated endpoints are safe; NULL is a no-op.
+// Returns false if RPC is unavailable or an endpoint has no usable devices. (since a77d3623)
+bool sd_add_rpc_servers(const char* servers);
 ```
 
 #### Generation

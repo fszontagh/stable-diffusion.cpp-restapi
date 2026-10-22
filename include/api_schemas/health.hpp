@@ -23,6 +23,7 @@ struct HealthResponse {
             .object_field("loaded_components", "Loaded model components (vae, clip_l, etc.)")
             .optional_field("supports_image_generation", schema::FieldType::Boolean, "True when the loaded model can serve /txt2img and /img2img (sd_ctx_supports_image_generation). False during load and when no model is loaded.", false)
             .optional_field("supports_video_generation", schema::FieldType::Boolean, "True when the loaded model can serve /txt2vid (sd_ctx_supports_video_generation). Lets a UI enable/disable the video tab based on server-authoritative capability instead of architecture-name pattern matching.", false)
+            .optional_field("supports_ref_image_conditioning", schema::FieldType::Boolean, "True when the loaded model consumes ref_images as conditioning inputs (sd_ctx_supports_ref_image_conditioning). Distinct from img2img init_image: models like Flux Kontext, Krea2, and Fibo 2.0 Edit Turbo receive reference images as semantic conditioning, not as a noised starting latent.", false)
             .optional_field("upscaler_loaded", schema::FieldType::Boolean, "Whether an upscaler is loaded")
             .optional_field("upscaler_name", schema::FieldType::String, "Loaded upscaler name")
             .optional_field("ws_enabled", schema::FieldType::Boolean, "Whether WebSocket is enabled")
