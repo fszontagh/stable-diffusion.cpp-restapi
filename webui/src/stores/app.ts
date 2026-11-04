@@ -897,6 +897,15 @@ export const useAppStore = defineStore('app', () => {
           health.value.loading_step = null
           health.value.loading_total_steps = null
         }
+        // The event carries only the name/type/architecture. Refetch so the
+        // components and load options (and the models list's is_loaded flags)
+        // match what was just loaded instead of the previous load's. The
+        // client caches GET /models for a minute, so drop that entry first
+        // or the refetch (and every other one in that minute) returns the
+        // old flags.
+        api.invalidateCache('/models')
+        void fetchHealth()
+        void fetchModels()
         const shortName = data.model_name.split('/').pop() ?? data.model_name
         showToast(`Model loaded: ${shortName}`, 'success')
         notificationService.notifyModelLoaded(data.model_name)
@@ -928,7 +937,11 @@ export const useAppStore = defineStore('app', () => {
           health.value.model_name = null
           health.value.model_type = null
           health.value.model_architecture = null
+          health.value.loaded_components = toLoadedComponents(null)
+          health.value.load_options = undefined
         }
+        api.invalidateCache('/models')
+        void fetchModels()
         showToast('Model unloaded', 'info')
         playSound('model.unloaded')
         updateDocumentTitle()
@@ -986,6 +999,11 @@ export const useAppStore = defineStore('app', () => {
           if (data.loaded_components) {
             health.value.loaded_components = toLoadedComponents(data.loaded_components)
           }
+          // load_options was never copied, so after a reload the store kept
+          // the previous load's options until a full page refresh.
+          if (data.load_options !== undefined) {
+            health.value.load_options = data.load_options as HealthResponse['load_options']
+          }
           if (data.upscaler_loaded !== undefined) {
             health.value.upscaler_loaded = data.upscaler_loaded
           }
@@ -1008,6 +1026,7 @@ export const useAppStore = defineStore('app', () => {
             model_type: data.model_type,
             model_architecture: data.model_architecture,
             loaded_components: toLoadedComponents(data.loaded_components),
+            load_options: data.load_options as HealthResponse['load_options'],
             upscaler_loaded: data.upscaler_loaded ?? false,
             upscaler_name: data.upscaler_name ?? null,
             ws_enabled: false
